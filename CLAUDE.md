@@ -408,5 +408,6 @@ change (`!` in the commit subject) always needs an `operators` fragment saying w
 
 # Migrations
 
-Data migrations are applied by a custom runner, `pnpm db:migrate` (see ./src/server/migrate.ts). It is
-backwards-compatible with `drizzle-kit generate`.
+Migrations are applied by a custom runner, `pnpm db:migrate` (see ./src/server/migrate.ts). Schema and data changes
+are both hand-written `.ts` migrations in src/migrations, registered in src/migrations/registry.ts. Do not run
+`drizzle-kit generate`: its snapshot stopped at 0007 and no longer matches drizzle/schema.ts.

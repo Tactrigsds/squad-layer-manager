@@ -895,8 +895,9 @@ on a microtask and always wins, while one that reaches the network, the disk or 
 throws in development and test and warns in production, where a violation is a latency bug and failing the write would
 be worse.
 
-**Migrations** use a custom runner (`src/server/migrate.ts`, `pnpm db:migrate`) that merges drizzle-kit generated
-`.sql` files with hand-written `.ts` data migrations into one filename-ordered sequence. Two constraints shape it:
+**Migrations** use a custom runner (`src/server/migrate.ts`, `pnpm db:migrate`) that merges the `.sql` files
+drizzle-kit generated up to 0007 with the hand-written `.ts` migrations after them into one filename-ordered sequence.
+Two constraints shape it:
 
 - **Migrations are frozen in time.** A `.ts` migration receives only the raw driver and must not import from the rest of the
   codebase, so a later refactor can never retroactively change what a historical migration meant. `superjson` is the one
@@ -904,7 +905,8 @@ be worse.
 - **The prod server is bundled**, so `.ts` migrations cannot be globbed at runtime and are statically imported
   through `src/migrations/registry.ts`.
 
-`drizzle-kit generate` still authors schema SQL. Only the _apply_ step is replaced.
+Schema changes are hand-written `.ts` migrations too. drizzle-kit's snapshot stopped at 0007 and no longer matches
+`drizzle/schema.ts`, so `drizzle-kit generate` is not used.
 
 **Secrets** are read from a mounted `.env.secrets` file rather than `process.env`, switched by `secret: true` in the
 env schema's `.meta()`. Connection secrets are sealed at the db boundary only, and always plaintext in memory.

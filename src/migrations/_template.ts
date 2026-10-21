@@ -1,6 +1,6 @@
 import type { MigrationDriver } from '@/server/migrate'
 
-// Template for a hand-written data migration. Copy to NNNN_description.ts and register
+// Template for a hand-written schema or data migration. Copy to NNNN_description.ts and register
 // it in src/migrations/registry.ts.
 //
 // Rules for migrations — they are frozen in time:
@@ -15,7 +15,7 @@ import type { MigrationDriver } from '@/server/migrate'
 //    or a schema snapshot copied into this file, never the live app schema.
 //  - Do NOT open a transaction: the runner already wraps this in BEGIN IMMEDIATE and will
 //    ROLLBACK if `up` throws.
-//  - Foreign keys are OFF during migrations (as with drizzle-kit). Enable per-migration
+//  - Foreign keys are OFF during migrations. Enable per-migration
 //    with `db.pragma('foreign_keys = ON')` if you need enforcement.
 export async function up(db: MigrationDriver): Promise<void> {
 	// Example: backfill a column with arbitrary TypeScript logic.

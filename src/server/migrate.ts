@@ -5,10 +5,10 @@ import path from 'node:path'
 import * as DbBackup from './db-backup.ts'
 import * as DbMeta from './db-meta.ts'
 
-// Custom migration runner that applies both generated `.sql` schema migrations
-// (authored via `drizzle-kit generate`) and hand-written `.ts` data migrations in
-// a single filename-ordered sequence. Replaces `drizzle-kit migrate` as the *apply*
-// step; `drizzle-kit generate` still authors schema SQL + the journal.
+// Custom migration runner that applies the `.sql` migrations drizzle-kit generated
+// up to 0007 and the hand-written `.ts` migrations after them in a single
+// filename-ordered sequence. Schema changes are hand-written `.ts` migrations too:
+// drizzle-kit's snapshot stopped at 0007 and no longer matches drizzle/schema.ts.
 //
 // Design constraints:
 //  - Migrations must be frozen in time: a `.ts` migration receives only the raw
