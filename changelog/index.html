@@ -318,23 +318,24 @@ on in the others until the page is reloaded. Editing an existing layer still ope
 <h3 id="for-operators" class="docs-heading">For operators<a href="#for-operators" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/CHANGELOG.md#for-operators" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <ul>
 <li>
-<p><strong>Breaking:</strong> Plugins must be updated for plugin API 0.20, which changes what a layer id is. Update tt-slm-plugins along with SLM.</p>
+<p><strong>Breaking:</strong> A plugin that is not built into SLM, tt-slm-plugins included, must be updated for plugin API 0.20, which changes what a layer id is. Update tt-slm-plugins along with SLM.</p>
 <p>SLM now stores a layer id as the layer&#x27;s name and its two teams in the game&#x27;s own words, such as
 <code>Narva_RAAS_v1:USA+CombinedArms:RGF+CombinedArms</code>. SLM rewrites the layer ids it stored before into this form: saved
 queues, layer requests, rotations and filters as it starts, and match history and the activity feed in the background
 a few minutes later.
 Links to a layer written with an old id still open that layer.</p>
-<p>An older SLM cannot read the rewritten ids. Back up the database before upgrading, so a rollback can restore it.</p>
+<p>An older SLM cannot read the rewritten ids. To roll back, restore the backup SLM takes before it migrates, as
+<a href="https://tactrigsds.github.io/squad-layer-manager/2026.10.2/backups/">Backups and restoring</a> describes.</p>
 </li>
 <li>
-<p><strong>Breaking:</strong> The plugin API is version 0.13. A packed plugin that declares <code>^0.12</code> does not load until it is rebuilt against 0.13.</p>
+<p><strong>Breaking:</strong> A packed plugin of your own that declares <code>^0.12</code> does not load until it is rebuilt against plugin API 0.13.</p>
 <p>The built-in plugins are already updated. For a plugin of your own, set <code>apiVersion</code> to <code>^0.13</code> in its manifest and repack it with <code>pnpm plugin:pack</code>. Changes since 0.12:</p>
 <ul>
 <li>Filters gain <code>missExemption</code>, a filter node or null. Layers that match the node do not show the filter&#x27;s miss indicator, and null exempts no layer. <code>Filters.create</code> exempts seeding and training layers when <code>missExemption</code> is left out.</li>
 </ul>
 </li>
 <li>
-<p><strong>Breaking:</strong> The plugin API is version 0.19. A plugin built for an earlier version does not load until its <code>apiVersion</code> is raised to <code>^0.19</code> and it is repacked with <code>pnpm plugin:pack</code>.</p>
+<p><strong>Breaking:</strong> A plugin of your own built for an earlier plugin API does not load until its <code>apiVersion</code> is raised to <code>^0.19</code> and it is repacked with <code>pnpm plugin:pack</code>.</p>
 <p>The built-in plugins are already updated. Changes since 0.18:</p>
 <ul>
 <li>The layer naming functions moved from <code>slm/lib/display-helpers</code> to <code>slm/models/display-helpers</code>. Change a plugin&#x27;s
@@ -342,7 +343,7 @@ imports to the new specifier. The functions are unchanged.</li>
 </ul>
 </li>
 <li>
-<p><strong>Breaking:</strong> The plugin API is version 0.16. A packed plugin that declares <code>^0.13</code> does not load until it is rebuilt against 0.16.</p>
+<p><strong>Breaking:</strong> A packed plugin of your own that declares <code>^0.13</code> does not load until it is rebuilt against plugin API 0.16.</p>
 <p>The built-in plugins are already updated. For a plugin of your own, set <code>apiVersion</code> to <code>^0.16</code> in its manifest and
 repack it with <code>pnpm plugin:pack</code>. Changes since 0.13:</p>
 <ul>
@@ -354,12 +355,10 @@ layer tags must handle one it does not find.</li>
 </ul>
 </li>
 <li>
-<p><strong>Breaking:</strong> Repeat rules moved from each server&#x27;s settings into repeat rulesets in the global settings.</p>
-<p>The upgrade migrates them automatically. Each server&#x27;s <code>queue.mainPool.repeatRules</code> becomes a repeat ruleset under the
-global <code>repeatRulesets</code> setting, named after the server, and the server&#x27;s settings point at it with
+<p><strong>Breaking:</strong> A script, settings YAML or plugin that reads or writes <code>queue.mainPool.repeatRules</code> must use the server&#x27;s repeat ruleset instead. Repeat rules moved from each server&#x27;s settings into repeat rulesets in the global settings.</p>
+<p>The upgrade migrates the repeat rules automatically. Each server&#x27;s <code>queue.mainPool.repeatRules</code> becomes a repeat
+ruleset under the global <code>repeatRulesets</code> setting, named after the server, and the server&#x27;s settings point at it with
 <code>queue.mainPool.repeatRulesetId</code>. Tutorial servers share one <code>slm-tutorial</code> repeat ruleset.</p>
-<p>Anything that writes <code>queue.mainPool.repeatRules</code> must write the server&#x27;s repeat ruleset instead. That covers scripts that
-edit settings, settings YAML kept outside SLM, and plugins that read the rules from a server&#x27;s settings.</p>
 </li>
 <li>
 <p><strong>Added:</strong> Plugins can read, create, replace and delete repeat rulesets through <code>slm/systems/repeat-ruleset</code>, and choose which repeat ruleset their server applies. A plugin cannot delete a repeat ruleset that a server or rotation still uses. The audit log records every repeat ruleset change a plugin makes against the plugin.</p>
@@ -706,7 +705,7 @@ Ms&quot; is &quot;Post-match Delay (ms)&quot;, and the local connection type is 
 <h3 id="for-operators-1" class="docs-heading">For operators<a href="#for-operators-1" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/CHANGELOG.md#for-operators-1" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <ul>
 <li>
-<p><strong>Breaking:</strong> Two changes can need a step when upgrading:</p>
+<p><strong>Breaking:</strong> A server agent that uses the default token, or a local admin list file outside the <code>data</code> directory, stops working until the change below is made:</p>
 <ul>
 <li><strong>A server agent</strong> is refused while its server still has the default token, <code>dev</code>. Set a token of your own in the
 server&#x27;s connection settings, and give the agent the same one.</li>
@@ -715,7 +714,7 @@ to the directory it is kept in.</li>
 </ul>
 </li>
 <li>
-<p><strong>Breaking:</strong> The plugin API is version 0.12. A packed plugin that declares <code>^0.8</code>, <code>^0.9</code>, <code>^0.10</code> or <code>^0.11</code> does not load until it is rebuilt against 0.12.</p>
+<p><strong>Breaking:</strong> A packed plugin of your own that declares <code>^0.8</code>, <code>^0.9</code>, <code>^0.10</code> or <code>^0.11</code> does not load until it is rebuilt against plugin API 0.12.</p>
 <p>The built-in plugins are already updated. For a plugin of your own, set <code>apiVersion</code> to <code>^0.12</code> in its manifest and repack it with <code>pnpm plugin:pack</code>. Other changes since 0.10:</p>
 <ul>
 <li><code>getServerInfo</code> and <code>getLayerStatus</code> in <code>slm/systems/squad-rcon</code> answer from SLM&#x27;s cache, as <code>getTeams</code> does, instead of sending an RCON command on every call. A plugin that calls them often no longer adds RCON traffic.</li>
@@ -729,12 +728,12 @@ to the directory it is kept in.</li>
 </ul>
 </li>
 <li>
-<p><strong>Breaking:</strong> A plugin that creates filters, or reads a filter&#x27;s owner, needs a code change for plugin API 0.12. A filter&#x27;s <code>owner</code> is now <code>{ type: &#x27;slm-user&#x27;, userId }</code>, <code>{ type: &#x27;plugin&#x27;, pluginId }</code> or <code>{ type: &#x27;system&#x27; }</code> instead of a discord user id.</p>
+<p><strong>Breaking:</strong> A plugin of your own that creates filters, or reads a filter&#x27;s owner, needs a code change for plugin API 0.12. A filter&#x27;s <code>owner</code> is now <code>{ type: &#x27;slm-user&#x27;, userId }</code>, <code>{ type: &#x27;plugin&#x27;, pluginId }</code> or <code>{ type: &#x27;system&#x27; }</code> instead of a discord user id.</p>
 <p><code>create</code> in <code>slm/systems/filter-entity</code> makes the calling plugin the filter&#x27;s owner. To keep an admin as the owner, pass <code>owner: { type: &#x27;slm-user&#x27;, userId }</code>.</p>
 <p>The upgrade hands SLM&#x27;s starting filters, and any filter whose owner was removed from SLM, to SLM itself. Filters an admin owns stay theirs.</p>
 </li>
 <li>
-<p><strong>Breaking:</strong> The BattleMetrics, Squad Browser and Steam credentials move from the environment to the settings page. The encryption key can be rotated, must be at least 16 characters in production, and credentials can be mounted one file each.</p>
+<p><strong>Breaking:</strong> A <code>SETTINGS_ENCRYPTION_KEY</code> shorter than 16 characters stops production from starting until it is replaced, as <em>Encryption key length</em> below describes. The BattleMetrics, Squad Browser and Steam credentials move from the environment to the settings page on their own. The encryption key can be rotated, and credentials can be mounted one file each.</p>
 <p><strong>Integrations on the settings page.</strong> <code>BM_PAT</code>, <code>BM_ORG_ID</code>, <code>BM_ENABLED</code>, <code>SQUADBROWSER_API_KEY</code>, <code>SQUADBROWSER_ENABLED</code>, <code>STEAM_API_KEY</code> and <code>STEAM_ENABLED</code> are now the <em>Integrations</em> section of the global settings. The first boot after upgrading carries the values over from the environment into the settings, after which the variables are ignored and the boot log says so each time one is still set. Remove them from <code>.env</code> and <code>.env.secrets</code> once that boot has happened. A token is stored encrypted and never shown again: the field shows a placeholder, and typing in it replaces the token. Editing the section takes a <code>global-settings:write</code> grant on <code>integrations</code>, which the default managers role does not hold. <code>BM_HOST</code>, <code>SQUADBROWSER_HOST</code> and <code>STEAM_HOST</code> stay in the environment.</p>
 <p><strong>Encryption key length.</strong> Production refuses a <code>SETTINGS_ENCRYPTION_KEY</code> shorter than 16 characters. If yours is, move it to <code>SETTINGS_ENCRYPTION_KEY_PREVIOUS</code>, generate a new one with <code>openssl rand -base64 32</code> into <code>SETTINGS_ENCRYPTION_KEY</code>, and start the app. A key from <code>install.sh</code> or from that command is long enough already and needs nothing.</p>
 <p><strong>Key rotation.</strong> <code>SETTINGS_ENCRYPTION_KEY_PREVIOUS</code> is the rotation path in general. On the next boot everything still encrypted with the old key is re-encrypted with the new one, after which the variable can be removed.</p>
