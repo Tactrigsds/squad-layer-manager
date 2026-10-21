@@ -271,6 +271,9 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const etag = `"${LayerEngine.hash}"`
 		res.header('ETag', etag)
 		res.header('Cache-Control', 'no-cache')
+		res.header(AR.LAYER_DATA_HASH_HEADER, LayerData.hash)
+		const { layerData } = req.query as { layerData?: string }
+		if (layerData && layerData !== LayerData.hash) return res.code(409).send()
 		if (ifNoneMatch && ifNoneMatch === etag) {
 			return res.code(304).send()
 		}

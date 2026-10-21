@@ -240,13 +240,18 @@ async function init(
 
 	// an engine reads its rows' ids from the layer data it was created with, so new layer data takes a new engine even
 	// over the same table
-	const artifact = await takeLayerArtifact(holdsLayerData ? (prev?.artifactHash ?? null) : null)
+	const artifact = await takeLayerArtifact(holdsLayerData ? (prev?.artifactHash ?? null) : null, input.layerDataHash)
+	// serverLayerDataHash can predate a deploy that the artifact request lands after
+	if (!pairsWith(artifact, input.layerDataHash)) {
+		log.warn('page is on layer data %s but the server pairs its artifact with %s', input.layerDataHash, artifact.layerDataHash)
+		return { code: 'err:stale-layer-data' }
+	}
 	if (holdsLayerData && artifact.code === 'unchanged') return { code: 'ok', state: prev! }
-	if (artifact.code === 'unchanged') throw new Error('an unconditional layer artifact request answered unchanged')
+	if (artifact.code !== 'fetched') throw new Error(`an unconditional layer artifact request answered ${artifact.code}`)
 
 	if (input.layerData) L.setLayerData(input.layerData)
 	if (input.cacheLayerArtifact && !artifact.fromCache) await cacheArtifact(artifact)
-	const [engine, artifactHash] = await createEngine(artifact)
+	const [engine, artifactHash] = await createEngine(artifact, input.layerDataHash)
 	log.info('layer engine ready: %s layers%s', engine.rowCount, prev ? ' (rebuilt for a new layer pool)' : '')
 
 	return {
@@ -300,7 +305,7 @@ if (isShared) {
 // Both downloads start when the worker loads rather than when the first init arrives, which waits on the page's
 // config, filters and layer data. A worker loads with no state, so the prefetch has no artifact to revalidate.
 const engineModule = compileEngine()
-let artifactPrefetch: Promise<ArtifactResult> | null = fetchLayerArtifact(null)
+let artifactPrefetch: Promise<ArtifactResult> | null = fetchLayerArtifact(null, null)
 // observed here so a failure surfaces through init rather than as an unhandled rejection
 engineModule.catch(() => {})
 artifactPrefetch.catch(() => {})
@@ -316,17 +321,31 @@ async function compileEngine() {
 	}
 }
 
-function takeLayerArtifact(knownHash: string | null): Promise<ArtifactResult> {
+function takeLayerArtifact(knownHash: string | null, layerDataHash: string | null): Promise<ArtifactResult> {
 	const prefetch = artifactPrefetch
 	artifactPrefetch = null
-	if (!prefetch || knownHash !== null) return fetchLayerArtifact(knownHash)
-	return prefetch.catch((error) => {
-		log.warn(error, 'layer artifact prefetch failed, fetching again')
-		return fetchLayerArtifact(null)
-	})
+	if (!prefetch || knownHash !== null) return fetchLayerArtifact(knownHash, layerDataHash)
+	return prefetch.then(
+		(artifact) => {
+			if (pairsWith(artifact, layerDataHash)) return artifact
+			log.info('the layer artifact prefetch was answered for other layer data, fetching again')
+			return fetchLayerArtifact(null, layerDataHash)
+		},
+		(error) => {
+			log.warn(error, 'layer artifact prefetch failed, fetching again')
+			return fetchLayerArtifact(null, layerDataHash)
+		},
+	)
 }
 
-async function createEngine(artifact: FetchedArtifact): Promise<[LayerEngine, string | null]> {
+// The artifact and the layer data are halves of one pair (see layer-artifacts.server.ts), and a table read against
+// another version's layer data fails or resolves to the wrong layers. An unknown hash on either side passes.
+function pairsWith(artifact: ArtifactResult, layerDataHash: string | null) {
+	if (artifact.code === 'unpaired') return false
+	return !artifact.layerDataHash || !layerDataHash || artifact.layerDataHash === layerDataHash
+}
+
+async function createEngine(artifact: FetchedArtifact, layerDataHash: string | null): Promise<[LayerEngine, string | null]> {
 	const module = await engineModule
 	try {
 		return [await LayerEngine.create(module, new Uint8Array(artifact.buffer), LC.denseIdLayout()), artifact.hash]
@@ -335,8 +354,8 @@ async function createEngine(artifact: FetchedArtifact): Promise<[LayerEngine, st
 		if (!artifact.fromCache) throw error
 		log.warn(error, 'discarding the cached layer artifact, the engine rejected it')
 		await discardCachedArtifacts()
-		const fresh = await fetchLayerArtifactDirect(null)
-		if (fresh.code === 'unchanged') throw new Error('unconditional artifact request answered 304', { cause: error })
+		const fresh = await fetchLayerArtifactDirect(null, layerDataHash)
+		if (fresh.code !== 'fetched') throw new Error(`a fresh layer artifact request answered ${fresh.code}`, { cause: error })
 		return [await LayerEngine.create(module, new Uint8Array(fresh.buffer), LC.denseIdLayout()), fresh.hash]
 	}
 }
@@ -345,14 +364,17 @@ type FetchedArtifact = {
 	code: 'fetched'
 	buffer: ArrayBuffer
 	hash: string | null
+	// the layer data the server paired the artifact with when it answered
+	layerDataHash: string | null
 	fromCache: boolean
 }
-type ArtifactResult = FetchedArtifact | { code: 'unchanged' }
+// unpaired: the request named layer data that the server's artifact does not pair with
+type ArtifactResult = FetchedArtifact | { code: 'unchanged' | 'unpaired'; layerDataHash: string | null }
 
 // `knownHash` is the artifact the caller already holds, whose validity is all it needs to know. A copy in OPFS is read
 // whether or not this deployment caches the artifact: cacheLayerArtifact (see config.server.ts) only decides whether
 // a fresh download is written there.
-async function fetchLayerArtifact(knownHash: string | null): Promise<ArtifactResult> {
+async function fetchLayerArtifact(knownHash: string | null, layerDataHash: string | null): Promise<ArtifactResult> {
 	let cached: Awaited<ReturnType<typeof findCachedArtifact>> = null
 	try {
 		cached = await findCachedArtifact(await navigator.storage.getDirectory())
@@ -362,34 +384,43 @@ async function fetchLayerArtifact(knownHash: string | null): Promise<ArtifactRes
 		log.warn(error, 'layer artifact OPFS cache unavailable, fetching directly')
 	}
 
-	const res = await requestArtifact(knownHash ?? cached?.hash ?? null)
+	const res = await requestArtifact(knownHash ?? cached?.hash ?? null, layerDataHash)
+	const pairedHash = AR.parseLayerDataHashHeader(res.headers.get(AR.LAYER_DATA_HASH_HEADER))
+	if (res.status === 409) return { code: 'unpaired', layerDataHash: pairedHash }
 	if (res.status === 304) {
-		if (knownHash) return { code: 'unchanged' }
+		if (knownHash) return { code: 'unchanged', layerDataHash: pairedHash }
 		try {
 			const file = await cached!.handle.getFile()
-			return { code: 'fetched', buffer: await file.arrayBuffer(), hash: cached!.hash, fromCache: true }
+			return { code: 'fetched', buffer: await file.arrayBuffer(), hash: cached!.hash, layerDataHash: pairedHash, fromCache: true }
 		} catch (error) {
 			log.warn(error, 'failed to read the cached layer artifact, fetching directly')
-			return await fetchLayerArtifactDirect(null)
+			return await fetchLayerArtifactDirect(null, layerDataHash)
 		}
 	}
 
 	const hash = AR.parseContentHashEtag(res.headers.get('ETag'))
-	return { code: 'fetched', buffer: await inflateArtifact(res), hash, fromCache: false }
+	return { code: 'fetched', buffer: await inflateArtifact(res), hash, layerDataHash: pairedHash, fromCache: false }
 }
 
-async function fetchLayerArtifactDirect(knownHash: string | null): Promise<ArtifactResult> {
-	const res = await requestArtifact(knownHash)
-	if (res.status === 304) return { code: 'unchanged' }
+async function fetchLayerArtifactDirect(knownHash: string | null, layerDataHash: string | null): Promise<ArtifactResult> {
+	const res = await requestArtifact(knownHash, layerDataHash)
+	const pairedHash = AR.parseLayerDataHashHeader(res.headers.get(AR.LAYER_DATA_HASH_HEADER))
+	if (res.status === 409) return { code: 'unpaired', layerDataHash: pairedHash }
+	if (res.status === 304) return { code: 'unchanged', layerDataHash: pairedHash }
 	const hash = AR.parseContentHashEtag(res.headers.get('ETag'))
-	return { code: 'fetched', buffer: await inflateArtifact(res), hash, fromCache: false }
+	return { code: 'fetched', buffer: await inflateArtifact(res), hash, layerDataHash: pairedHash, fromCache: false }
 }
 
-async function requestArtifact(knownHash: string | null) {
+// `layerDataHash` goes in the url, so a cache in front of the app (a CDN keys on the url) cannot answer one pair's
+// request with another pair's table
+async function requestArtifact(knownHash: string | null, layerDataHash: string | null) {
 	const headers = knownHash ? { 'If-None-Match': `"${knownHash}"` } : undefined
-	const res = await fetch(AR.link('/layers.bin.gz'), { headers })
+	const query = layerDataHash ? `?${new URLSearchParams({ layerData: layerDataHash })}` : ''
+	const res = await fetch(`${AR.link('/layers.bin.gz')}${query}`, { headers })
 	if (res.status === 304 && !knownHash) throw new Error('unconditional artifact request answered 304')
-	if (res.status !== 304 && !res.ok) throw new Error(`layer artifact request failed: ${res.status} ${res.statusText}`)
+	if (res.status !== 304 && res.status !== 409 && !res.ok) {
+		throw new Error(`layer artifact request failed: ${res.status} ${res.statusText}`)
+	}
 	return res
 }
 

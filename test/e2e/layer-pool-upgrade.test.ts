@@ -1,8 +1,10 @@
 import type { Page } from '@playwright/test'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import * as AR from '@/app-routes'
 import * as LayerArtifacts from '@/systems/layer-artifacts.server'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
@@ -18,8 +20,9 @@ import { settledText } from './settle'
 // Its own app because the config is the subject: the pool lives in a directory this test swaps out under a
 // restart, and the artifact cache is on, which e2e otherwise leaves off.
 
-const OLD_VERSION = '10.5.0'
-const NEW_VERSION = '10.5.1'
+// two pairs whose layer indexes differ, so the old table read against the new layer data fails rather than passing
+const OLD_VERSION = '10.6.0'
+const NEW_VERSION = '10.6.2'
 const SHIPPED_ARTIFACTS = path.resolve(import.meta.dirname, '../../assets/layers')
 
 // what earlier builds of the cache left in the OPFS root, none of which the current layout reads
@@ -118,6 +121,44 @@ test.describe('a new layer pool under open tabs', { tag: '@firefox' }, () => {
 			expect(cachedAfter[0]).not.toBe(cachedBefore[0])
 		} finally {
 			await pageB.close()
+		}
+	})
+
+	// A cache in front of the app, such as a CDN, can keep answering with the table from before the swap. The worker's
+	// first request is sent before the page has named its layer data, so that request can get the stale table.
+	test('refetches a table that pairs with other layer data', async ({ browser }) => {
+		const sha256 = (bytes: Buffer) => crypto.createHash('sha256').update(bytes).digest('hex')
+		const staleTable = fs.readFileSync(path.join(SHIPPED_ARTIFACTS, LayerArtifacts.tableFileName(OLD_VERSION, { compressed: true })))
+		const staleLayerData = fs.readFileSync(path.join(SHIPPED_ARTIFACTS, LayerArtifacts.layerDataFileName(OLD_VERSION)), 'utf8')
+		// the server hashes the file re-serialized without indentation (see layer-data.server.ts)
+		const staleLayerDataHash = sha256(Buffer.from(JSON.stringify(JSON.parse(staleLayerData))))
+
+		// a fresh context, so no worker or cached table carries over from the test before. Routing does not reach a
+		// shared worker's requests, so the page falls back to the dedicated worker, which runs the same code.
+		const context = await browser.newContext()
+		await context.addInitScript(() => {
+			delete (window as { SharedWorker?: unknown }).SharedWorker
+		})
+		try {
+			let staleServed = 0
+			await context.route(/\/layers\.bin\.gz$/, (route) => {
+				staleServed++
+				return route.fulfill({
+					status: 200,
+					body: staleTable,
+					headers: {
+						'Content-Type': 'application/gzip',
+						ETag: `"${sha256(staleTable)}"`,
+						[AR.LAYER_DATA_HASH_HEADER]: staleLayerDataHash,
+					},
+				})
+			})
+			const page = await context.newPage()
+			await page.goto(app.loginUrl())
+			expect(await matchedLayers(page)).toMatch(/\d+ matched layers/)
+			expect(staleServed).toBe(1)
+		} finally {
+			await context.close()
 		}
 	})
 })
