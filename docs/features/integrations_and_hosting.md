@@ -55,5 +55,5 @@ the connection state of each server. See [Accessing telemetry](../installing.md#
   backups over SFTP. See [backups.md](../guide/operations/backups.md).
 - **Server console.** Read the RCON traffic and log lines exactly as SLM receives them, to find whether a problem is
   in the connection or in SLM. See [server_console.md](../guide/operations/server_console.md).
-- **Mods.** SLM's layer catalog covers vanilla Squad and SuperMod. See
+- **Mods.** SLM's layer catalog covers vanilla Squad and SuperMod, and more mods can be added on request. See
   [Mod support](layer_selection.md#mod-support).
