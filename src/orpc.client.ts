@@ -252,15 +252,26 @@ closed$
 		Rx.concatMap(async (event: any) => {
 			disconnectTime = Date.now()
 			console.error(`WebSocket connection closed: ${event.code}, ${event.reason?.reason}`)
-			if (event.code === AR.SESSION_ENDED_CLOSE_CODE || websocket.retryCount > 5) {
-				const res = await fetch(AR.link('/check-auth'))
-				if (res.status === 401) {
-					window.location.href = AR.link('/')
-				}
-			}
+			if (event.code === AR.SESSION_ENDED_CLOSE_CODE || websocket.retryCount > 5) await checkAuth()
 		}),
 	)
 	.subscribe()
+
+// Only a plain http request extends a session, and an open tab makes none of its own, so a tab kept open for days
+// would otherwise be signed out once the session it loaded with runs out.
+const SESSION_KEEPALIVE_INTERVAL = 1000 * 60 * 60
+Rx.interval(SESSION_KEEPALIVE_INTERVAL).pipe(Rx.exhaustMap(checkAuth)).subscribe()
+
+async function checkAuth() {
+	let res: Response
+	try {
+		res = await fetch(AR.link('/check-auth'))
+	} catch (err) {
+		console.error('Failed to check auth', err)
+		return
+	}
+	if (res.status === 401) window.location.href = AR.link('/')
+}
 
 // tanstack's default key hash is JSON.stringify, which throws on the discord ids we pass as query inputs.
 // mirrors its key sorting so hashes stay stable regardless of property order. see hashKey in query-core
