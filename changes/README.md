@@ -3,6 +3,9 @@
 Each pull request that changes something a user or operator can notice adds one file here. `pnpm release` moves
 them into `changelog/<version>/` and regenerates `CHANGELOG.md`. The app shows them on its What's new page.
 
+Every fragment in changes/ is unreleased, because `pnpm release` moves all of them out. A pull request that follows
+up an unreleased change edits that change's fragment instead of adding a second one.
+
 ## Does this change need one?
 
 It does if someone could notice it without reading the code or the logs:
@@ -46,5 +49,5 @@ Write the first line for the people it affects. Describe what changed for them, 
 
 ## Checking
 
-`pnpm changelog:check` validates every fragment. CI and the pre-push hook also check that a branch adds a fragment
-when it needs one.
+`pnpm changelog:check` validates every fragment. CI and the pre-push hook also check that a branch adds a fragment,
+or edits an unreleased one, when it needs one.
