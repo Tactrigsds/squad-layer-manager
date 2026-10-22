@@ -168,8 +168,8 @@ needs any other credential.
 
 A fresh checkout lacks two gitignored files that a dev instance needs. `layer-db.json` is copied from the primary
 checkout. `assets/layer-engine.wasm` is built from the checkout's own `layer-engine/` whenever a worktree is created or
-provisioned, so it always matches the branch. Cargo skips the build when nothing changed, and a cold build takes about
-20 seconds. Run `pnpm build:engine` after changing `layer-engine/` while a dev instance is running.
+provisioned, so it always matches the branch. The build is skipped when the wasm already matches `layer-engine/`, and a
+cold build takes about 20 seconds. Run `pnpm build:engine` after changing `layer-engine/` while a dev instance is running.
 
 Provisioning also links private Claude Code skills into the checkout. A private skill is kept in
 `../slm-private-skills/<name>/SKILL.md` beside the main checkout (or under `SLM_PRIVATE_SKILLS_DIR`), outside every

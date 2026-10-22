@@ -37,6 +37,8 @@ if (!command) {
 
 let entry = process.env.SLM_TEST_SERVER_ENTRY
 if (!entry) {
+	const engineCode = await run('pnpm', ['run', 'build:engine'])
+	if (engineCode !== 0) process.exit(engineCode)
 	const buildCode = await run('pnpm', ['run', 'build:server'])
 	if (buildCode !== 0) process.exit(buildCode)
 	entry = path.join(repoRoot, 'dist-server/main-instrumented.js')
