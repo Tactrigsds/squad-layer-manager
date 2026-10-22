@@ -342,7 +342,8 @@ test('the player management tutorial, acted on and navigated out of order', asyn
 		const rows = page.locator('[data-tour="mh-row"]')
 		// the two the run played during setup, and the reader's own
 		await expect(rows).toHaveCount(3)
-		await expect(rows.first().locator('[data-tour="mh-time"]')).toContainText('m)')
+		// the backstory shrinks to fit the reader's day so far, so a length can be any whole number of hours or minutes
+		await expect(rows.first().locator('[data-tour="mh-time"]')).toHaveText(/\(\d+(h|m|h \d+m)\)$/)
 		await page.locator('[data-tour="mh-row"]:has(+ [data-tour-current])').click()
 		await onStep(page, 'Viewing a past match')
 		await jumpToExact('Back to live')
