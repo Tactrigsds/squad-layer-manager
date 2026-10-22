@@ -87,7 +87,8 @@ command fixes a workspace that refuses to start because a newer branch migrated 
 
 The emulated squad server (`src/emulator`) plus a stub BattleMetrics API. `pnpm dev` starts one unless this worktree
 already has it running. It always runs as a separate process, so its world (players, squads, match state) survives
-the app's watch restarts.
+the app's watch restarts. Restarting `pnpm dev` restarts the emulator too, unless it runs under `--emu-only`, so
+connected players and group edits made with `emuctl` have to be made again.
 
 It writes the same `SquadGame.log` a real server does, and the app tails it over the same `local` code path.
 
