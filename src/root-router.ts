@@ -5,6 +5,10 @@ import * as Rx from '@/lib/rxjs'
 
 import { routeTree } from './routeTree.gen.ts'
 
+// This module imports every route, and through them most client systems. A client system the route tree reaches must
+// import it lazily (`await import('@/root-router')`), or the system evaluates half-initialized. Typecheck and e2e stay
+// green when that happens, and vitest reports it only as an unhandled rejection from an unrelated test file.
+
 // Register things for typesafety
 declare module '@tanstack/react-router' {
 	interface Register {

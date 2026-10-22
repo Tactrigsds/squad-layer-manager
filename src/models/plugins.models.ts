@@ -15,6 +15,9 @@ import type { MigrationDriver } from '@/server/migrate'
  *
  * Pre-1.0, and semver's 0.x rule shifts every component one place left: the minor carries breaking
  * changes and additions move the patch. `pnpm api:report` enforces that against the report diff.
+ * A minor bump therefore refuses every installed plugin until its manifest is bumped, tt-slm-plugins included.
+ * The next breaking change goes to 1.0.0, after which a breaking change bumps the major and an addition the minor.
+ * A bump also has to update the manifests in plugins/ and test/fixtures/plugin-hello.
  */
 export const API_VERSION = { major: 0, minor: 20, patch: 0 }
 

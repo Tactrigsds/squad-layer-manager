@@ -9,6 +9,13 @@
 //
 // --click and --fill (selector=value) repeat and run in the order given, before --eval, --script and --shot.
 // Screenshots are JPEG at quality 60 unless the path ends in .png, to keep them cheap to read back.
+//
+// A --script's return value is printed as JSON. A page.goto inside a --script never fires `load`, because the SPA
+// navigates client-side, so probe one route per run and pass it as the path. Inside page.evaluate,
+// `await import('/src/orpc.client.ts')` returns the app's RPC client, and any other dev module imports the same way.
+// After an HMR update the app holds the module at a `?t=` URL (see performance.getEntriesByType('resource')), and a
+// plain `/src/...` import is a separate instance. --width alone keeps `pointer: fine`; for a touch phone, open a
+// context with `isMobile: true, hasTouch: true` from the script.
 
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -74,7 +81,8 @@ try {
 	if (values.eval) console.log(JSON.stringify(await page.evaluate(values.eval), null, 2))
 	if (values.script) {
 		const mod = await import(pathToFileURL(path.resolve(values.script)).href)
-		await mod.default({ page, url })
+		const result = await mod.default({ page, url })
+		if (result !== undefined) console.log(JSON.stringify(result, null, 2))
 	}
 	if (values.shot) {
 		const opts = values.shot.endsWith('.png') ? { path: values.shot } : { path: values.shot, type: 'jpeg', quality: 60 }
