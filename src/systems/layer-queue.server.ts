@@ -810,7 +810,9 @@ async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTI
 		},
 	})
 	if (statusRes.code !== 'ok') return undefined
-	const warns = statusRes.statuses.warns.filter((w) => w.itemId === head.itemId)
+	// a vote warns through its choices, so report the choice the vote currently resolves to
+	const headItemId = LL.isVoteItem(head) ? head.choices.find((c) => c.layerId === head.layerId)?.itemId : head.itemId
+	const warns = statusRes.statuses.warns.filter((w) => w.itemId === headItemId)
 	if (warns.length === 0) return undefined
 	const repeatViolations = warns.filter((w) => w.type === 'repeat-rule-violation-warning').flatMap((w) => w.descriptors)
 	const poolViolations = warns
