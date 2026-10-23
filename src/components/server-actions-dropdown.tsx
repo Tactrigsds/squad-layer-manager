@@ -19,7 +19,6 @@ import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
-import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
@@ -82,10 +81,6 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 	const { Item, Separator } = props.slots
 	const stores = props.stores
 	const serverId = stores.squadServer!.serverId
-	const playerCount = Zus.useStore(stores.squadServer!, (s) =>
-		s.chat.chatState.synced && !s.chat.chatState.connectionError ? s.chat.chatState.interpolatedState.players.size : null,
-	)
-	const hasPlayers = playerCount !== null && playerCount > 0
 	const endMatchDenied = RbacClient.useAccess('squadServer.endMatch', { serverId })
 	const disableUpdatesDenied = RbacClient.useAccess('layerQueue.toggleUpdatesToSquadServer', { serverId })
 	const disableFogOfWarDenied = RbacClient.useAccess('squadServer.toggleFogOfWar', { serverId })
@@ -167,12 +162,11 @@ export function ServerActionMenuItems(props: { stores: SquadServerFrame.KeyProp;
 		<>
 			<PermissionDeniedTooltip denied={endMatchDenied}>
 				<Item
-					disabled={!!endMatchDenied || !hasPlayers}
+					disabled={!!endMatchDenied}
 					onClick={() => void endMatch()}
-					className={cn('bg-destructive text-destructive-foreground space-x-1 focus:bg-danger', !hasPlayers && 'flex flex-col')}
+					className="bg-destructive text-destructive-foreground space-x-1 focus:bg-danger"
 				>
 					<span>{tr.text(SS_Msgs.endMatchLabel())}</span>
-					{!hasPlayers && <small>{tr.text(SS_Msgs.endMatchNeedsPlayers())}</small>}
 				</Item>
 			</PermissionDeniedTooltip>
 			{updatesToSquadServerDisabled?.type !== 'ingame-vote' && (

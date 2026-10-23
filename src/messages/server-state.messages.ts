@@ -115,8 +115,6 @@ export const joinLinkFailed = def(() => ({ toast: [t('Could not get a join link'
 
 export const endMatchLabel = def('End Match')
 
-export const endMatchNeedsPlayers = def('(disabled: Cannot end match when server is empty.)')
-
 export const enableIngameVoting = def('Enable In-Game Voting')
 
 export const reenableSlmUpdates = def('Re-enable SLM Updates')

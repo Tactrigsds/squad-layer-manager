@@ -30,7 +30,6 @@
 	"(broadcast)": "(broadcast)",
 	"(did you mean {suggestion}?)": "(did you mean {suggestion}?)",
 	"(diff: {value})": "(diff: {value})",
-	"(disabled: Cannot end match when server is empty.)": "(disabled: Cannot end match when server is empty.)",
 	"(logarithmic scale)": "(logarithmic scale)",
 	"(no steam id)": "(no steam id)",
 	"(optional)": "(optional)",
