@@ -51,8 +51,7 @@ discarded edits.
 _Pool Configuration_ decides which layers count as playable, which ones raise warnings, and how soon a map, layer
 or faction may be played again.
 
-Reach it from the _Pool Configuration_ page in the settings, or from the gear icon above the layer queue. The gear is
-the usual route:
+Open it from the gear icon above the layer queue, or from the _Pool Configuration_ page in the settings:
 
 ![the gear above the queue, which opens the pool configuration window](../../images/configuring/pool_config_button.png)
 
