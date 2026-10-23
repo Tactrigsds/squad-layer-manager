@@ -111,17 +111,14 @@ Stop everything with `docker compose down`, or only SLM with `docker compose sto
 
 ## 9. Upgrading
 
-1. Read the "For operators" notes of every release since yours in [CHANGELOG.md](../CHANGELOG.md). A "Breaking" note
-   opens with the setups it affects, such as a plugin of your own or a short encryption key, and describes the change
-   those setups need to upgrade. A setup the note does not name needs no change.
-2. Run:
+Read the "For operators" notes of every release since yours in [CHANGELOG.md](../CHANGELOG.md), then run:
 
-   ```sh
-   docker compose pull && docker compose up -d
-   ```
+```sh
+docker compose pull && docker compose up -d
+```
 
-SLM backs up the database, then migrates it. [Upgrading and downgrading](guide/operations/upgrading.md) describes
-release channels, running migrations by hand and upgrading an older install.
+SLM backs up the database, then migrates it. [Upgrading and downgrading](guide/operations/upgrading.md) describes the
+operator notes, release channels, running migrations by hand and upgrading an older install.
 
 ## 10. Downgrading
 
@@ -149,5 +146,5 @@ retention.
 
 SLM is installed. Continue with [Configuring SLM](guide/configuring/overview.md).
 
-To connect BattleMetrics, the Squad Browser or Steam, see [Integrations](guide/configuring/integrations.md).
-BattleMetrics is _highly_ recommended.
+To connect BattleMetrics, the Squad Browser or Steam, see [Integrations](guide/configuring/integrations.md). Without
+BattleMetrics, admins cannot see or set player flags and notes.

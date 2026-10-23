@@ -22,8 +22,16 @@ SLM overrides is not announced, so turning both on warns admins only about chang
 Use the _Generation & Votes_ tab to set whether SLM generates votes when the queue runs out, and when votes start.
 
 With _Generate votes_ on, SLM generates a vote between 3 layers instead of a single layer when the queue runs out.
-Each choice is on a different map. Use _Vote Display Options_ to choose the parts of each layer that players see when
-a generated vote starts.
+
+![the Generation & Votes tab, with generated votes switched on](../../images/configuring/pool_config_generation.png)
+
+Each choice of a generated vote is on a different map. SLM draws the choices under the pool filter, the _Constrain
+generated pool for_ filters and the repeat rules, the same as a single generated layer. When a
+[layer request](../../features/layer_selection.md#layer-requests) is pending, SLM generates the requested layer on its
+own. When the repeat rules leave fewer than 2 maps, SLM generates a single layer.
+
+Use _Vote Display Options_ to choose the parts of each layer that players see when a generated vote starts. The map is
+always shown, because the map is the one part the choices are certain to differ by.
 
 With _Start votes automatically_ on, SLM starts the vote at the front of the queue once the match has run for _Delay
 into the match_, 20 minutes by default. Write the delay as a number and a unit, such as `90s`, `20m` or `1h`. Turn
@@ -125,21 +133,6 @@ A repeat rule checks a layer against every choice of an earlier vote that has no
 those choices could still be played. Once the vote picks a winner, or ends with too few votes, the rule checks only
 the layer the vote settled on. Aborting a vote puts all of its choices back in play.
 
-## Generated votes
-
-When the queue runs out of layers, SLM generates a single layer by default. Switch on _Generate votes_, in the
-_Generation & Votes_ tab of the pool configuration window, to have SLM generate a vote between 3 layers instead.
-
-![the Generation & Votes tab, with generated votes switched on](../../images/configuring/pool_config_generation.png)
-
-Each choice of a generated vote is on a different map. SLM draws the choices under the pool filter, the _Constrain
-generated pool for_ filters and the repeat rules, the same as a single generated layer. When a
-[layer request](../../features/layer_selection.md#layer-requests) is pending, SLM generates the requested layer on its
-own. When the repeat rules leave fewer than 2 maps, SLM generates a single layer.
-
-_Vote Display Options_ sets which parts of each choice players see when a generated vote starts. The map is always
-shown, because the map is the one part the choices are certain to differ by.
-
 ## Undoing edits
 
 Use _Undo_ and _Redo_ in the queue's header, or Ctrl+Z and Ctrl+Y (⌘Z and ⇧⌘Z on a Mac), to step back and forward
@@ -148,7 +141,7 @@ editor before pressing the keys, so the keys reach that editor. Inside a text fi
 the typing instead.
 
 An undo takes back only your own edits. Another admin editing the queue at the same time keeps their edits, unless that
-admin changed the same layer after you did. After a layer is deleted, the queue is cleared or the queue's edits are
+admin changed the same layer after the edit being undone. After a layer is deleted, the queue is cleared or the queue's edits are
 discarded, SLM shows a message with an _Undo_ button. An edit can still be undone after a save. The undo is then a new
 change that needs saving. Once another admin discards the queue's edits, there is nothing left to undo.
 

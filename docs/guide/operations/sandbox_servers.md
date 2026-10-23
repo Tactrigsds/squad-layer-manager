@@ -4,8 +4,7 @@ A sandbox server is a Squad server SLM runs itself. There is no game server behi
 server on the same machine, and connects to it over RCON as it would to a real one.
 
 Use it to learn the queue, try a filter, rehearse a vote or reproduce a bug without affecting real players. SLM
-creates one when a fresh install starts, so it opens to a working dashboard instead of a form asking for RCON
-credentials.
+creates one when a fresh install starts.
 
 ## Using one
 

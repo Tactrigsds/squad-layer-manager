@@ -2,7 +2,8 @@
 
 From the game's chat, admins can start votes, swap, warn, kick and time out players, broadcast to the server, flag
 players, add notes and request layers. Players can use the public commands, such as `/switch` to ask to switch teams,
-`/admin` to call for an admin, and `/requestlayer` to request a layer. Each command runs with the permissions of the player who types it. See
+`/admin` to call for an admin, and `/requestlayer` to request a layer. Each command runs with the permissions of the
+player who types it. See
 [Permissions and access control](permissions.md).
 
 Type `/help` in game to list the commands. Commands are case-insensitive, and player, squad and flag names match on any part
@@ -35,10 +36,7 @@ such as `!switch` beside `/switch`. See [Command prefixes](../guide/configuring/
 ## Typo correction
 
 When a word in a command matches nothing, or matches more than one thing, SLM asks which one was meant instead of
-failing. SLM warns the player with up to 3 of the closest matches. Typing 1 to 3 picks one, and 0 cancels.
+failing. SLM warns the player with the closest matches, and the player types a number to pick one. Typo correction
+covers player names, squads, teams, flags, message shorthands, `/help` sections and the words of a layer request.
 
 ![a mistyped player name in /warn, the numbered choices, and the warn sent after picking one](../images/features/command_typo_prompt.png)
-
-Typo correction covers player names, squads, teams, flags, message shorthands, `/help` sections and the words of a layer
-request. When a command has more than one word to correct, SLM asks about each in turn, or takes one number per
-question at once, such as `1 2`. A choice expires after 45 seconds, or when the player types another command.

@@ -1,7 +1,7 @@
 # Integrations
 
 SLM connects to BattleMetrics, the Squad Browser and Steam, and to Discord through its bot. The first three are
-optional, though BattleMetrics is _highly_ recommended. Each service's API token is stored in SLM's settings, under
+optional. Set up BattleMetrics, because the player flags and notes depend on it. Each service's API token is stored in SLM's settings, under
 _Integrations_ on the settings page, rather than in an environment variable. A saved token is encrypted at rest and
 cannot be read back from the settings page.
 

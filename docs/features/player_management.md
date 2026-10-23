@@ -25,12 +25,6 @@ squad, and their recent chat.
 
 ![a player's details](../images/features/player_details.png)
 
-A history icon beside the username marks a player who has gone by other usernames. Click it to list each username and
-the dates the player used it.
-
-Use the expand button beside the activity filter to give the player's server activity the whole window. Press it again
-to bring back the rest of the player's details.
-
 ## Admin actions
 
 Admins can warn, kick, time out, kill or swap a player from the player's context menu, wherever the player's name or
@@ -42,8 +36,6 @@ expires or is cancelled. `/timeout Kestrel 2h spamming in command chat` times Ke
 
 ![the player actions menu](../images/features/player_actions.png)
 
-On a phone, the same actions open from a menu button at the end of each player's row.
-
 ![the teams panel on a phone](../images/features/phone_teams.png)
 ![a player's actions on a phone](../images/features/phone_player_menu.png)
 
@@ -52,11 +44,9 @@ Roles decide which of these actions each admin may take, and can cap some of the
 
 ### Message shorthands
 
-A message shorthand is a preset message for a common offence, such as teamkilling or wasting assets. Each shorthand
-holds one message per action, so a warn for teamkilling can read "Do not team kill." while a kick for the same
-offence reads "You have been kicked for team killing." The dashboard's action dialogs offer the shorthands in a list,
-beside a custom message. In game, a shorthand's keyword takes the place of the message: `/kick Kestrel tk` kicks
-Kestrel with the _Teamkilling_ shorthand's kick message.
+A message shorthand is a preset message for a common offence, such as teamkilling or wasting assets, with its own
+wording for each action. Admins pick a shorthand in the dashboard's action dialogs, or type its keyword in game:
+`/kick Kestrel tk` kicks Kestrel with the _Teamkilling_ shorthand's kick message.
 
 ![choosing a shorthand in the Kick Players dialog](../images/configuring/kick_dialog.png)
 
@@ -94,10 +84,9 @@ leaves, or reaches their destination on their own, is dropped from the list. In-
 
 ### Counterbalance
 
-Turn on _Counterbalance_ to keep the teams the same size while admins edit the swaps. Whenever an admin queues or removes a swap,
-SLM picks swaps from the other team so that the teams end up as even as possible. A party is always swapped together.
-Counterbalance swaps carry a scale icon and a dashed outline. When players joining, leaving or switching teams unbalance
-the saved swaps, SLM re-picks them after a countdown.
+Turn on _Counterbalance_ to keep the teams the same size while admins edit the swaps. Whenever an admin queues or
+removes a swap, SLM picks swaps from the other team so that the teams end up as even as possible. A party is always
+swapped together.
 
 ![two swaps queued by an admin, and the two counterbalance swaps SLM picked from the other team](../images/features/counterbalance.png)
 
@@ -107,17 +96,9 @@ current match. See [Teamswap counterbalance](../guide/configuring/players.md#tea
 ## Switch requests
 
 Players ask to switch teams themselves with `/switch`, or a [trigger](ingame_commands.md#triggers-and-shortcuts) of
-your own, such as `!switch`. Unlike an admin swap, a switch request waits for room on the other team, and lasts only
-for the current match.
-
-- If the player's team has more players than the other, SLM switches them at once.
-- Otherwise they wait in line, first come first served on each side, and SLM reports each player's place.
-- The first players in the two lines trade places.
-- When a new player joins the team someone is waiting for, SLM moves the new player across and switches the waiting
-  player into their slot.
-
-A player leaves the line with `/cancelswitch`, and the line clears at every map roll. The _Switch requests_ window
-shows both lines, with each player's place and the next pair to trade, and lets admins switch any player in it
+your own, such as `!switch`. Unlike an admin swap, a switch request waits in line for room on the other team, and
+lasts only for the current match. SLM switches a player at once when their team is the larger one, and otherwise
+trades them with a player waiting on the other side. Admins can watch both lines in the _Switch requests_ window, and switch any player in it
 straight away.
 
 ![three players waiting to switch from one team](../images/features/switch_requests.png)

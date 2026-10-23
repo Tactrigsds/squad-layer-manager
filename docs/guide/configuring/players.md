@@ -17,17 +17,17 @@ A rule can match on:
 - a regex on the player's username, which includes any tags they have configured
 - a Discord role, if the player's Steam account is linked to their Discord account
 
-Here is a grouping mode keyed on admin list groups:
+A grouping mode keyed on admin list groups:
 
 ![a grouping mode keyed on admin list groups](../../images/configuring/player_groupings.png)
 
-And here is TacTrig's grouping mode for monitoring balance:
+TacTrig's grouping mode for monitoring balance:
 
 ![TacTrig's Balance grouping mode](../../images/configuring/player_groupings_balance.png)
 
 > [!NOTE]
-> Maintaining Discord to Steam account links is a manual process today. A REST api that lets external tools manage
-> the links is planned.
+> Discord and Steam accounts are linked by hand, from _Linked Steam Accounts_ in the user menu. See
+> [Assigning roles](permissions.md#assigning-roles).
 
 SLM then colour-codes the usernames of grouped players wherever they appear:
 
@@ -64,8 +64,8 @@ To require a note for a particular flag, name it in _Player Flags Requiring Note
 ![Player Flags Requiring a Note, set to Seeder](../../images/configuring/player_flags_requiring_note.png)
 ![a flag that requires a reason, in the Manage Flags dialog](../../images/configuring/player_flags_requiring_note_enforced.png)
 
-A flag set from the BattleMetrics interface can take a while to appear in SLM, which caches BattleMetrics data
-aggressively to stay inside their rate limits. To see a change immediately, purge the cache for that player with the
+A flag set from the BattleMetrics interface can take a while to appear in SLM, which caches BattleMetrics data to stay
+inside BattleMetrics' rate limits. To see a change immediately, purge the cache for that player with the
 _refresh_ button:
 
 ![the refresh button in a player's details window](../../images/configuring/flags_refresh.png)

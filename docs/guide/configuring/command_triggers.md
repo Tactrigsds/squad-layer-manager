@@ -4,11 +4,10 @@ An in-game command runs from one of its _triggers_: the strings listed against i
 _Settings > In-game Commands_. `/timeout` and `/to` are two triggers for the same command, and typing either takes
 the command's arguments exactly as written.
 
-A trigger can also pin some of those arguments. Give it an `args` template and it becomes a shortcut, which is what
-command aliases used to be.
+A trigger can also pin some of those arguments. Give it an `args` template and it becomes a shortcut.
 
-See [In-game commands](admin_actions.md#in-game-commands) for the commands themselves, and for the prefix every
-trigger starts with.
+See [In-game commands](admin_actions.md#in-game-commands) for the commands themselves, and
+[Command prefixes](admin_actions.md#command-prefixes) for the prefix every trigger starts with.
 
 ## Shortcuts
 
@@ -60,7 +59,8 @@ because `/broadcast` takes a single argument. Leave the args off entirely for a 
 
 All triggers across all commands share one namespace, so two commands cannot claim the same trigger. A trigger runs in
 its command's allowed chats, so pinning arguments cannot turn a public trigger into an admin command. A public trigger
-can pass a player's own words into a public command's free-text argument. Write public triggers with that in mind.
+can pass a player's own words into a public command's free-text argument, so any player can put their own text into
+whatever that argument displays.
 
 ## Finding them
 

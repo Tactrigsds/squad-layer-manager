@@ -4,8 +4,7 @@ SLM depends on a pair of artifacts, always of the same version:
 
 - `layers_v<version>.bin.gz`: every possible layer configuration (layer + factions + units), plus the scores
   attributed to each layer.
-- `layer-data_v<version>.json`: the components (maps, factions, units, extra-column definitions) that the table's
-  encoded values refer to.
+- `layer-data_v<version>.json`: the maps, factions, units and extra-column definitions that the layers refer to.
 
 The two are only used as a pair, from the same directory and at the same version. Half a pair is a startup error.
 

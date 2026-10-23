@@ -1,55 +1,54 @@
 # Server agent
 
-The server agent is a small program that runs on the game host, next to your Squad server. It streams the server's
-log lines to SLM and proxies RCON, so SLM does not need direct access to either.
+The server agent is a small program that runs on the game host, beside your Squad server. The agent sends the server's
+log to SLM and relays SLM's RCON commands to the server. Use the server agent whenever SLM runs on a different machine
+from the game host:
 
-Use it when SLM runs somewhere other than the game host. It is the recommended connection mode, because:
-
-- The RCON password stays on the game host. The agent holds it, authenticates to the local RCON port itself, and
-  tunnels the connection to SLM.
-- The RCON port does not have to be reachable from SLM.
+- The RCON password stays on the game host. SLM never receives it.
+- The game host opens no extra port. The agent connects out to SLM.
 - The connection to SLM is encrypted. Raw RCON is not.
 
-The agent tails the server's `SquadGame.log` and sends new lines as they are written. If the connection drops, the
-agent reconnects on its own.
-
-The source is at [server-agent/agent](../../../server-agent/agent). It is a small rust program.
+A host such as PSG that cannot run the agent uses the _sftp_ connection mode instead. The agent reconnects by itself
+when the connection drops.
 
 ## Setting up the server in SLM
 
-Set the server's connection mode to _server agent_. See
-[Connecting the server](../configuring/servers.md#connecting-the-server) for where to find that setting.
+1. Open the server's settings, and set its connection mode to _server agent_. See
+   [Connecting the server](../configuring/servers.md#connecting-the-server).
+2. Press _Generate_ beside the token field, then save. Copy the token with _Copy token_. The token works as a password
+   for the server's agent, so store it with your other secrets. SLM refuses an agent while the server's token is still
+   `dev`.
+3. Note the server's id from the same settings.
 
-Then choose or generate a secret token. The agent sends it to authenticate, so anyone who has it can connect as this
-server's agent. Keep it with your other secrets. SLM refuses an agent while the server still has the default token,
-`dev`.
+The agent needs three values:
 
-The agent needs three things from the server's connection settings:
-
-- the _url_ SLM is served on. This is the app's `ORIGIN`, with the path `/server-agent`. Use `wss://` if SLM is
-  served over https, and `ws://` over plain http.
-- the _server id_, shown with the rest of the server's connection settings.
-- the _token_ from the previous step.
+| Value     | Where it comes from                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------- |
+| URL       | SLM's `ORIGIN` with the path `/server-agent`, starting `wss://` for https or `ws://` for plain http |
+| Server id | The server's settings in SLM                                                                        |
+| Token     | Step 2                                                                                              |
 
 ## Running the agent
 
-There are two ways to run the agent. Both take the same settings, as either a flag or an environment variable.
+Run the agent as a service on the game host, as a standalone binary or with Docker. Both read the same settings, as
+either flags or environment variables. The [options](#options) table lists every setting.
 
 ### Standalone binary
 
-Download the binary for your platform from the
-[releases page](https://github.com/Tactrigsds/squad-layer-manager/releases) (tags named `server-agent-v*`), then run
-it as a service:
+1. Download the binary for your platform from the
+   [releases page](https://github.com/Tactrigsds/squad-layer-manager/releases). Server agent releases are tagged
+   `server-agent-v*`.
+2. Run the binary with your values:
 
 ```sh
-slm-server-agent --url wss://slm.example.com/server-agent --server-id <id> --token <token> --file /path/to/SquadGame.log \
+slm-server-agent --url wss://slm.example.com/server-agent --server-id <id> --token <token> \
+  --file /path/to/SquadGame.log \
   --rcon-host 127.0.0.1 --rcon-port 21114 --rcon-password <rcon-password>
 ```
 
 ### Docker
 
-Run the published image, `ghcr.io/tactrigsds/slm-server-agent:latest`. Configure it with environment variables, and
-mount the server's log directory read-only:
+Run `ghcr.io/tactrigsds/slm-server-agent:latest`, with the server's log directory mounted read-only:
 
 ```sh
 docker run -d --restart unless-stopped \
@@ -62,36 +61,22 @@ docker run -d --restart unless-stopped \
 
 ## Options
 
-| Flag              | Env var             | Required | Default | Description                                                              |
-| ----------------- | ------------------- | -------- | ------- | ------------------------------------------------------------------------ |
-| `--url`           | `SLM_URL`           | yes      |         | SLM websocket url, e.g. `wss://slm.example.com/server-agent`             |
-| `--server-id`     | `SLM_SERVER_ID`     | yes      |         | Server id as configured in SLM                                           |
-| `--token`         | `SLM_TOKEN`         | yes      |         | The server-agent token for that server                                   |
-| `--file`          | `SLM_LOG_PATH`      | yes      |         | Path to `SquadGame.log`                                                  |
-| `--rcon-host`     | `SLM_RCON_HOST`     | yes\*    |         | Local RCON host to proxy (usually `127.0.0.1`)                           |
-| `--rcon-port`     | `SLM_RCON_PORT`     | yes\*    |         | Local RCON port                                                          |
-| `--rcon-password` | `SLM_RCON_PASSWORD` | yes\*    |         | RCON password (stays on the game host, never sent to SLM)                |
-| `--reconnect-ms`  | `SLM_RECONNECT_MS`  | no       | `5000`  | Delay between reconnect attempts, in milliseconds                        |
-| `--poll-ms`       | `SLM_POLL_MS`       | no       | `1000`  | How often to check the log for new data, in milliseconds                 |
-| `--log-file`      | `SLM_AGENT_LOG`     | no       |         | Also append the agent's own logs to this file                            |
-| `--insecure`      | `SLM_INSECURE=1`    | no       | off     | Do not verify the server's TLS certificate (self-signed / IP-only certs) |
+| Flag              | Env var             | Required | Default | Description                                                          |
+| ----------------- | ------------------- | -------- | ------- | -------------------------------------------------------------------- |
+| `--url`           | `SLM_URL`           | yes      |         | SLM's server agent URL, such as `wss://slm.example.com/server-agent` |
+| `--server-id`     | `SLM_SERVER_ID`     | yes      |         | The server's id in SLM                                               |
+| `--token`         | `SLM_TOKEN`         | yes      |         | The server's agent token                                             |
+| `--file`          | `SLM_LOG_PATH`      | yes      |         | Path to `SquadGame.log`                                              |
+| `--rcon-host`     | `SLM_RCON_HOST`     | yes      |         | RCON host, usually `127.0.0.1`                                       |
+| `--rcon-port`     | `SLM_RCON_PORT`     | yes      |         | RCON port                                                            |
+| `--rcon-password` | `SLM_RCON_PASSWORD` | yes      |         | RCON password. The agent never sends it to SLM.                      |
+| `--reconnect-ms`  | `SLM_RECONNECT_MS`  | no       | `5000`  | Delay between reconnect attempts, in milliseconds                    |
+| `--poll-ms`       | `SLM_POLL_MS`       | no       | `1000`  | Interval between checks of the log for new lines, in milliseconds    |
+| `--log-file`      | `SLM_AGENT_LOG`     | no       |         | A file to append the agent's own logs to                             |
+| `--insecure`      | `SLM_INSECURE=1`    | no       | off     | Skip TLS certificate checks, for self-signed or IP-only certificates |
 
-\* See below.
+## Checking the connection
 
-## The RCON proxy
-
-The proxy is required. Supply `--rcon-host`, `--rcon-port` and `--rcon-password` for it. The three options are all or
-nothing. The agent refuses to start if only some of them are supplied.
-
-An agent declares which of the two data sources (the log and RCON) it
-can supply, and SLM rejects an agent that does not supply both. A server in agent mode has no other route to the
-game server. SLM holds no RCON details for it and reads no log file of its own, so an agent that carries only one
-of the two leaves the other permanently dead.
-
-A rejected agent logs the rejection, with what it supplied and what to add. It keeps retrying, so fixing the
-settings on either end brings it up. Nothing streams in the meantime.
-
-## Checking that it works
-
-The [server console](server_console.md) shows the log lines and the RCON traffic as SLM receives them. If the agent
-is connected and the log path is right, new lines appear there as the match runs.
+Open the [server console](server_console.md) from **Server Actions -> Server Console**. Once the agent connects, new log
+lines appear on the _Logs_ tab as the match runs. The _Connection_ tab records each failed attempt and the reason for
+it.
