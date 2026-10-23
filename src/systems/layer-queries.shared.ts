@@ -1022,8 +1022,9 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 
 	const warns: LQY.QueueWarning[] = []
 	const skipWarningsForTags = input.skipWarningsForTags ?? []
+	// a vote warns through its choices, which are the only items given match descriptors
 	for (const { item } of LQY.iterItems(layerItems)) {
-		if (!LQY.isLayerListItem(item)) continue
+		if (item.type !== 'single-list-item') continue
 		if (!present.has(item.layerId)) continue
 		// a layer whose mod is not installed cannot load, whatever else exempts it, so this is checked ahead of every
 		// skip below: seeding and training layers ship with their mod as much as any other layer does

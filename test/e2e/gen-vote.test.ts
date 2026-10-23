@@ -8,6 +8,7 @@ import * as SETTINGS from '@/models/settings.models'
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, queue, selectableFilter } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
+import { savedQueue } from '../harness/inspect'
 import { gotoReady } from '../harness/ready'
 import { rearrange } from '../harness/rearrange'
 import { expect, test } from './fixtures'
@@ -68,6 +69,7 @@ async function arrangeAndOpen(
 		layerGeneration: SETTINGS.GlobalSettings['layerGeneration']
 		repeatRules: RRS.RepeatRuleConfig[]
 		selectable: string
+		poolFilter?: string
 	},
 ) {
 	await rearrange(app, {
@@ -76,7 +78,10 @@ async function arrangeAndOpen(
 		globalSettings: (settings) => {
 			settings.layerGeneration = opts.layerGeneration
 		},
-		pool: (pool) => selectableFilter(pool, opts.selectable),
+		pool: (pool) => {
+			selectableFilter(pool, opts.selectable)
+			if (opts.poolFilter) pool.poolFilter = { filterId: opts.poolFilter, mode: 'include' }
+		},
 	})
 	await gotoReady(page, app.loginUrl())
 	await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible()
@@ -84,6 +89,32 @@ async function arrangeAndOpen(
 	await page.getByRole('button', { name: 'Gen Vote' }).click()
 	return page.getByRole('dialog', { name: 'Generate Vote' })
 }
+
+test.describe('placement and pool warnings', () => {
+	// the pool filter warns on a miss, so a spurious miss on the vote turns Save into Save Anyway and blocks it
+	test('adds the vote where placed, and saves it without a pool warning', async ({ page }) => {
+		const dialog = await arrangeAndOpen(page, {
+			layerQueue: queue(LAYERS.harjuRaas),
+			layerGeneration: DEFAULT_LAYER_GENERATION,
+			repeatRules: [],
+			selectable: 'vanilla',
+			poolFilter: 'vanilla',
+		})
+		const addToStart = dialog.getByRole('button', { name: 'Add to start' })
+		await expect(addToStart).toHaveAttribute('aria-pressed', 'true')
+		await addToStart.click()
+		await expect(addToStart).toHaveAttribute('aria-pressed', 'true')
+
+		await dialog.getByRole('button', { name: 'Generate', exact: true }).click()
+		await expect(dialog.getByRole('listitem')).toHaveCount(3)
+		await dialog.getByRole('button', { name: 'Submit' }).click()
+		await expect(dialog).toBeHidden()
+
+		await page.getByRole('button', { name: 'Save', exact: true }).click()
+		const saved = await app.waitFor(() => (savedQueue(app).length === 2 ? savedQueue(app) : null), { label: 'the vote saved' })
+		expect(saved.map((item) => item.type)).toEqual(['vote-list-item', 'single-list-item'])
+	})
+})
 
 test.describe('generation weights', () => {
 	// Gamemode is safe to assert on because only Map has to be unique across choices
