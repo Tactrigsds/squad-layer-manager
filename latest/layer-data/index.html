@@ -3,8 +3,7 @@
 <ul>
 <li><code>layers_v&lt;version&gt;.bin.gz</code>: every possible layer configuration (layer + factions + units), plus the scores
 attributed to each layer.</li>
-<li><code>layer-data_v&lt;version&gt;.json</code>: the components (maps, factions, units, extra-column definitions) that the table&#x27;s
-encoded values refer to.</li>
+<li><code>layer-data_v&lt;version&gt;.json</code>: the maps, factions, units and extra-column definitions that the layers refer to.</li>
 </ul>
 <p>The two are only used as a pair, from the same directory and at the same version. Half a pair is a startup error.</p>
 <p>Both ship inside the docker image, so the app boots with nothing to download.</p>
