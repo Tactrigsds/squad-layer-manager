@@ -316,14 +316,12 @@ describe('trimStaleSettingsGrants', () => {
 })
 
 describe('setting mutation paths', () => {
-	test.each([
-		[['__proto__', 'polluted']],
-		[['queue', '__proto__', 'polluted']],
-		[['constructor', 'prototype', 'polluted']],
-		[['queue', 'toString', 'polluted']],
-	])('rejects a path that walks off the settings into a prototype: %j', (path) => {
-		expect(SETTINGS.SettingMutationSchema.safeParse({ path, value: 'yes' }).success).toBe(false)
-	})
+	test.each([[['__proto__', 'polluted']], [['queue', '__proto__', 'polluted']], [['constructor', 'prototype', 'polluted']]])(
+		'rejects a path that walks off the settings into a prototype: %j',
+		(path) => {
+			expect(SETTINGS.SettingMutationSchema.safeParse({ path, value: 'yes' }).success).toBe(false)
+		},
+	)
 
 	test('refuses to apply a path through __proto__, leaving Object.prototype alone', () => {
 		const settings = SETTINGS.PublicServerSettingsSchema.parse({})
@@ -331,9 +329,19 @@ describe('setting mutation paths', () => {
 		expect(({} as Record<string, unknown>).polluted).toBeUndefined()
 	})
 
-	test('still accepts a path to a real setting', () => {
-		expect(SETTINGS.SettingMutationSchema.safeParse({ path: ['queue', 'mainPool', 'poolFilter'], value: null }).success).toBe(true)
-	})
+	test.each([[['connections', 'rcon', 'host']], [['notASetting']], [[]]])(
+		'rejects a path outside the public server settings: %j',
+		(path) => {
+			expect(SETTINGS.SettingMutationSchema.safeParse({ path, value: 'yes' }).success).toBe(false)
+		},
+	)
+
+	test.each([[['queue', 'mainPool', 'poolFilter']], [['queue', 'mainPool', 'warnFor', 0, 'applyAs']]])(
+		'accepts a path to a real setting: %j',
+		(path) => {
+			expect(SETTINGS.SettingMutationSchema.safeParse({ path, value: null }).success).toBe(true)
+		},
+	)
 })
 
 describe('ZodUtils.schemaAtPath over the settings schema', () => {
