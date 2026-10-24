@@ -1613,10 +1613,6 @@ export const SECONDARY_LIST_KEYS = [
 ] as const
 export type SecondaryListKey = (typeof SECONDARY_LIST_KEYS)[number]
 
-const EXAMPLE_PUBLIC_SETTINGS = PublicServerSettingsSchema.parse({})
-EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.poolFilter = { filterId: 'test-filter', mode: 'include' }
-EXAMPLE_PUBLIC_SETTINGS.queue.mainPool.defaultSelectable.push({ filterId: 'test-filter', applyAs: 'regular' })
-
 export const ServerSettingsSchema = PublicServerSettingsSchema.extend({
 	connections: ServerConnectionSchema.meta(
 		SDoc.of({
@@ -1775,17 +1771,11 @@ export function getSettingsChanged(original: ServerSettings, modified: ServerSet
 	return result
 }
 
-export const SettingsPathSchema = z.array(z.union([z.string(), z.number()])).refine(
-	(path) => {
-		// does not check the last key because it could be undefined
-		const valid = checkPublicSettingsPath(path)
-		if (!valid) console.warn("settings path doesn't resolve", path)
-		return valid
-	},
-	{
-		error: 'Path must resolve to a valid setting',
-	},
-)
+// Only the path's shape is checked here. Whether the value it writes is valid is decided by parsing the whole document
+// once the mutations are applied, the same check a full settings save gets.
+export const SettingsPathSchema = z
+	.array(z.union([z.string(), z.number()]))
+	.refine((path) => checkPublicSettingsPath(path), { error: 'Path must be within the public server settings' })
 
 export type SettingsPath = (string | number)[]
 
@@ -1804,17 +1794,9 @@ export type SettingMutation = z.infer<typeof SettingMutationSchema>
 const PROTOTYPE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
 export function checkPublicSettingsPath(path: SettingsPath) {
+	if (path.length === 0) return false
 	if (path.some((key) => typeof key === 'string' && PROTOTYPE_KEYS.has(key))) return false
-	const defaultSettings = EXAMPLE_PUBLIC_SETTINGS
-	let current = defaultSettings as any
-	// we can't validate the last key because it could be undefined
-	for (let key of path.slice(0, -1)) {
-		if (typeof key === 'number') key = 0
-		if (!Object.hasOwn(current, key)) return false
-		current = (current as any)[key]
-		if (!current) return false
-	}
-	return true
+	return typeof path[0] === 'string' && Object.hasOwn(PublicServerSettingsSchema.shape, path[0])
 }
 
 export function derefSettingsValue(settings: PublicServerSettings, path: SettingsPath) {

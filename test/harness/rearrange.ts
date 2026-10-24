@@ -7,7 +7,7 @@ import * as SETTINGS from '@/models/settings.models'
 import * as SLL from '@/models/shared-layer-list.models'
 
 import { type AppFixture, TEST_REPEAT_RULESET_ID } from './app-fixture'
-import { savedBackburner, savedGlobalSettings, savedQueue } from './inspect'
+import { savedBackburner, savedGlobalSettings, savedQueue, savedServerSettings } from './inspect'
 import { createOrpcClient, firstYield, type TestOrpcClient } from './orpc-client'
 
 // Re-arranges a running app the way createAppFixture arranges one before boot, so tests whose only difference is
@@ -79,16 +79,6 @@ async function updateGlobalSettings(app: AppFixture, client: TestOrpcClient, mut
 	if (changed.length === 0) return
 	const res = await client.settings.global.updateSettings(Object.fromEntries(changed))
 	if (res.code !== 'ok') throw new Error(`global settings update refused: ${JSON.stringify(res)}`)
-}
-
-function savedServerSettings(app: AppFixture): unknown {
-	const db = app.readDb()
-	try {
-		const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(app.serverId) as { settings: string }
-		return superjson.parse(row.settings)
-	} finally {
-		db.close()
-	}
 }
 
 async function updateServerSettings(app: AppFixture, client: TestOrpcClient, mutate: (settings: SETTINGS.ServerSettings) => void) {

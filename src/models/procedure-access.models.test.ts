@@ -47,7 +47,7 @@ const SAMPLES: { [P in TakesInput]: SampleInput<P> } = {
 	'vote.cancelVoteAutostart': S,
 	'vote.watchUpdates': S,
 	'settings.server.watchSettings': S,
-	'settings.server.updateSettings': { ...S, ops: [{ path: ['queue', 'mainPool'] }, { path: ['connections', 'rcon', 'host'] }] },
+	'settings.server.updateSettings': S,
 	'settings.admin.createServer': { id: 's2' },
 	'settings.admin.getRawSettings': S,
 	'settings.admin.updateRawSettings': S,
