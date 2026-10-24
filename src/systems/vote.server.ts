@@ -159,14 +159,17 @@ export const syncVoteStateWithQueueState = Instr.spanOp(
 			nextUpItem &&
 			LL.isVoteItem(nextUpItem) &&
 			!nextUpItem.endingVoteState &&
-			nextUpItem &&
 			ctx.vote.state?.itemId !== nextUpItem.itemId &&
-			currentMatch?.status !== 'post-game' &&
-			(!currentMatch?.startTime || currentMatch.startTime.getTime() + ctx.serverSettings.settings.vote.autoStartVoteCutoff < Date.now())
+			currentMatch?.status !== 'post-game'
 		) {
+			const { autoStartVoteDelay, autoStartVoteCutoff } = ctx.serverSettings.settings.vote
 			let autostartTime: Date | undefined
-			if (currentMatch?.startTime && ctx.serverSettings.settings.vote.autoStartVoteDelay) {
-				const startTime = dateFns.addMilliseconds(currentMatch.startTime, ctx.serverSettings.settings.vote.autoStartVoteDelay)
+			if (
+				currentMatch?.startTime &&
+				autoStartVoteDelay &&
+				dateFns.isFuture(dateFns.addMilliseconds(currentMatch.startTime, autoStartVoteCutoff))
+			) {
+				const startTime = dateFns.addMilliseconds(currentMatch.startTime, autoStartVoteDelay)
 				if (dateFns.isFuture(startTime)) autostartTime = startTime
 				else autostartTime = dateFns.addMinutes(new Date(), 5)
 			}

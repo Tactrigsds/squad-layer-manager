@@ -7,6 +7,7 @@ import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fi
 import { cmd, LAYERS, queue, voteQueueItem } from '../harness/arrange'
 import { appEventTypes, latestMatch, latestTickets, savedBmToken, savedQueue, warnsTo } from '../harness/inspect'
 import { createOrpcClient, type TestOrpcClient } from '../harness/orpc-client'
+import { rearrange } from '../harness/rearrange'
 
 // In-game admin commands: the emulator sends chat as a player, the app parses it, authorizes the
 // sender, and acts back over RCON. This is the path the fixture's arrangement API exists for
@@ -127,6 +128,38 @@ describe('in-game admin commands', () => {
 			(c) => c.body.startsWith('AdminWarn') && c.body.includes(bystander.eos) && /queue/i.test(c.body),
 		)
 		expect(warnsToBystander).toHaveLength(0)
+	})
+
+	// the delay only has to outlast the roll reaching the queue: a start time already past falls back to five minutes
+	it('starts the next vote by itself once the new match reaches the autostart delay', async () => {
+		await rearrange(app, {
+			serverSettings: (s) => {
+				s.vote.autoStartVoteDelay = 3_000
+			},
+			layerQueue: [...queue(LAYERS.skorpoRaas), voteQueueItem([LAYERS.narvaRaas, LAYERS.sumariRaas])],
+		})
+		await app.waitFor(() => app.emu.world.nextLayer?.layer === 'Skorpo_RAAS_v1' || undefined, {
+			label: 'the queue head set as next',
+		})
+		const oldMatchId = latestMatch(app).id
+
+		app.emu.world.endMatch()
+		app.emu.world.startNewGame()
+
+		const newMatchId = await app.waitFor(() => (latestMatch(app).id !== oldMatchId ? latestMatch(app).id : undefined), {
+			label: 'the new match',
+		})
+		await app.waitFor(() => appEventTypes(app, newMatchId).includes('VOTE_STARTED') || undefined, {
+			label: 'the vote autostarted',
+		})
+
+		// removing the vote ends it, so its reminders do not reach the broadcasts later tests read
+		await rearrange(app, {
+			serverSettings: (s) => {
+				s.vote.autoStartVoteDelay = null
+			},
+			layerQueue: queue(LAYERS.sumariSeed),
+		})
 	})
 })
 
