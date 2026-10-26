@@ -3,8 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makePlayer } from '@/emulator'
 import * as L from '@/models/layer.models'
 
-import { cmd } from '../harness/arrange'
+import { cmd, LAYERS, queue } from '../harness/arrange'
 import { savedQueue } from '../harness/inspect'
+import { rearrange } from '../harness/rearrange'
 import { createRollingFixture, ROLL_ADMIN_STEAM_ID, type RollingFixture } from '../harness/rolling'
 
 // Which match an event across the roll belongs to, and whether it is read as something a player did or as
@@ -144,6 +145,56 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 			timeoutMs: 30_000,
 		})
 		expect(disabledReason(app)).toBeNull()
+	})
+
+	it('a roll onto a layer other than the head leaves the head queued and writes it back as next', async () => {
+		const oldMatch = app.latestMatch()
+		const head = savedQueue(app)[0]
+		const headLayerId = L.readStoredLayerId(head!.layerId!)
+		expect(L.areLayersCompatible(headLayerId, LAYERS.narvaRaas)).toBe(false)
+
+		// the roll clears the server's next layer, as a real server replacing it from its own rotation would
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.handleCommand(L.getLayerCommand(LAYERS.narvaRaas, 'change-layer'))
+		const newMatch = await app.waitForNewMatch(oldMatch.id)
+		expect(L.layerMatchesIngameLayerClassname(L.readStoredLayerId(newMatch.layerId), 'Narva_RAAS_v1')).toBe(true)
+
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === L.getLayerCommand(headLayerId, 'set-next')) || undefined, {
+			label: 'the unplayed head written back as the next layer',
+			timeoutMs: 30_000,
+		})
+		await app.waitForNextLayerSync()
+		expect(savedQueue(app)[0]?.itemId).toBe(head!.itemId)
+	})
+
+	it('overrides a next layer set outside SLM straight after a status poll', async () => {
+		// a set-next logged before the last roll has settled is dropped (#620), so the override would never see it
+		await app.waitForRosterSync()
+		await rearrange(app, {
+			serverSettings: (settings) => {
+				settings.overrideAdminSetNextLayer = true
+			},
+			layerQueue: queue(LAYERS.skorpoRaas, LAYERS.sumariSeed),
+		})
+		await app.waitForNextLayerSync()
+		const head = savedQueue(app)[0]
+		const headLayerId = L.readStoredLayerId(head!.layerId!)
+
+		// SLM polls the server's layers every few seconds, so its last answer, still naming the head, is fresh
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.handleCommand(L.getLayerCommand(LAYERS.narvaRaas, 'set-next'))
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === L.getLayerCommand(headLayerId, 'set-next')) || undefined, {
+			label: 'the head set back over the outside set-next',
+			timeoutMs: 30_000,
+		})
+		expect(app.emu.world.nextLayer?.layer).toBe(L.toLayer(headLayerId).Layer)
+		expect(savedQueue(app)[0]?.itemId).toBe(head!.itemId)
+
+		await rearrange(app, {
+			serverSettings: (settings) => {
+				settings.overrideAdminSetNextLayer = false
+			},
+		})
 	})
 
 	it('reads the server losing its next layer as voting having been enabled, and marks that reason a guess', async () => {

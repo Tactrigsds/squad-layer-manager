@@ -831,7 +831,7 @@ const recordRoll = Instr.spanOp(
 	async (ctx: C.ManagedServer & C.Db & CS.AbortSignal, newLayerId: L.LayerId, time: number) => {
 		ctx.layerQueue.deferredServerSyncs = []
 		try {
-			const { match } = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+			const { match, resyncHead } = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 				const nextLqItem = LayerQueue.getSavedQueue(ctx)[0]
 
 				// A vote was running, so it picked this layer and the queue did not: SLM stood down when the vote
@@ -859,12 +859,24 @@ const recordRoll = Instr.spanOp(
 					await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
 				}
 				LayerQueue.schedulePostRollTasks(ctx, match.layerId)
-				return { match }
+				return { match, resyncHead: !currentMatchLqItem && !pickedByIngameVote }
 			})
 			// after the transaction, not inside it: emptying the queue defers generation to the transaction's
 			// unlockTasks, which runTransaction awaits before resolving. Read any earlier and the queue is still empty.
-			const nextLayerId = LL.getNextLayerId(LayerQueue.getSavedQueue(ctx))
-			return { match, nextLayerId, serverSyncs: ctx.layerQueue.deferredServerSyncs }
+			const queue = LayerQueue.getSavedQueue(ctx)
+			const nextLayerId = LL.getNextLayerId(queue)
+			const serverSyncs = ctx.layerQueue.deferredServerSyncs
+			// A layer other than the head started, so the queue did not change and nothing above wrote the head to the
+			// server. The roll replaced the server's next layer with one from its own rotation, so write the head back.
+			const headItemId = queue[0]?.itemId
+			if (resyncHead && nextLayerId && headItemId) {
+				const deferredCtx = { ...ctx, tx: undefined }
+				serverSyncs.push(async () => {
+					const serverState = await SquadServer.getServerState(deferredCtx)
+					await LayerQueue.syncNextLayerToServer(deferredCtx, serverState.settings, nextLayerId, headItemId)
+				})
+			}
+			return { match, nextLayerId, serverSyncs }
 		} finally {
 			ctx.layerQueue.deferredServerSyncs = null
 		}

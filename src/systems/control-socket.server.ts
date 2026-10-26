@@ -143,6 +143,10 @@ async function handle(req: Request): Promise<Response> {
 				code: 'ok',
 				lastLogEventTime: ctx.server.eventState.lastKnownLogEventTime,
 				rconConnected: ctx.rcon.connected,
+				syncState: ctx.server.eventState.syncState.type,
+				rolling: ctx.server.serverRolling$.value !== null,
+				nextLayerSyncState: ctx.layerQueue.nextLayerSyncState$.value.code,
+				updatesDisabled: ctx.serverSettings.settings.updatesToSquadServerDisabled ?? null,
 			}
 		}
 		default:

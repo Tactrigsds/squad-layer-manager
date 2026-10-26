@@ -43,6 +43,11 @@ describe('a map roll that happened while the app was down', () => {
 			label: 'the played head consumed rather than queued again',
 			timeoutMs: 45_000,
 		})
+		// the rcon faults below must not land while the new head is still being written
+		await app.waitFor(() => app.emu.world.nextLayer?.layer === 'Sumari_Seed_v1', {
+			label: 'the new head set as next on the server',
+			timeoutMs: 30_000,
+		})
 	})
 })
 

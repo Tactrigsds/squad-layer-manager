@@ -885,6 +885,9 @@ export const syncNextLayerToServer = Instr.spanOp(
 			syncState$.next({ code: 'disabled' })
 			return
 		}
+		// an override reacts to a set-next the cached status can predate, which would read as already synced. Only the
+		// override pays for the fresh read: an extra round trip on every sync delays the roster poll across a roll.
+		if (mapSetCause?.reason === 'override') ctx.squadRcon.layersStatus.invalidate(ctx)
 		const currentStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
 		if (currentStatusRes.code !== 'ok') {
 			syncState$.next({ code: 'err:rcon' })
