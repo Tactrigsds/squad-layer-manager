@@ -2364,5 +2364,35 @@ describe('PendingEvents', () => {
 			expect((await collectMapSet(state))?.source).toEqual({ type: 'rcon' })
 			expect(state.attributions).toHaveLength(0)
 		})
+
+		// #620: a next layer set while the roster is still being resolved was dropped, so it was never overridden or queued
+		describe('before the roster is synced', () => {
+			const newGameEvent = {
+				type: 'NEW_GAME' as const,
+				time: 1500,
+				chainID: 0,
+				raw: '',
+				mapClassname: 'Gorodok',
+				layerClassname: LAYER_A_CLASSNAME,
+				id: 1,
+			}
+			const cases: [string, PendingEvents.State['syncState'], boolean][] = [
+				['once a roll has resolved the new match', { type: 'rolling', newGameEvent }, true],
+				['while a reconnect waits for its first poll', { type: 'syncing', isNewMatch: false, boundaryTime: 1500 }, true],
+				['not while the transition map loads', { type: 'rolling' }, false],
+				['not while rcon is down', { type: 'desynced' }, false],
+			]
+			for (const [label, syncState, emitted] of cases) {
+				it(`is emitted ${label}`, async () => {
+					const state = syncedState()
+					state.syncState = syncState
+					state.currTeams = null
+					mapSetLog(state, 'Narva_RAAS_v1', 'CAF+CombinedArms RGF+CombinedArms')
+
+					expect(!!(await collectMapSet(state))).toBe(emitted)
+					expect(state.nextLayerId !== null && L.areLayersCompatible(state.nextLayerId, LAYER_B)).toBe(emitted)
+				})
+			}
+		})
 	})
 })

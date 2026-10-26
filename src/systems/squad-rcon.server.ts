@@ -563,9 +563,9 @@ export const setNextLayer = Instr.spanOp(
 		const landed = !!newStatus.data.nextLayer && L.areLayersCompatible(layer, newStatus.data.nextLayer)
 		if (!landed && execRes.code !== 'ok') return execRes
 
-		// this shouldn't happen. if it does we need to handle it more gracefully
+		// the server accepted the command and reports no next layer, so the read-back confirms nothing
 		if (!newStatus.data.nextLayer) {
-			throw new Error(`Failed to set next layer. Expected ${L.getLayerCommand(layer, 'none')}, received undefined`)
+			return { code: 'err:rcon' as const, msg: `Set ${L.getLayerCommand(layer, 'none')} as next, but the server reports no next layer` }
 		}
 
 		if (!landed) {

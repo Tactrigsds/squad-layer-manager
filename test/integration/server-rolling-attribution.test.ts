@@ -168,8 +168,6 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 	})
 
 	it('overrides a next layer set outside SLM straight after a status poll', async () => {
-		// a set-next logged before the last roll has settled is dropped (#620), so the override would never see it
-		await app.waitForRosterSync()
 		await rearrange(app, {
 			serverSettings: (settings) => {
 				settings.overrideAdminSetNextLayer = true
@@ -187,8 +185,32 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 			label: 'the head set back over the outside set-next',
 			timeoutMs: 30_000,
 		})
-		expect(app.emu.world.nextLayer?.layer).toBe(L.toLayer(headLayerId).Layer)
+		expect(L.layerMatchesIngameLayerClassname(headLayerId, app.emu.world.nextLayer!.layer)).toBe(true)
 		expect(savedQueue(app)[0]?.itemId).toBe(head!.itemId)
+	})
+
+	it('overrides a next layer set outside SLM while the roll that started the match is still settling', async () => {
+		await app.waitForNextLayerSync()
+		const oldMatch = app.latestMatch()
+
+		app.emu.rcon.commandLog.length = 0
+		app.roll()
+		await app.waitForNewMatch(oldMatch.id)
+		const headLayerId = L.readStoredLayerId(savedQueue(app)[0]!.layerId!)
+		const headSetNext = L.getLayerCommand(headLayerId, 'set-next')
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === headSetNext) || undefined, {
+			label: 'the new head written as next after the roll',
+			timeoutMs: 30_000,
+		})
+		// before the roster poll that ends the roll
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.handleCommand(L.getLayerCommand(LAYERS.narvaRaas, 'set-next'))
+
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === headSetNext) || undefined, {
+			label: 'the head set back over the outside set-next',
+			timeoutMs: 30_000,
+		})
+		expect(L.layerMatchesIngameLayerClassname(headLayerId, app.emu.world.nextLayer!.layer)).toBe(true)
 
 		await rearrange(app, {
 			serverSettings: (settings) => {

@@ -864,7 +864,8 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 					() => {
 						const head = savedQueueHead()
 						if (!head) return true
-						return emu.world.nextLayer?.layer === L.getLayerCommand(head, 'none').split(' ')[0] || null
+						const serverNext = emu.world.nextLayer?.layer
+						return (!!serverNext && L.layerMatchesIngameLayerClassname(head, serverNext)) || null
 					},
 					{ label: "the server's next layer to catch up with the queue head", timeoutMs: syncOpts?.timeoutMs ?? 20_000 },
 				)
@@ -874,6 +875,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				throw new Error(
 					`server next layer: ${emu.world.nextLayer?.layer ?? 'none'}, queue head: ${head ? L.getLayerCommand(head, 'none') : 'none'}, ` +
 						`ingest status: ${JSON.stringify(status)}\n${(err as Error).message}`,
+					{ cause: err },
 				)
 			}
 		},
