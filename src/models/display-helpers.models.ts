@@ -55,6 +55,11 @@ export function fromDisplayPropStatuses(statuses: LayerDisplayPropsStatuses): La
 	return displayProps
 }
 
+// a Training layer's name repeats its factions, so it is cut down to the map when the factions are shown beside it
+export function displayLayerString(layer: Pick<L.KnownLayer, 'Layer' | 'Map' | 'Gamemode'>, showsFactions: boolean) {
+	return showsFactions && layer.Gamemode === 'Training' ? layer.Map : layer.Layer
+}
+
 export function toFullLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?: LayerDisplayProp[]) {
 	// If no display props specified, show everything
 	if (!displayProps || displayProps.length === 0) {
@@ -62,7 +67,7 @@ export function toFullLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?:
 		const subfaction2 = layer.Unit_2 ? ` ${layer.Unit_2}` : ''
 		const youMarker1 = you === 1 ? ' (you)' : ''
 		const youMarker2 = you === 2 ? ' (you)' : ''
-		return `${layer.Layer} - ${layer.Faction_1}${subfaction1}${youMarker1} vs ${layer.Faction_2}${subfaction2}${youMarker2}`
+		return `${displayLayerString(layer, true)} - ${layer.Faction_1}${subfaction1}${youMarker1} vs ${layer.Faction_2}${subfaction2}${youMarker2}`
 	}
 
 	const showLayer = displayProps.includes('layer') || displayProps.includes('map') || displayProps.includes('gamemode')
@@ -72,7 +77,7 @@ export function toFullLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?:
 	const parts: string[] = []
 
 	if (showLayer) {
-		parts.push(layer.Layer)
+		parts.push(displayLayerString(layer, showFactions))
 	}
 
 	let teamsDisplay = ''
@@ -116,7 +121,7 @@ export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?
 	if (!displayProps || displayProps.length === 0) {
 		const subfaction1 = toShortUnit(layer.Unit_1)
 		const subFaction2 = toShortUnit(layer.Unit_2)
-		let txt = layer.Layer
+		let txt = displayLayerString(layer, true)
 		txt += ` - ${layer.Faction_1}${subfaction1 ? ` ${subfaction1}` : ''}${you === 1 ? ' (you)' : ''}`.trimEnd()
 		txt += ' vs '
 		txt += `${layer.Faction_2}${subFaction2 ? ` ${subFaction2}` : ''}${you === 2 ? ' (you)' : ''}`.trim()
@@ -133,7 +138,7 @@ export function toShortLayerName(layer: L.KnownLayer, you?: 1 | 2, displayProps?
 
 	if (showLayer) {
 		// 'layer' shows the full layer string (map + gamemode + version)
-		parts.push(layer.Layer)
+		parts.push(displayLayerString(layer, showFactions))
 	} else {
 		// Show individual components as requested
 		const layerComponents: string[] = []
