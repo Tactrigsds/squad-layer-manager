@@ -859,14 +859,23 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 			)
 		},
 		waitForNextLayerSync: async (syncOpts) => {
-			await waitFor(
-				() => {
-					const head = savedQueueHead()
-					if (!head) return true
-					return emu.world.nextLayer?.layer === L.getLayerCommand(head, 'none').split(' ')[0] || null
-				},
-				{ label: "the server's next layer to catch up with the queue head", timeoutMs: syncOpts?.timeoutMs ?? 20_000 },
-			)
+			try {
+				await waitFor(
+					() => {
+						const head = savedQueueHead()
+						if (!head) return true
+						return emu.world.nextLayer?.layer === L.getLayerCommand(head, 'none').split(' ')[0] || null
+					},
+					{ label: "the server's next layer to catch up with the queue head", timeoutMs: syncOpts?.timeoutMs ?? 20_000 },
+				)
+			} catch (err) {
+				const head = savedQueueHead()
+				const status = await fixture.control('ingest-status', { serverId }).catch(() => null)
+				throw new Error(
+					`server next layer: ${emu.world.nextLayer?.layer ?? 'none'}, queue head: ${head ? L.getLayerCommand(head, 'none') : 'none'}, ` +
+						`ingest status: ${JSON.stringify(status)}\n${(err as Error).message}`,
+				)
+			}
 		},
 		control: (command: string, args?: Record<string, unknown>) =>
 			new Promise<Record<string, unknown>>((resolve, reject) => {

@@ -89,12 +89,18 @@ describe('layer backburner via chat', () => {
 		expect(requestedMaps(savedBackburner(app)[0])).toEqual(['Fallujah'])
 		// chat requests carry the pool's layer request filters
 		expect(BB.parseTemplateParts(savedBackburner(app)[0].filter).filterIds).toEqual(['gen-pool'])
-		expect(warnsTo(app, admin).join('\n')).toContain('Layer request queued: Fallujah')
+		// the reply goes out after the request is saved
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('Layer request queued: Fallujah')) || null, {
+			label: 'the queued reply',
+			timeoutMs: 20_000,
+		})
 
 		app.emu.rcon.commandLog.length = 0
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqs'))
-		await app.waitFor(() => warnsTo(app, admin).length > 0 || null, { label: 'the request listing', timeoutMs: 20_000 })
-		expect(warnsTo(app, admin).join('\n')).toContain('1. Fallujah, Generation Pool (yours)')
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('1. Fallujah, Generation Pool (yours)')) || null, {
+			label: 'the request listing',
+			timeoutMs: 20_000,
+		})
 
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('unreqlayer'))
 		await app.waitFor(() => savedBackburner(app).length === 0 || null, { label: 'the request being removed', timeoutMs: 20_000 })
@@ -129,7 +135,10 @@ describe('layer backburner via chat', () => {
 			label: 'the oldest request being evicted',
 			timeoutMs: 20_000,
 		})
-		expect(warnsTo(app, requester).join('\n')).toContain('dropped')
+		await app.waitFor(() => warnsTo(app, requester).some((w) => w.includes('dropped')) || null, {
+			label: 'the eviction reply',
+			timeoutMs: 20_000,
+		})
 
 		// leave a clean slate for the generation test
 		app.emu.world.chat(requester, 'ChatAll', cmd('unreqlayer'))

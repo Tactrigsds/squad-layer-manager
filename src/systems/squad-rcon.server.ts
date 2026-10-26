@@ -553,17 +553,22 @@ export const setNextLayer = Instr.spanOp(
 	async (ctx: SR.Ctx & CS.AbortSignal, layer: L.LayerId | L.UnvalidatedLayer) => {
 		const cmd = L.getLayerCommand(layer, 'set-next')
 		log.info(`Setting next layer: %s, `, cmd)
-		await ctx.rcon.execute(cmd, { level: 'info', signal: ctx.signal })
+		const execRes = await ctx.rcon.execute(cmd, { level: 'info', signal: ctx.signal })
 		ctx.squadRcon.layersStatus.invalidate(ctx)
 		const newStatus = await ctx.squadRcon.layersStatus.get(ctx)
 		if (newStatus.code !== 'ok') return newStatus
+
+		// a dropped connection can lose the command, which leaves the server on whatever it had before. That is not a
+		// refusal, and when a roll has just cleared the next layer there is nothing to read back at all.
+		const landed = !!newStatus.data.nextLayer && L.areLayersCompatible(layer, newStatus.data.nextLayer)
+		if (!landed && execRes.code !== 'ok') return execRes
 
 		// this shouldn't happen. if it does we need to handle it more gracefully
 		if (!newStatus.data.nextLayer) {
 			throw new Error(`Failed to set next layer. Expected ${L.getLayerCommand(layer, 'none')}, received undefined`)
 		}
 
-		if (newStatus.data.nextLayer && !L.areLayersCompatible(layer, newStatus.data.nextLayer)) {
+		if (!landed) {
 			return {
 				code: 'err:unable-to-set-next-layer' as const,
 				unexpectedLayerId: newStatus.data.nextLayer.id,
