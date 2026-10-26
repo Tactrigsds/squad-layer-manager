@@ -7,6 +7,12 @@
 <p>In <em>Gen Vote</em>, clicking the placement option that is already selected keeps it selected. Clicking it used to select the other option.</p>
 </li>
 <li>
+<p><strong>Fixed:</strong> SLM no longer misses a next layer set in the seconds after a match starts.</p>
+<p>An admin could set a next layer while the new match was loading, or while SLM was reconnecting to the server. SLM then neither added that layer to the queue nor overrode it. SLM now handles that change like any other.</p>
+<p>When the connection to the server dropped as SLM was setting the next layer, the server kept its old next layer. SLM now sets the first item in the queue once the connection is back.</p>
+<p>The match history showed <code>(???)</code> as the length of a match that lasted under a minute. It now shows <code>1m</code>.</p>
+</li>
+<li>
 <p><strong>Fixed:</strong> The next layer no longer drifts off the queue after an admin changes it from outside SLM.</p>
 <p>With <em>Override the next layer when it is set outside SLM</em> on, SLM sometimes let an outside change stand. After a match that was not the first item in the queue, SLM also left the server&#x27;s own rotation to pick the following layer. SLM now sets the first item in the queue as the next layer in both cases.</p>
 </li>
