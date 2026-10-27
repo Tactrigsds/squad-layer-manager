@@ -48,15 +48,16 @@ function commitsIn(range: string): Commit[] {
 		})
 }
 
-function addsFragment(from: string, to: string): boolean {
-	return git('diff', '--name-only', '--no-renames', '--diff-filter=A', from, to, '--', 'changes/')
+// A fragment already in changes/ has not shipped, since a release moves every one out, so editing it counts.
+function addsOrEditsFragment(from: string, to: string): boolean {
+	return git('diff', '--name-only', '--no-renames', '--diff-filter=AM', from, to, '--', 'changes/')
 		.split('\n')
 		.some((file) => file.endsWith('.md') && path.basename(file) !== 'README.md')
 }
 
-// The changes on main's first-parent line since the last release that added no fragment and are not background-only,
-// each with the `Changelog: none` reason it gave. A PR's reason is in its commits or, when absent there, its
-// description, which git does not have.
+// The changes on main's first-parent line since the last release that added or edited no fragment and are not
+// background-only, each with the `Changelog: none` reason it gave. A PR's reason is in its commits or, when absent
+// there, its description, which git does not have.
 function optedOutSinceLastRelease(): string[] {
 	const lastRelease = git('log', '-1', '--format=%H', '--', 'changelog/releases.json')
 	const range = lastRelease ? `${lastRelease}..HEAD` : 'HEAD'
@@ -67,7 +68,7 @@ function optedOutSinceLastRelease(): string[] {
 		const [first, second] = parents.split(' ')
 		const commits = second ? commitsIn(`${first}..${second}`) : [{ subject, message: `${subject}\n${body}` }]
 		if (commits.every((c) => CL.isBackgroundSubject(c.subject))) continue
-		if (addsFragment(first, hash)) continue
+		if (addsOrEditsFragment(first, hash)) continue
 		const label = second ? `${subject.match(/#\d+/)?.[0] ?? hash.slice(0, 8)} ${body.split('\n')[0]}` : `${hash.slice(0, 8)} ${subject}`
 		const reason = commits.map((c) => c.message.match(CL.OPT_OUT)?.[0]).find(Boolean) ?? '(opted out in the PR description)'
 		lines.push(`${label}\n      ${reason}`)

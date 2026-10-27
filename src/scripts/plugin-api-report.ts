@@ -18,6 +18,10 @@ import * as PLG from '@/models/plugins.models'
 // the internal structure of named types, so reshaping e.g. MatchDetails without renaming it is not
 // caught here; that judgement stays with review, which the report diff flags.
 //
+// The checker prints an object type's members in the order it happened to visit them, which an unrelated import can
+// change, so the report sorts them by name (normalizeObjectMembers) to keep that reordering out of the diff. The
+// baseline is normalized the same way before comparing, so a report printed before the sort compares equal.
+//
 // Runs on tsgo's in-package experimental API (typescript/unstable/sync), which drives the native
 // binary over IPC; the stable TS JS checker API does not exist in typescript@7.
 
@@ -67,7 +71,70 @@ function describeExport(checker: Checker, sym: TsSymbol): string {
 	}
 	const type = checker.getTypeOfSymbol(resolved)
 	if (!type) return 'value'
-	return `value: ${checker.typeToString(type, undefined, NodeBuilderFlags.NoTruncation)}`
+	return `value: ${normalizeObjectMembers(checker.typeToString(type, undefined, NodeBuilderFlags.NoTruncation))}`
+}
+
+// index just past the string literal opening at `start`
+function skipString(text: string, start: number): number {
+	const quote = text[start]
+	let i = start + 1
+	while (i < text.length && text[i] !== quote) i += text[i] === '\\' ? 2 : 1
+	return i + 1
+}
+
+// Sorts the members of every object type in printed type text, `{ b: X; a: Y; }` -> `{ a: Y; b: X; }`. Text in
+// braces that is not a member list, such as `namespace { a, b }`, is kept as is. Members with the same name keep
+// their order, since that is an overload's order.
+function normalizeObjectMembers(text: string): string {
+	let out = ''
+	let i = 0
+	while (i < text.length) {
+		const ch = text[i]
+		if (ch === '"' || ch === "'" || ch === '`') {
+			const end = skipString(text, i)
+			out += text.slice(i, end)
+			i = end
+			continue
+		}
+		if (ch !== '{') {
+			out += ch
+			i++
+			continue
+		}
+		const members: string[] = []
+		let depth = 0
+		let memberStart = i + 1
+		let j = i + 1
+		for (; j < text.length; j++) {
+			const c = text[j]
+			if (c === '"' || c === "'" || c === '`') j = skipString(text, j) - 1
+			else if (c === '{') depth++
+			else if (c === '}') {
+				if (depth === 0) break
+				depth--
+			} else if (c === ';' && depth === 0) {
+				members.push(text.slice(memberStart, j).trim())
+				memberStart = j + 1
+			}
+		}
+		const rest = text.slice(memberStart, j).trim()
+		if (members.length === 0 || rest !== '') {
+			out += `{${normalizeObjectMembers(text.slice(i + 1, j))}}`
+		} else {
+			const sorted = members
+				.map((member) => ({ key: memberKey(member), text: normalizeObjectMembers(member) }))
+				.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+			out += `{ ${sorted.map((m) => m.text).join('; ')}; }`
+		}
+		i = j + 1
+	}
+	return out
+}
+
+const MEMBER_KEY = /^(?:readonly\s+)?("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\[[^\]]*\]|[^?:(<\s]*)/
+
+function memberKey(member: string): string {
+	return MEMBER_KEY.exec(member)![1]
 }
 
 function generateContent(): string {
@@ -171,7 +238,7 @@ function parseReport(content: string): Parsed {
 		const heading = /^## (.+)$/.exec(line)
 		if (heading) module = heading[1]
 		const entry = /^- `([^`]+)` — (.*)$/.exec(line)
-		if (entry) entries.set(`${module} :: ${entry[1]}`, entry[2])
+		if (entry) entries.set(`${module} :: ${entry[1]}`, entry[2].startsWith('value: ') ? normalizeObjectMembers(entry[2]) : entry[2])
 	}
 	return { version: versionMatch.slice(1, 4).map(Number), entries }
 }
