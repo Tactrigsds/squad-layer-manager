@@ -159,7 +159,9 @@ export type AppFixtureOptions = {
 	// the rules of the test server's own ruleset (TEST_REPEAT_RULESET_ID). Defaults to the rules a new server gets.
 	repeatRules?: RRS.RepeatRuleConfig[]
 	// the queue the server starts with. Generation only fires when the saved list would be empty, so a
-	// seeded queue stays exactly as seeded, which is what makes a queue assertion worth writing.
+	// seeded queue stays exactly as seeded, which is what makes a queue assertion worth writing. Layers generated past
+	// the seeded ones are drawn from the whole layer set: any factions, mirrors, and now and then a Training layer. A
+	// test that depends on factions, units or gamemode reads them from `latestMatch(app).layerId`.
 	layerQueue?: LL.List
 	// filter entities to seed. A server's pool config (serverSettings.queue.mainPool) references
 	// these by id, so anything that applies, indicates or warns on a filter needs them seeded first.

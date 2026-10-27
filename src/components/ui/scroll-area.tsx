@@ -7,6 +7,9 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 // radix sets the viewport's overflow per axis from the scrollbars that are rendered, so an axis with no
 // ScrollBar is `overflow: hidden` -- content wider than the viewport is clipped and unreachable. Both axes
 // scroll by default for that reason; pass `orientation` only where an axis genuinely cannot overflow.
+// Unless the area is vertical-only, radix wraps the content in a `display: table` box, which never gets narrower than
+// its content's min-content. A long nowrap label anywhere inside then widens the whole area past its parent, even
+// inside a `truncate` box. Give the row or scroll box `[contain:inline-size]` to take its width from the parent.
 const ScrollArea = React.forwardRef<
 	React.ElementRef<typeof ScrollAreaPrimitive.Root>,
 	React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
