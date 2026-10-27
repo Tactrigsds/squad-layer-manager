@@ -810,6 +810,7 @@
 	"Editing a prefix updates every command string and alias that uses it. The default prefix seeds new commands.": "Editing a prefix updates every command string and alias that uses it. The default prefix seeds new commands.",
 	"Editing an item": "Editing an item",
 	"Editing items": "Editing items",
+	"Editing status": "Editing status",
 	"Editing together": "Editing together",
 	"Editing {item}": "Editing {item}",
 	"Edits made in this session left the following queued layers repeating elements that violate our configured rules:": "Edits made in this session left the following queued layers repeating elements that violate our configured rules:",

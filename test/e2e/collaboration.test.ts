@@ -332,7 +332,7 @@ test.describe('collaborative rotation editing', () => {
 			}
 
 			await page.getByRole('button', { name: 'Start Editing' }).click()
-			await expect(pageB.getByRole('status')).not.toContainText('Nobody is editing')
+			await expect(pageB.getByRole('status', { name: 'Editing status' })).not.toContainText('Nobody is editing')
 
 			// B reads the draft as text, which follows edits made in A's builder
 			await pageB.getByRole('button', { name: 'Text', exact: true }).click()
@@ -357,7 +357,7 @@ test.describe('collaborative rotation editing', () => {
 			await page.getByRole('button', { name: 'Save', exact: true }).click()
 			await app.waitFor(() => savedRotation(app, 'weekend')?.items.length === 1 || null, { label: 'the rotation lost its second item' })
 			expect(savedRotation(app, 'weekend')!.items[0].layerId).toBe(LAYERS.gorodokRaas)
-			await expect(pageB.getByRole('status')).toContainText('Nobody is editing')
+			await expect(pageB.getByRole('status', { name: 'Editing status' })).toContainText('Nobody is editing')
 		} finally {
 			await second.close()
 		}

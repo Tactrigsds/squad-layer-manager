@@ -121,6 +121,8 @@ export const updatedBy = def((name: string, editor: string) => ({ toast: [t('{ed
 
 export const deletedBy = def((name: string, editor: string) => ({ toast: [t('{editor} deleted {name}', { name, editor })] }))
 
+export const liveStatus = def('Editing status')
+
 export const liveNobody = def('Nobody is editing')
 
 export const liveEditors = def('{names} editing', (names: string) => ({ names }))
