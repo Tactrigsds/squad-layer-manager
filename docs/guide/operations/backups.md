@@ -1,13 +1,13 @@
 # Backups and restoring
 
-Where backups come from, what the files mean, and how to put one back. Turning them on is part of
-[installing](../../installing.md#6-backups).
+This page describes when SLM backs up its database, how the backup files are named, and how to restore one. Periodic
+backups are turned on during [installing](../../installing.md#6-backups).
 
 ## When backups happen
 
-Backups happen for two reasons. One of them is not optional.
+SLM backs up its database before every migration, and on a schedule if one is set.
 
-**Before every migration**, the database is snapshotted into `BACKUPS_DIR` first. This happens whether the app applies
+**Before every migration**, SLM snapshots the database into `BACKUPS_DIR`. This backup cannot be turned off. SLM takes it whether the app applies
 migrations itself at boot (`DB_AUTOMIGRATE`, the default) or `pnpm db:migrate:prod` is run by hand, and it is the
 snapshot to restore from if an upgrade goes wrong. Nothing is applied if the snapshot fails. The most recent
 pre-migration backup is never deleted by retention, however old it gets: it is the only way back from the migration it
@@ -113,7 +113,7 @@ docker compose up -d app
 While it is pinned, `docker compose pull && docker compose up -d` no longer upgrades anything: a release or `commit-`
 tag always resolves to that one build. To upgrade again, set `SLM_IMAGE_TAG` back to `stable` or `latest` and pull.
 
-There is no need to guess a sha. `./restore.sh --list` shows the build every backup belongs to, `--inspect` names the
+`./restore.sh --list` shows the build every backup belongs to, `--inspect` names the
 tag for one of them, and the app's own version is on its about page.
 
 ## Rolling back a bad upgrade

@@ -206,7 +206,11 @@ function LiveBar(props: { listHost: RotationEditorFrame.Key; host: LL.ListHost }
 	const isModified = Zus.useStore(props.listHost, LayerQueuePrt.Sel.isModified)
 	const names = editorIds.map((id) => PartsSys.findUser(id)?.displayName ?? String(id))
 	return (
-		<div role="status" className="flex flex-wrap items-center gap-3 rounded border bg-card px-3 py-1.5 text-sm">
+		<div
+			role="status"
+			aria-label={tr.text(ROT_Msgs.liveStatus())}
+			className="flex flex-wrap items-center gap-3 rounded border bg-card px-3 py-1.5 text-sm"
+		>
 			<span
 				data-live={editorIds.length > 0}
 				className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground data-[live=true]:text-added"

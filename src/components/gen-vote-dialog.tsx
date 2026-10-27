@@ -352,9 +352,8 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 				{ label: tr.text(LL_Msgs.placeEnd()), value: 'after' },
 			]}
 			active={cursor?.type === 'start' ? 'next' : 'after'}
-			setActive={() => {
-				const newCursor: LL.Cursor = cursor?.type === 'start' ? { type: 'end' } : { type: 'start' }
-				GenVoteFrame.Actions.setCursor(genVoteStores, newCursor)
+			setActive={(position) => {
+				GenVoteFrame.Actions.setCursor(genVoteStores, position === 'next' ? { type: 'start' } : { type: 'end' })
 			}}
 		/>
 	)

@@ -17,12 +17,6 @@ Several admins can edit the queue at once, and each one sees who else is editing
 a generated vote, or as a whole rotation, pasted in or picked from the [saved rotations](#saved-rotations). Queue items
 can carry colour-coded tags and freeform notes.
 
-Right-click a queue item, or use its ⋮ button, to open the queue item's menu. The menu leads with the layer's details,
-scores and SquadCalc link, followed by the queue item's edit, tag, note and placement actions.
-
-Use _View history_ in a queue item's menu, or in a match's menu in the match history, to see every edit to the queue
-item and who made each edit, the queue item's votes, and the match that played the queue item.
-
 ![the layer queue while editing, with the first item's menu open, a tagged and noted layer, a vote and an out-of-pool layer](../images/features/layer_queue.png)
 
 ## The layer selection dialog
@@ -53,11 +47,6 @@ Filters decide which layers admins can select by default and which layers SLM ge
 filter can also mark the layers it matches with an emoji, as a category. See
 [Layer pool and filters](../guide/configuring/layer_pool.md).
 
-Use the _Filters_ page to search filters by name or description, narrow the list to one author, and sort it. A search
-lists the matches as rows and shows what matched. Each filter card's menu, also opened by right-clicking the card,
-provides _Clone_, which copies the filter under a new name, and _Delete_. A filter that something still references
-cannot be deleted.
-
 ## Repeat rules
 
 A _repeat rule_ defines how soon a map, layer, faction or unit may be played again, counting both the queue and the
@@ -73,6 +62,16 @@ repeated value in pink on both the marked layer and the earlier layer it repeats
 
 Use _Fix Repeats_ to clear repeat warnings automatically. SLM reorders the queue and swaps layers' teams to clear as
 many warnings as possible, with as few changes as possible. See [Fixing repeats](../guide/configuring/layer_rotation.md#fixing-repeats).
+
+## Autogeneration
+
+When the queue runs out, SLM generates the next layer from your pool. A generated layer obeys the pool filter, the
+filters set to constrain generation, and the repeat rules marked _Autogen_. Configurable weights make chosen maps,
+gamemodes or factions come up more or less often. When a [layer request](#layer-requests) is pending, SLM generates
+the requested layer. SLM can generate a vote between 3 layers, each on a different map, in place of a single layer.
+
+See [Generated and automatic votes](../guide/configuring/layer_rotation.md#generated-and-automatic-votes) and
+[Randomization](../guide/configuring/layer_rotation.md#randomization).
 
 ## Saved rotations
 
@@ -154,8 +153,7 @@ offers a layer from a mod the server lacks.
 A custom layer dataset can replace the built-in one, with other mods, other scoring or extra columns. See
 [Layer data](../guide/operations/layer_data.md) and [Building custom layer data](../developers/custom_layer_data.md).
 
-A layer the catalog does not know can still be queued as raw text, in the format `AdminSetNextLayer` takes, such as
-`Narva_RAAS_v1 RGF USMC`. Open raw input from the
-![text cursor input icon](../images/icons/text-cursor-input.svg) icon in the _Add Layers_ dialog.
+A layer the catalog does not know can still be queued as raw text from the _Add Layers_ dialog, in the format
+`AdminSetNextLayer` takes, such as `Narva_RAAS_v1 RGF USMC`.
 
 ![the raw input in the Add Layers dialog](../images/features/raw_layer_input.png)

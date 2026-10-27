@@ -1,7 +1,7 @@
 # Learning SLM
 
-SLM is learned inside the app, by using it. Guided tutorials teach the server dashboard, and a sandbox server gives
-admins somewhere to practise.
+Guided tutorials inside the app walk through the server dashboard, and a sandbox server gives admins somewhere to
+practise.
 
 ## Tutorials
 

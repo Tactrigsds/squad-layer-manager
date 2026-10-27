@@ -74,6 +74,7 @@ export async function updateServer(
 		ops,
 		{ type: 'plugin', pluginId: ctx.plugin.id },
 		{ type: 'plugin', event: 'edit-settings', pluginId: ctx.plugin.id },
+		null,
 	)
 }
 

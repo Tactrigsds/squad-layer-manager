@@ -179,11 +179,40 @@ export const setupInstance = Instr.spanOp(
 			)
 			.subscribe()
 
+		// -------- retry a set-next the dropped connection lost --------
+		// nothing else retries it: the queue has not changed, and the reconnect reports the layer the server still had.
+		// Keyed off the processed reconnect rather than the socket, so the server's next layer the reconnect records
+		// predates this write and can't be read back as somebody else setting it.
+		ctx.server.event$
+			.pipe(
+				Rx.filter(([, event]) => event.type === 'RCON_CONNECTED' && ctx.layerQueue.nextLayerSyncState$.value.code === 'err:rcon'),
+				Instr.durableSub('resync-next-layer-on-reconnect', { module }, async ([evtCtx], signal) => {
+					const ctx = SquadServer.eventCtx(evtCtx, signal)
+					// the roll writes the head itself
+					if (ctx.server.serverRolling$.value) return
+					const queue = getSavedQueue(ctx)
+					const nextLayerId = LL.getNextLayerId(queue)
+					if (!nextLayerId) return
+					const serverState = await SquadServer.getServerState(ctx)
+					await syncNextLayerToServer(ctx, serverState.settings, nextLayerId, queue[0].itemId)
+				}),
+			)
+			.subscribe()
+
 		// -------- make sure next layer set is synced with queue --------
 		{
 			ctx.server.event$
 				.pipe(
 					Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
+					// a roll writes the new queue head after it has recorded the match, and holds the rolling flag until then.
+					// Comparing against the head before that write lands would fight it.
+					Rx.concatMap((value) =>
+						ctx.server.serverRolling$.pipe(
+							Rx.filter((rolling) => rolling === null),
+							Rx.take(1),
+							Rx.map(() => value),
+						),
+					),
 					Instr.durableSub(
 						'sync-server-map-set',
 						{ module, mutexes: ([evt]) => SquadServer.require(evt.serverId).layerQueue.updateLayerMtx },
@@ -194,8 +223,6 @@ export const setupInstance = Instr.spanOp(
 							// only organic sets (in-game admin, external RCON tool, unattributed) should unshift.
 							if (event.type !== 'MAP_SET' || SE.mapSetIsSlmOriginated(event.source)) return
 							const queue = getSavedQueue(ctx)
-							// this case will be dealt with in handleNewGame, so can ignore it here
-							if (ctx.server.serverRolling$.value) return
 							const savedNextLayerId = LL.getNextLayerId(queue)
 							const savedNextItemId = queue[0]?.itemId || null
 							if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
@@ -810,7 +837,9 @@ async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTI
 		},
 	})
 	if (statusRes.code !== 'ok') return undefined
-	const warns = statusRes.statuses.warns.filter((w) => w.itemId === head.itemId)
+	// a vote warns through its choices, so report the choice the vote currently resolves to
+	const headItemId = LL.isVoteItem(head) ? head.choices.find((c) => c.layerId === head.layerId)?.itemId : head.itemId
+	const warns = statusRes.statuses.warns.filter((w) => w.itemId === headItemId)
 	if (warns.length === 0) return undefined
 	const repeatViolations = warns.filter((w) => w.type === 'repeat-rule-violation-warning').flatMap((w) => w.descriptors)
 	const poolViolations = warns
@@ -883,6 +912,9 @@ export const syncNextLayerToServer = Instr.spanOp(
 			syncState$.next({ code: 'disabled' })
 			return
 		}
+		// an override reacts to a set-next the cached status can predate, which would read as already synced. Only the
+		// override pays for the fresh read: an extra round trip on every sync delays the roster poll across a roll.
+		if (mapSetCause?.reason === 'override') ctx.squadRcon.layersStatus.invalidate(ctx)
 		const currentStatusRes = await ctx.squadRcon.layersStatus.get(ctx)
 		if (currentStatusRes.code !== 'ok') {
 			syncState$.next({ code: 'err:rcon' })

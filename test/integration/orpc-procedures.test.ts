@@ -13,7 +13,15 @@ import * as SLL from '@/models/shared-layer-list.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, TEST_ADMIN_LIST, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, queueItem, role } from '../harness/arrange'
-import { appEventTypes, filterOwner, refusals, savedGlobalSettings, savedQueue, settingsUpdatedBlobs } from '../harness/inspect'
+import {
+	appEventTypes,
+	filterOwner,
+	refusals,
+	savedGlobalSettings,
+	savedQueue,
+	savedServerSettings,
+	settingsUpdatedBlobs,
+} from '../harness/inspect'
 import { createOrpcClient, firstYield, layerDataHash, sessionCookie, type TestOrpcClient } from '../harness/orpc-client'
 
 // Server-side gates, asserted over oRPC with the protocol the browser speaks. The client hides buttons and
@@ -436,6 +444,37 @@ describe('server colors', () => {
 		} finally {
 			expect(await adminClient.settings.admin.deleteServer({ serverId: NEW_SERVER_ID })).toMatchObject({ code: 'ok' })
 		}
+	})
+})
+
+// The dashboard's pool editor saves path ops rather than the whole document, and an op may reach into a list entry
+describe('server settings ops', () => {
+	it('edits an entry of a filter list the defaults leave empty', async () => {
+		const warnFor = ['queue', 'mainPool', 'warnFor']
+		expect(
+			await adminClient.settings.server.updateSettings({
+				serverId: app.serverId,
+				ops: [{ path: warnFor, value: [{ filterId: 'raas-only', applyAs: 'regular' }] }],
+			}),
+		).toMatchObject({ code: 'ok' })
+		expect(
+			await adminClient.settings.server.updateSettings({
+				serverId: app.serverId,
+				ops: [{ path: [...warnFor, 0, 'applyAs'], value: 'inverted' }],
+			}),
+		).toMatchObject({ code: 'ok' })
+		const saved = savedServerSettings(app) as SETTINGS.ServerSettings
+		expect(saved.queue.mainPool.warnFor).toEqual([{ filterId: 'raas-only', applyAs: 'inverted' }])
+	})
+
+	it('refuses a user with no write grant over what the ops change, and stores nothing', async () => {
+		const res = await dashboardOnlyClient.settings.server.updateSettings({
+			serverId: app.serverId,
+			ops: [{ path: ['queue', 'mainPool', 'warnFor', 0, 'applyAs'], value: 'regular' }],
+		})
+		expect(res).toMatchObject({ code: 'err:permission-denied' })
+		const saved = savedServerSettings(app) as SETTINGS.ServerSettings
+		expect(saved.queue.mainPool.warnFor).toEqual([{ filterId: 'raas-only', applyAs: 'inverted' }])
 	})
 })
 

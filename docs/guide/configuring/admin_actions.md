@@ -44,8 +44,7 @@ Shorthands can also be selected when an action is performed from the interface:
 
 ## In-game commands
 
-SLM has a large set of in-game commands. The commands page in your own install documents each command and how to use
-it:
+The commands page in your own install documents each in-game command and how to use it:
 
 ![the commands page](../../images/configuring/commands_page.png)
 
@@ -65,13 +64,5 @@ If an existing prefix is changed, SLM moves every [trigger](#command-triggers) w
 
 ### Command triggers
 
-An in-game command runs from one of its _triggers_: the strings listed against it under
-_Settings > In-game Commands_. `/timeout` and `/to` are two triggers for the same command, and typing either takes
-the command's arguments exactly as written.
-
-A trigger can also pin some of those arguments, which turns it into a shortcut. Give `/to2h` the `args` template
-`{{arg1}} 2h {{rest}}`, and typing `/to2h Alice spamming` runs `/timeout Alice 2h spamming`. This is what command
-aliases used to be.
-
-See [command_triggers.md](command_triggers.md) for the template syntax, what happens to words the caller leaves out,
-and the limits on what a trigger can reach.
+A command runs from one of its _triggers_, such as `/timeout` or `/to`. A trigger can also fill in some of the
+command's arguments, as a shortcut. See [Command triggers](command_triggers.md).

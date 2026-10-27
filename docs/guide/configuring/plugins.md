@@ -43,7 +43,7 @@ _Running_, _Stopped_ or _Failed_. A failed plugin shows the reason, such as a co
 plugin written for a different version of SLM.
 
 A plugin's settings and in-game commands are edited in its row. Its commands take triggers like SLM's own (see
-[Command triggers](admin_actions.md#command-triggers)). If another command already owns one of its triggers, SLM warns that the trigger does
+[Command triggers](command_triggers.md)). If another command already owns one of its triggers, SLM warns that the trigger does
 nothing. Set a different one.
 
 A plugin can define actions of its own that need a permission. Grant them to a role under _Plugin Grants_ (see

@@ -139,6 +139,16 @@ export function matchOrdinal(app: AppFixture, matchId: number): number {
 }
 
 // the global settings row as the column holds it: superjson-encoded, secrets sealed
+export function savedServerSettings(app: AppFixture): unknown {
+	const db = app.readDb()
+	try {
+		const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(app.serverId) as { settings: string }
+		return superjson.parse(row.settings)
+	} finally {
+		db.close()
+	}
+}
+
 export function savedGlobalSettings(app: AppFixture): Record<string, any> {
 	const db = app.readDb()
 	try {

@@ -925,7 +925,7 @@ function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 			: MH_Msgs.hoursAgo(Math.floor(difference)),
 	)
 
-	const matchLengthMinutes = gameRuntime !== undefined ? Math.round(gameRuntime / (1000 * 60)) : undefined
+	const matchLengthMinutes = gameRuntime !== undefined ? Math.max(1, Math.round(gameRuntime / (1000 * 60))) : undefined
 	return (
 		<span
 			title={tr.text(
@@ -933,9 +933,7 @@ function formatMatchTimeAndDuration(startTime: Date, gameRuntime?: number) {
 			)}
 		>
 			{formattedStartTime}
-			<span className="text-text-3">
-				({matchLengthMinutes !== undefined ? MsgFmt.formatIntervalCompact(matchLengthMinutes * 60_000) : '???'})
-			</span>
+			<span className="text-text-3">({gameRuntime !== undefined ? MsgFmt.formatIntervalCompact(gameRuntime) : '???'})</span>
 		</span>
 	)
 }

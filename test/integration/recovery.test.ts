@@ -7,6 +7,7 @@ import * as L from '@/models/layer.models'
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
 import { savedQueue } from '../harness/inspect'
+import { rearrange } from '../harness/rearrange'
 
 // The failure modes a long-running server actually hits: the app itself is down when the map rolls, rcon
 // drops, the game rotates its log. The app has to notice and pick back up on its own -- these are the paths
@@ -42,6 +43,11 @@ describe('a map roll that happened while the app was down', () => {
 		await app.waitFor(() => savedQueue(app)[0]?.layerId === LAYERS.sumariSeed, {
 			label: 'the played head consumed rather than queued again',
 			timeoutMs: 45_000,
+		})
+		// the rcon faults below must not land while the new head is still being written
+		await app.waitFor(() => app.emu.world.nextLayer?.layer === 'Sumari_Seed_v1', {
+			label: 'the new head set as next on the server',
+			timeoutMs: 30_000,
 		})
 	})
 })
@@ -90,6 +96,31 @@ describe('recovering from a broken squad server', () => {
 			label: 'the roster reseeded after the reconnect',
 			timeoutMs: 30_000,
 		})
+	})
+
+	it('writes a next layer it could not set while rcon was down once rcon is back', async () => {
+		const port = app.emu.rconPort
+		await app.emu.rcon.goOffline()
+		await app.waitForRconConnected(false)
+		try {
+			await rearrange(app, { layerQueue: queue(LAYERS.skorpoRaas, LAYERS.sumariSeed) })
+			await app.waitFor(
+				async () => {
+					const status = await app.control('ingest-status', { serverId: app.serverId })
+					return status.nextLayerSyncState === 'err:rcon' || null
+				},
+				{ label: 'the set-next failing on the dropped connection', timeoutMs: 30_000 },
+			)
+		} finally {
+			await app.emu.rcon.goOnline(port)
+		}
+
+		await app.waitForNextLayerSync({ timeoutMs: 30_000 })
+		expect(app.emu.world.nextLayer?.layer).toBe('Skorpo_RAAS_v1')
+
+		// the last test rolls onto the Sumari head
+		await rearrange(app, { layerQueue: queue(LAYERS.sumariSeed, LAYERS.skorpoRaas) })
+		await app.waitForNextLayerSync()
 	})
 
 	it('keeps ingesting the log after the game rotates it', async () => {

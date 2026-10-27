@@ -576,7 +576,7 @@ export async function process(state: State, time: number): Promise<SE.Event[]> {
 	// set of that same layer would wrongly inherit it
 	state.attributions = state.attributions.filter((a) => time - a.time <= ATTRIBUTION_TTL_MS)
 
-	// Roll/sync watchdog. While non-synced every event is dropped (see the synced gate), so a roll whose real-layer
+	// Roll/sync watchdog. While non-synced every event but a MAP_SET is dropped (see the synced gate), so a roll whose real-layer
 	// NEW_GAME log never arrived would wedge us in 'rolling' indefinitely. If we've been mid-sync past the timeout,
 	// force a resync from RCON's current layer; the next poll then produces the RESET that reseeds the roster.
 	if (state.syncState.type === 'syncing' || state.syncState.type === 'rolling') {
@@ -855,6 +855,41 @@ function isStale(event: { time: number }, time: number) {
 	return event.time < time - STALE_EVENT_MS
 }
 
+// A MAP_SET needs no roster, so it is taken up as soon as the match it belongs to is known: once a roll has resolved
+// the new match, and once a reconnect has. Waiting for the roster would drop a next layer set in that window. While
+// desynced it is dropped, and the RCON_CONNECTED that ends the outage reports the server's next layer instead.
+async function processMapSet(state: State, pass: Pass, pendingEvent: Extract<PendingEvent, { type: 'MAP_SET' }>, matchId: number) {
+	let layer = L.parseRawLayerText(`${pendingEvent.nextLayer} ${pendingEvent.nextFactions ?? ''}`.trim())
+	if (!layer || !L.isKnownLayer(layer)) {
+		const layersStatus = await state.hooks.fetchLayersStatus()
+		if (!layersStatus || !layersStatus.nextLayer) {
+			state.log.error(`Unable to resolve layer on MAP_SET`)
+			return
+		}
+		layer = layersStatus.nextLayer
+	}
+	let source: SE.MapSet['source'] = pendingEvent.source
+	state.nextLayerId = layer.id
+	// match on the layer, not on position: a set-next whose MAP_SET never landed (or landed before its own
+	// attribution did) leaves an attribution behind, and taking that one here would consume it AND leave this
+	// event unattributed -- which is what made a stale attribution poison the next map set
+	const attributionIndex = state.attributions.findIndex(
+		(a) => a.type === 'MAP_SET_ATTRIBUTION' && L.areLayersCompatible(a.layerId, layer.id),
+	)
+	if (attributionIndex !== -1) {
+		const attribution = state.attributions[attributionIndex]
+		source = attribution.appEventId ? { type: 'event', id: attribution.appEventId } : { type: 'layer-queue', itemId: attribution.itemId }
+		state.attributions.splice(attributionIndex, 1)
+	}
+	await emit(state, pass, {
+		type: 'MAP_SET',
+		matchId,
+		time: pendingEvent.time,
+		layerId: layer.id,
+		source,
+	})
+}
+
 async function processPendingEvent(state: State, pass: Pass, time: number, pendingEvent: PendingEvent): Promise<void> {
 	const log = state.log
 
@@ -1066,6 +1101,17 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		}
 	}
 
+	if (pendingEvent.type === 'MAP_SET') {
+		const matchKnown =
+			state.syncState.type === 'synced' ||
+			state.syncState.type === 'syncing' ||
+			(state.syncState.type === 'rolling' && !!state.syncState.newGameEvent)
+		if (matchKnown && state.currentMatch !== 'PENDING') {
+			await processMapSet(state, pass, pendingEvent, state.currentMatch.historyEntryId)
+		}
+		return
+	}
+
 	if (state.syncState.type !== 'synced' || state.currentMatch === 'PENDING') {
 		return
 	}
@@ -1077,40 +1123,6 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 	}
 
 	switch (pendingEvent.type) {
-		case 'MAP_SET': {
-			let layer = L.parseRawLayerText(`${pendingEvent.nextLayer} ${pendingEvent.nextFactions ?? ''}`.trim())
-			if (!layer || !L.isKnownLayer(layer)) {
-				const layersStatus = await state.hooks.fetchLayersStatus()
-				if (!layersStatus || !layersStatus.nextLayer) {
-					log.error(`Unable to resolve layer on MAP_SET`)
-					break
-				}
-				layer = layersStatus.nextLayer
-			}
-			let source: SE.MapSet['source'] = pendingEvent.source
-			state.nextLayerId = layer.id
-			// match on the layer, not on position: a set-next whose MAP_SET never landed (or landed before its own
-			// attribution did) leaves an attribution behind, and taking that one here would consume it AND leave this
-			// event unattributed -- which is what made a stale attribution poison the next map set
-			const attributionIndex = state.attributions.findIndex(
-				(a) => a.type === 'MAP_SET_ATTRIBUTION' && L.areLayersCompatible(a.layerId, layer.id),
-			)
-			if (attributionIndex !== -1) {
-				const attribution = state.attributions[attributionIndex]
-				source = attribution.appEventId
-					? { type: 'event', id: attribution.appEventId }
-					: { type: 'layer-queue', itemId: attribution.itemId }
-				state.attributions.splice(attributionIndex, 1)
-			}
-			await emit(state, pass, {
-				type: 'MAP_SET',
-				...base,
-				layerId: layer.id,
-				source,
-			})
-			break
-		}
-
 		case 'INGAME_VOTE_CHAIN': {
 			const started = pendingEvent.events.INGAME_VOTE_STARTED
 			await emit(state, pass, {

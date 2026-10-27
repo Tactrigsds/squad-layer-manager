@@ -12,6 +12,8 @@ Here are some common terms/phrase that you may find in SLM and their meanings
 - Team A/B : a persistent group of players across multiple matches
 - Player : someone who is currently in a match of squad. Admins are also considered players for our purposes
 - User : Someone who is signed in to SLM.
+- Layer scores : Balance Differential, Asymmetry Score and the category scores. SLM includes them, but they are
+  generated outside SLM from a set of heuristics. Never make SLM the subject of computing or generating them.
 
 # Common locations
 
@@ -28,6 +30,12 @@ Flag any breaking change to persisted data structures or configuration, so the u
 the frontend (localStorage) and the backend (database, config, environment variables).
 
 Prefer copy-on-write unless mutation is proven safe or the code is a hot path.
+
+The database is SQLite, so running queries in parallel gains nothing. Sequential awaits on `ctx.db()` are not an I/O
+waterfall.
+
+Before writing a helper, check whether an installed dependency already provides it. `date-fns` and `date-fns-tz`
+cover zoned day math and time formatting.
 
 Async functions which kick off async work and which return a promise or async iterable should take a cancellation signal by default. For non-lib functions, pass it via the ctx object (see
 src/models/context-shared.models.ts). The client is not converted to this pattern yet, so use judgement about when to
@@ -264,7 +272,8 @@ Use stores or frames at minimum whenever:
 - A component's state depends on mutable props. Pass the component some variant of `Zus.AnyInput<T>` in the `stores`
   prop instead. That input can be a derived state or event stream from another store, or the store itself.
 - Different pieces of state have significant interdependencies. Stores and frames handle reactive state well, so use
-  them instead of a useEffect/useState pattern, which is always a code smell.
+  them instead of a useEffect/useState pattern, which is always a code smell. The React Compiler lint follows a
+  setState through local functions and past an `await`, so moving the call around does not satisfy it.
 
 Use frames instead of raw zustand stores where the state is non-global and the store may be created and destroyed.
 Frames can and should query and subscribe to async data sources directly.
@@ -278,6 +287,13 @@ violating this rule.
 
 In components, prefer modifying or adding selectors over computing intermediate state in the component body with
 useMemo. `Zus.useStore` helps here: it merges multiple data sources for use in a single selector.
+
+Never pass `Zus.useStore` an inline selector that computes anything. Put it in the module's `Sel` namespace. A
+selector that takes a parameter is a factory wrapped in `RSel.memoizeFactoryLru` (see `LayerQueuePrt.Sel.itemEntry`).
+
+Read external mutable state inside a `useStore` selector, and keep that state copy-on-write. The React Compiler
+caches a plain call on its arguments, so a `useStore` call whose result is discarded does not refresh a plain call
+beside it.
 
 Use the established `Sel` namespace convention for selectors.
 
@@ -310,7 +326,8 @@ with longer strings and look at the result.
 # Testing
 
 Reserve unit tests for code that is both actually complex and largely self-contained, or at least isolatable. Do not
-unit test trivial code. Any unit test may be written as a temporary aid during development, as long as it is
+unit test trivial code. Keep the unit test of a nontrivial migration after the migration ships, as a record of what
+was verified about it. Any unit test may be written as a temporary aid during development, as long as it is
 deleted afterwards.
 
 Cover most complex features with integration or e2e tests instead. Do not try to exercise all codepaths; focus on
@@ -376,6 +393,9 @@ Playwright fails a locator that matches two elements at once, without retrying. 
 role a test looks for, such as a spinner with `role="status"` inside a status, therefore fails the test whenever an
 assertion lands while it shows, and a slower machine shows it longer. Do not nest an element inside another of the
 same role.
+
+`toHaveCount` and `getByText` count hidden elements. Filter with `{ visible: true }` where a hidden copy can exist,
+such as the filter editor's Text tab, which stays mounted with stale text while Builder is shown.
 
 Inline timeouts are for waits on the server's own timers, such as a vote or a roll, and only then.
 

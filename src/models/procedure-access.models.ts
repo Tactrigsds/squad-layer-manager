@@ -98,11 +98,8 @@ export const PROCEDURE_ACCESS = {
 	'settings.global.upsertRotationTag': global('rotations:create'),
 	'settings.global.saveRepeatRuleset': Access.req(SETTINGS.Grants.writeGlobalSettingsPaths([['repeatRulesets']])),
 	'settings.server.watchSettings': VIEW_SERVER,
-	'settings.server.updateSettings': Access.req((i: ServerInput & { ops: { path: (string | number)[] }[] }) =>
-		SETTINGS.Grants.writeServerSettingsPaths(
-			i.serverId,
-			i.ops.map((op) => op.path),
-		),
+	'settings.server.updateSettings': Access.inHandler('the paths it writes are the diff against the stored settings', (i: ServerInput) =>
+		Req.viewServer(i.serverId),
 	),
 	'settings.admin.enableServer': global('admin:manage-servers'),
 	'settings.admin.disableServer': global('admin:manage-servers'),

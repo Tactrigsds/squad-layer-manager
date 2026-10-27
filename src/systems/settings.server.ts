@@ -614,41 +614,66 @@ export async function editGlobalSettings(ctx: C.Db, ops: SETTINGS.SettingMutatio
 
 /**
  * Applies mutations to a server's settings, validated as the settings page validates them, and records
- * SETTINGS_UPDATED against `actor`.
+ * SETTINGS_UPDATED against `actor`. `authorize` checks what the ops change, the diff updateRawSettings checks too,
+ * and is null only for a writer the caller already trusts.
  */
-export async function editServerSettings(
+export async function editServerSettings<Denied extends object = never>(
 	ctx: C.Db & CS.ServerId,
 	ops: SETTINGS.SettingMutation[],
 	actor: AppEvents.Actor,
 	source: SS.LQStateUpdate['source'],
+	authorize: ((changes: Obj.LeafChange[]) => Promise<Denied | null>) | null,
 ) {
 	let changes: Obj.LeafChange[] = []
 	const res = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
 		const state = await SquadServer.getServerState(ctx)
 		const next = Obj.deepClone(state.settings)
 		SETTINGS.applySettingMutations(next, ops)
-		const parsed = SETTINGS.ServerSettingsSchema.safeParse(next)
-		if (!parsed.success) return { code: 'err:invalid-settings' as const, message: parsed.error.message }
-		const repeatRulesetError = unknownRepeatRulesetError(parsed.data)
-		if (repeatRulesetError) return repeatRulesetError
-		changes = Obj.diffLeaves(state.settings, parsed.data)
-		await updateServerSettings(ctx, parsed.data, source)
+		const denied = await authorize?.(Obj.diffLeaves(state.settings, next))
+		if (denied) return denied
+		const parsed = parseServerSettings(next)
+		if (parsed.code !== 'ok') return parsed
+		changes = Obj.diffLeaves(state.settings, parsed.settings)
+		await updateServerSettings(ctx, parsed.settings, source)
 	})
 	if (res) return res
-	if (changes.length > 0) {
-		await AppEventsSys.persistAppEvent(
-			ctx,
-			AppEvents.create<AppEvents.SettingsUpdated>({
-				type: 'SETTINGS_UPDATED',
-				actor,
-				serverId: ctx.serverId,
-				matchId: null,
-				causeId: null,
-				changes: auditableSettingChanges(changes),
-			}),
-		)
-	}
+	await recordServerSettingsUpdated(ctx, actor, changes)
 	return { code: 'ok' as const }
+}
+
+// what a server's settings must pass to be saved, whichever editor wrote them
+function parseServerSettings(raw: unknown) {
+	const parseRes = SETTINGS.ServerSettingsSchema.safeParse(raw)
+	if (!parseRes.success) return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
+	const repeatRulesetError = unknownRepeatRulesetError(parseRes.data)
+	if (repeatRulesetError) return repeatRulesetError
+	return { code: 'ok' as const, settings: parseRes.data }
+}
+
+async function recordServerSettingsUpdated(ctx: C.Db & CS.ServerId, actor: AppEvents.Actor, changes: Obj.LeafChange[]) {
+	if (changes.length === 0) return
+	await AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.SettingsUpdated>({
+			type: 'SETTINGS_UPDATED',
+			actor,
+			serverId: ctx.serverId,
+			matchId: null,
+			causeId: null,
+			changes: auditableSettingChanges(changes),
+		}),
+	)
+}
+
+// refuses a user who may not write every path these changes touch
+function denyServerSettingsChanges(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal & CS.ServerId, changes: { path: string }[]) {
+	return Rbac.tryDenyPermissionsForUser(
+		ctx,
+		SETTINGS.Grants.writeServerSettingsPaths(
+			ctx.serverId,
+			changes.map((c) => c.path),
+		),
+	)
 }
 
 // creates or replaces one ruleset. Ownership is decided by server creation, never by the writer, so `ownerServerId`
@@ -965,6 +990,7 @@ const serverRouter = {
 				input.ops,
 				{ type: 'slm-user', userId: ctx.user.discordId },
 				{ type: 'manual', user: USR.toMiniUser(ctx.user), event: 'edit-settings' },
+				(changes) => denyServerSettingsChanges(ctx, changes),
 			)
 		}),
 }
@@ -1087,10 +1113,10 @@ const adminRouter = {
 
 			// a broken prior has nothing to diff against, so every top-level key sent counts as written, connections included
 			const sentKeys = rawSettings && typeof rawSettings === 'object' ? Object.keys(rawSettings) : []
-			const changePaths = priorSettings
-				? Obj.diffLeaves(priorSettings, rawSettings).map((c) => [c.path])
-				: (sentKeys.length > 0 ? sentKeys : ['']).map((key) => [key])
-			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SETTINGS.Grants.writeServerSettingsPaths(serverId, changePaths))
+			const sentChanges = priorSettings
+				? Obj.diffLeaves(priorSettings, rawSettings)
+				: (sentKeys.length > 0 ? sentKeys : ['']).map((key) => ({ path: key }))
+			const denyRes = await denyServerSettingsChanges({ ...ctx, serverId }, sentChanges)
 			if (denyRes) return denyRes
 
 			let patchedRawSettings = rawSettings
@@ -1100,21 +1126,17 @@ const adminRouter = {
 				patchedRawSettings = { ...rawSettings, connections: priorSettings?.connections }
 			}
 
-			const parseRes = SETTINGS.ServerSettingsSchema.safeParse(patchedRawSettings)
-			if (!parseRes.success) {
-				return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
-			}
-			const repeatRulesetError = unknownRepeatRulesetError(parseRes.data)
-			if (repeatRulesetError) return repeatRulesetError
+			const parsed = parseServerSettings(patchedRawSettings)
+			if (parsed.code !== 'ok') return parsed
 
-			const connectionsChanged = priorBroken || !Obj.deepEqual(priorSettings!.connections, parseRes.data.connections)
+			const connectionsChanged = priorBroken || !Obj.deepEqual(priorSettings!.connections, parsed.settings.connections)
 
 			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-				await updateServerSettings({ ...ctx, serverId }, parseRes.data, { type: 'manual', user, event: 'edit-settings' })
+				await updateServerSettings({ ...ctx, serverId }, parsed.settings, { type: 'manual', user, event: 'edit-settings' })
 			})
 
 			// a repair has no valid prior state to diff against, so every field reads as newly set
-			const changes = Obj.diffLeaves(priorSettings ?? {}, parseRes.data)
+			const changes = Obj.diffLeaves(priorSettings ?? {}, parsed.settings)
 
 			// the settings-derived fields of the entry are mirrored by updateServerSettings above; `broken` is not one of
 			// them, and this is the only path that can clear it
@@ -1130,17 +1152,7 @@ const adminRouter = {
 				await SquadServerLifecycle.ensureRunning(serverId)
 			}
 
-			await AppEventsSys.persistAppEvent(
-				ctx,
-				AppEvents.create<AppEvents.SettingsUpdated>({
-					type: 'SETTINGS_UPDATED',
-					actor: { type: 'slm-user', userId: ctx.user.discordId },
-					serverId: input.serverId,
-					matchId: null,
-					causeId: null,
-					changes: auditableSettingChanges(changes),
-				}),
-			)
+			await recordServerSettingsUpdated({ ...ctx, serverId }, { type: 'slm-user', userId: ctx.user.discordId }, changes)
 			// the diff is for the audit event only: it carries the raw connection values, so it must not be echoed back
 			return { code: 'ok' as const }
 		}),

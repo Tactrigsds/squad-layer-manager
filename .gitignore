@@ -91,6 +91,7 @@ graph.svg
 
 # built by `pnpm build:engine` from layer-engine/
 assets/layer-engine.wasm
+assets/layer-engine.wasm.stamp
 layer-engine/target/
 
 # rust log agent build output (log-agent/agent/)
