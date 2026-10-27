@@ -46,6 +46,7 @@ import * as ServerAgent from '@/systems/server-agent.server'
 import * as Sessions from '@/systems/sessions.server'
 import * as SquadServer from '@/systems/squad-server.server'
 import * as UserPresence from '@/systems/user-presence.server'
+import * as Users from '@/systems/users.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 
 // frame-ancestors keeps another site from framing SLM to trick a signed-in admin into clicking its controls
@@ -184,7 +185,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 			startRedirectPath: AR.route('/login'),
 
 			callbackUri: `${ENV.ORIGIN}${AR.route('/login/callback')}`,
-			scope: ['identify'],
+			scope: ['identify', 'connections'],
 		})
 
 		instance.get(AR.route('/login/callback'), loginCallback)
@@ -195,11 +196,17 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 		const token = tokenResult.token as {
 			access_token: string
 			token_type: string
+			scope?: string
 		}
-		const discordUser = await Discord.getOauthUser(getPatchedCtx(req), token)
+		const [discordUser, steamIds] = await Promise.all([
+			Discord.getOauthUser(getPatchedCtx(req), token),
+			Discord.getOauthSteamIds(getPatchedCtx(req), token),
+		])
 		if (!discordUser) {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
+		// before the authorization check: a steam account on an admin list can be what authorizes the user
+		if (steamIds) await Users.syncDiscordConnectionLinks(getPatchedCtx(req), discordUser, steamIds)
 		const ctx = { ...getPatchedCtx(req), user: { discordId: discordUser.id } }
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('site:authorized'))
 		if (denyRes) {

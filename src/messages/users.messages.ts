@@ -164,6 +164,8 @@ export const linkedBy = def('linked by {admin}', (admin?: string) => ({ admin: a
 
 export const selfLinked = def('self-linked')
 
+export const linkedFromDiscord = def('from Discord')
+
 export const unlink = def('Unlink')
 
 // -------- the nickname dialog --------
@@ -199,6 +201,8 @@ export const steamDialogBlurb = def(
 export const steamIdPlaceholder = def('17-digit Steam64 ID')
 
 export const steamLinkedByAdmin = def('Linked by {admin}', (admin: string) => ({ admin }))
+
+export const steamLinkedFromDiscord = def('Connected to your Discord account')
 
 // -------- the discord role and member pickers --------
 

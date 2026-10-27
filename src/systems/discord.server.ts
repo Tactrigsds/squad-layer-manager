@@ -3,6 +3,7 @@ import * as D from 'discord.js'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { formatVersion } from '@/lib/versioning.ts'
 import { z } from '@/lib/zod'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared.models'
 import { toNormalizedEmoji } from '@/models/discord.models'
@@ -301,6 +302,51 @@ export async function getOauthUser(ctx: Partial<CS.AbortSignal>, token: AccessTo
 
 	const data = await fetchDiscordUserRes.json()
 	return DiscordUserSchema.parse(data)
+}
+
+const OauthConnectionsSchema = z.array(z.object({ type: z.string(), id: z.string(), verified: z.boolean() }))
+const CONNECTIONS_TIMEOUT_MS = 5_000
+
+// The steam accounts connected to the token's discord account. Unverified connections are left out: only a verified
+// one proves the discord account owns the steam account. null whenever the answer can't be trusted to be complete,
+// since the caller removes links missing from it. Never throws: sign-in must not depend on this.
+export async function getOauthSteamIds(ctx: Partial<CS.AbortSignal>, token: AccessToken & { scope?: string }): Promise<bigint[] | null> {
+	// discord leaves out a scope the user did not grant, and an empty list from a token without it would read as
+	// every connection having been removed
+	if (!token.scope?.split(' ').includes('connections')) {
+		log.warn('Discord token lacks the connections scope (granted: %s), skipping the steam link sync', token.scope)
+		return null
+	}
+	try {
+		const timeout = AbortSignal.timeout(CONNECTIONS_TIMEOUT_MS)
+		const res = await fetch('https://discord.com/api/users/@me/connections', {
+			headers: { Authorization: `${token.token_type} ${token.access_token}` },
+			signal: ctx.signal ? AbortSignal.any([ctx.signal, timeout]) : timeout,
+		})
+		if (!res.ok) {
+			log.warn('Failed to fetch discord connections: %s %s', res.status, res.statusText)
+			return null
+		}
+		const parsed = OauthConnectionsSchema.safeParse(await res.json())
+		if (!parsed.success) {
+			log.warn({ err: parsed.error }, 'Discord returned connections in an unexpected shape')
+			return null
+		}
+		const steamIds = new Set<bigint>()
+		for (const conn of parsed.data) {
+			if (conn.type !== 'steam') continue
+			const steam = ZodUtils.Steam64IdSchema.safeParse(conn.id)
+			if (!conn.verified || !steam.success) {
+				log.info('Ignoring discord steam connection %s (verified: %s)', conn.id, conn.verified)
+				continue
+			}
+			steamIds.add(BigInt(steam.data))
+		}
+		return [...steamIds]
+	} catch (err) {
+		log.warn({ err }, 'Failed to fetch discord connections')
+		return null
+	}
 }
 
 async function leaveForeignGuild(guild: D.Guild) {

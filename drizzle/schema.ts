@@ -671,8 +671,10 @@ export const users = sqliteTable('users', {
 export type User = typeof users.$inferSelect
 
 // How a steam link came to exist. 'self-serve' is the owner linking their own account; 'assigned' is another SLM
-// user linking it on their behalf, which is the only case with an actor worth recording.
-export const LINK_ORIGINS = ['self-serve', 'assigned'] as const
+// user linking it on their behalf, which is the only case with an actor worth recording. 'discord-connection' is
+// read from the steam connection on the owner's discord account at sign-in, and is removed at sign-in once that
+// connection is gone.
+export const LINK_ORIGINS = ['self-serve', 'assigned', 'discord-connection'] as const
 export type LinkOrigin = (typeof LINK_ORIGINS)[number]
 
 // steam accounts linked to a discord account. steam64Id is the pk (globally unique), so a steam account belongs to

@@ -140,6 +140,84 @@ export async function consumeSteamLinkCode(ctx: C.Db & CS.AbortSignal, input: { 
 	return { code: 'ok' as const, displayName: await resolveDisplayName(ctx, discordId, 'your account') }
 }
 
+// Brings a user's 'discord-connection' links in line with the steam accounts connected to their discord account.
+// Links of other origins are left alone. A steam id linked to a different discord account stays where it is. Never
+// throws: a failure leaves the links as they were and sign-in carries on.
+export async function syncDiscordConnectionLinks(
+	ctx: C.Db & CS.AbortSignal,
+	discordUser: { id: bigint; username: string },
+	connectedSteamIds: bigint[],
+) {
+	const discordId = discordUser.id
+	const ownLinks = E.and(
+		E.eq(Schema.linkedSteamAccounts.discordId, discordId),
+		E.eq(Schema.linkedSteamAccounts.origin, 'discord-connection'),
+	)
+	let res: { added: bigint[]; removed: bigint[]; conflicts: bigint[] }
+	try {
+		res = await DB.runTransaction(ctx, async (ctx) => {
+			const owners =
+				connectedSteamIds.length > 0
+					? await ctx
+							.db()
+							.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id, discordId: Schema.linkedSteamAccounts.discordId })
+							.from(Schema.linkedSteamAccounts)
+							.where(E.inArray(Schema.linkedSteamAccounts.steam64Id, connectedSteamIds))
+					: []
+			const ownerBySteamId = new Map(owners.map((row) => [row.steam64Id, row.discordId]))
+			const toAdd = connectedSteamIds.filter((id) => !ownerBySteamId.has(id))
+			const conflicts = connectedSteamIds.filter((id) => (ownerBySteamId.get(id) ?? discordId) !== discordId)
+
+			const connected = new Set(connectedSteamIds)
+			const toRemove = (
+				await ctx.db().select({ steam64Id: Schema.linkedSteamAccounts.steam64Id }).from(Schema.linkedSteamAccounts).where(ownLinks)
+			)
+				.map((row) => row.steam64Id)
+				.filter((id) => !connected.has(id))
+
+			let added: bigint[] = []
+			if (toAdd.length > 0) {
+				// the link references the discord account, which a first sign-in has not recorded yet
+				await recordDiscordAccount(ctx, discordId, discordUser.username)
+				const rows = await ctx
+					.db()
+					.insert(Schema.linkedSteamAccounts)
+					.values(toAdd.map((steam64Id) => ({ steam64Id, discordId, origin: 'discord-connection' as const, linkedBy: null })))
+					.onConflictDoNothing()
+					.returning({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
+				added = rows.map((row) => row.steam64Id)
+				if (added.length > 0) await recordUserAccount(ctx, discordId, 'steam-linked', { steamIds: added.map(String) })
+			}
+			let removed: bigint[] = []
+			if (toRemove.length > 0) {
+				const rows = await ctx
+					.db()
+					.delete(Schema.linkedSteamAccounts)
+					.where(E.and(ownLinks, E.inArray(Schema.linkedSteamAccounts.steam64Id, toRemove)))
+					.returning({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
+				removed = rows.map((row) => row.steam64Id)
+				if (removed.length > 0) await recordUserAccount(ctx, discordId, 'steam-unlinked', { steamIds: removed.map(String) })
+			}
+			return { added, removed, conflicts }
+		})
+	} catch (err) {
+		log.error({ err }, 'Failed to sync steam links from the discord connections of %s', discordId)
+		return
+	}
+	log.info(
+		'Synced steam links from the discord connections of %s: %d connected, added [%s], removed [%s], linked elsewhere [%s]',
+		discordId,
+		connectedSteamIds.length,
+		res.added.join(', '),
+		res.removed.join(', '),
+		res.conflicts.join(', '),
+	)
+	if (res.added.length > 0 || res.removed.length > 0) {
+		Rbac.invalidateUser(discordId)
+		PlayerDiscordRoles.invalidate()
+	}
+}
+
 function selectLinks(ctx: C.Db) {
 	return ctx
 		.db()
