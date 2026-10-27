@@ -76,6 +76,22 @@ export const teamPlayerCount = def('{count, plural, one {# player} other {# play
 
 export const scorelineHint = def('Kills / Wounds / Deaths')
 
+export const squadScoreHint = def('Kills / Wounds / Deaths of the squad, K/D {kd}', (kd: string) => ({ kd }))
+
+export const historicalSortButton = def('Sort')
+
+export const historicalSortName = def('Name')
+
+export const historicalSortTime = def('Time on team')
+
+export const countedOnly = def('Counted only')
+
+export const countedOnlyHint = def(
+	'Hide the players the team breakdown does not count: too little time on their team, time split too evenly between teams, never in a squad, or no kills, deaths or wounds',
+)
+
+export const noHistoricalPlayersMatch = def('No players match')
+
 export const timeOnTeam = def('{time} on this team', (time: string) => ({ time }))
 
 export const alsoOnOtherTeam = def('Also played {time} on the other team', (time: string) => ({ time }))

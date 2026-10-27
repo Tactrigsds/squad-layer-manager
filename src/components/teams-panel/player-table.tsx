@@ -19,7 +19,6 @@ import {
 	rowPlayerId,
 	sortDirFor,
 	type SquadGroupInfo,
-	type StatsSortMetric,
 } from '@/components/teams-panel/teams-panel.helpers'
 import { MenuSheet, sheetMenuSlots } from '@/components/ui/menu-sheet'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -31,29 +30,60 @@ import { useTruncatedCellReveal } from '@/lib/use-truncated-cell-reveal'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as CHAT from '@/models/chat.models'
 import * as SM from '@/models/squad.models'
 import type * as TeamsPanelModels from '@/models/teams-panel.models'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as TSWClient from '@/systems/teamswaps.client'
 
 // module-level renderers so their identity is stable across column rebuilds — an inline closure would
 // be a new component type each rebuild, remounting the header and flickering the open popover
-function statsHeader<T extends TeamsPanelModels.EnrichedPlayer>({ column, table }: HeaderContext<T, number>) {
+function statsHeader<T extends TeamsPanelModels.EnrichedPlayer>({ table }: HeaderContext<T, number>) {
 	const { statsSort, statsMayBeInaccurate } = table.options.meta as BasePlayerTableMeta
-	return <StatsColumnHeader column={column} statsSort={statsSort} mayBeInaccurate={statsMayBeInaccurate} />
+	return <StatsColumnHeader statsSort={statsSort} mayBeInaccurate={statsMayBeInaccurate} />
 }
 
 // the sort depends on the metric picked in the header popover, so this column is built per-table via useMemo.
 // sortingFn reads row.original instead of the accessor value: tanstack caches accessor values per row
 // (row._valuesCache), so after a metric change accessor-based sorting would re-sort by the old metric
-function statsColumn<T extends TeamsPanelModels.EnrichedPlayer>(metric: StatsSortMetric): ColumnDef<T, number> {
+function statsColumn<T extends TeamsPanelModels.EnrichedPlayer>(metric: CHAT.StatMetric): ColumnDef<T, number> {
 	return {
 		id: 'stats',
-		accessorFn: (row) => row.stats?.[metric] ?? 0,
-		sortingFn: (a, b) => (a.original.stats?.[metric] ?? 0) - (b.original.stats?.[metric] ?? 0),
+		accessorFn: (row) => CHAT.statForSort(row.stats, metric),
+		sortingFn: (a, b) => compareNumbers(CHAT.statForSort(a.original.stats, metric), CHAT.statForSort(b.original.stats, metric)),
 		sortDescFirst: true,
 		header: statsHeader,
+	}
+}
+
+// equal infinite ratios would otherwise subtract to NaN
+function compareNumbers(a: number, b: number) {
+	return a === b ? 0 : a < b ? -1 : 1
+}
+
+// Never shown. Sorts each player by their squad's summed stats. Squads that tie fall back to comparing keys, so each
+// squad's rows stay contiguous for the squad entry that follows it in the sort (TeamsPanelPrt.statsSorting).
+// Squadless players sort last in both directions.
+function squadStatsColumn<T extends TeamsPanelModels.EnrichedPlayer>(
+	metric: CHAT.StatMetric,
+	squadKeyOf: (player: T) => string,
+	scores: Map<string, CHAT.PlayerStats>,
+): ColumnDef<T, string | undefined> {
+	return {
+		id: 'squadStats',
+		accessorFn: (row) => (row.squadId === null ? undefined : squadKeyOf(row)),
+		sortUndefined: 'last',
+		sortingFn: (a, b) => {
+			const keyA = squadKeyOf(a.original)
+			const keyB = squadKeyOf(b.original)
+			if (keyA === keyB) return 0
+			return (
+				compareNumbers(CHAT.statForSort(scores.get(keyA), metric), CHAT.statForSort(scores.get(keyB), metric)) || (keyA < keyB ? -1 : 1)
+			)
+		},
+		sortDescFirst: true,
 	}
 }
 
@@ -72,6 +102,8 @@ export function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer, M extends
 	stores: SquadServerFrame.KeyProp
 	// when provided, and when the sort permits it, players are grouped under squad-separator headers
 	getSquadGroup?: (player: T) => SquadGroupInfo | null
+	// the player's squadGroupKey. Stable, since a change rebuilds the columns.
+	squadKeyOf: (player: T) => string
 	columnFit?: FitCols.Spec
 	className?: string
 }) {
@@ -95,10 +127,22 @@ export function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer, M extends
 		[stores],
 	)
 	const dragRef = React.useRef<{ index: number; select: boolean } | null>(null)
-	const [statsMetric, setStatsMetric] = React.useState<StatsSortMetric>('kills')
+	const statsMetric = Zus.useStore(props.stores.squadServer!, TeamsPanelPrt.Sel.statsMetric(props.sortingTarget))
 	const [statsSortOpen, setStatsSortOpen] = React.useState(false)
-	const columns = React.useMemo(() => [...props.columns.defs, statsColumn<T>(statsMetric)], [props.columns.defs, statsMetric])
-	const columnVisibility = React.useMemo(() => ({ role: showSpoilers, vehicle: showSpoilers, stats: showSpoilers }), [showSpoilers])
+	const squadScores = Zus.useStore(
+		props.stores.squadServer!,
+		MatchHistoryClient.currentMatch$(props.stores.squadServer!.serverId),
+		TeamsPanelPrt.Sel.squadScores,
+	)
+	const squadKeyOf = props.squadKeyOf
+	const columns = React.useMemo(
+		() => [...props.columns.defs, statsColumn<T>(statsMetric), squadStatsColumn<T>(statsMetric, squadKeyOf, squadScores)],
+		[props.columns.defs, statsMetric, squadKeyOf, squadScores],
+	)
+	const columnVisibility = React.useMemo(
+		() => ({ role: showSpoilers, vehicle: showSpoilers, stats: showSpoilers, squadStats: false }),
+		[showSpoilers],
+	)
 
 	const table = useReactTable<T>({
 		data: props.data,
@@ -113,10 +157,12 @@ export function PlayerTable<T extends TeamsPanelModels.EnrichedPlayer, M extends
 			...props.meta,
 			statsSort: {
 				metric: statsMetric,
-				setMetric: setStatsMetric,
+				scope: sortDirFor(sorting, 'squadStats') ? 'squads' : sortDirFor(sorting, 'stats') ? 'players' : null,
+				dir: sortDirFor(sorting, 'squadStats') || sortDirFor(sorting, 'stats'),
 				open: statsSortOpen,
 				setOpen: setStatsSortOpen,
-				sorted: sortDirFor(sorting, 'stats'),
+				set: (sort) => TeamsPanelPrt.Actions.setStatsSort(panelStores, props.sortingTarget, sort),
+				clear: () => TeamsPanelPrt.Actions.setSorting(panelStores, props.sortingTarget, []),
 			},
 		} satisfies BasePlayerTableMeta,
 	})

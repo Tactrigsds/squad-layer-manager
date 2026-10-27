@@ -718,3 +718,21 @@ export const sortByStatsHint = def('Sort by kills/wounds/deaths')
 export const sortDescending = def('Desc')
 
 export const sortAscending = def('Asc')
+
+export const sortKd = def('K/D')
+
+export const sortWd = def('W/D')
+
+export const sortPlayersScope = def('Players')
+
+export const sortSquadsScope = def('Squads')
+
+export const sortSquadsScopeHint = def("Sort squads by their players' combined stats")
+
+// a stats sort, as the phone sort sheet and the sort button's hint name it
+export const statsSortLabel = def('{scope, select, squads {Squad {stat}} other {{stat}}}', (scope: 'players' | 'squads', stat: string) => ({
+	scope,
+	stat,
+}))
+
+export const squadScoreHint = def("Kills/wounds/deaths of the squad's current players. K/D {kd}", (kd: string) => ({ kd }))

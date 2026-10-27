@@ -60,9 +60,9 @@ are ahead of the other's, shaded in the leading team's colour.
 
 ### Spoilers
 
-The current match's scoreline, its tickets, and each player's role, vehicle and kills, wounds and deaths are hidden by
-default, since they can give an in-game advantage. Turn on _Show Spoilers_ in the teams panel to show them. Spoilers
-show by themselves once a match ends.
+The current match's scoreline, its tickets, each player's role and vehicle, and each player's and squad's kills, wounds
+and deaths are hidden by default, since they can give an in-game advantage. Turn on _Show Spoilers_ in the teams panel
+to show them. Spoilers show by themselves once a match ends.
 
 ### Population
 

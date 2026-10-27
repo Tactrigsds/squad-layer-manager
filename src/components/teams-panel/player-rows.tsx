@@ -24,6 +24,7 @@ import { TableCell, TableRow } from '@/components/ui/table'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as Str from '@/lib/string-utils'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
 import * as SM_Msgs from '@/messages/squad.messages'
@@ -64,12 +65,23 @@ function SquadGroupHeaderRowView(props: {
 		if (RC.opensWindow(e.target)) return
 		TeamsPanelPrt.Actions.toggleSquadCollapsed({ teamsPanel: props.stores.squadServer! }, props.info.key)
 	}
+	const { squad, creatorName, faction, totalSize, score } = props.info
 	const chevron = (
-		<Icons.ChevronDown
-			className={cn('ms-auto size-3.5 shrink-0 text-text-3 transition-transform', props.collapsed && '-rotate-90 rtl:rotate-90')}
-		/>
+		<span className="ms-auto flex shrink-0 items-center gap-2">
+			{score && (
+				<span
+					className="font-mono text-muted-foreground whitespace-nowrap"
+					title={tr.text(SM_Msgs.squadScoreHint(Str.formatRatio(score.kills, score.deaths)))}
+				>
+					{score.kills}/{score.wounds}/{score.deaths}
+					<span className="ms-1.5">{Str.formatRatio(score.kills, score.deaths)}</span>
+				</span>
+			)}
+			<Icons.ChevronDown
+				className={cn('size-3.5 shrink-0 text-text-3 transition-transform', props.collapsed && '-rotate-90 rtl:rotate-90')}
+			/>
+		</span>
 	)
-	const { squad, creatorName, faction, totalSize } = props.info
 	const shownCount = props.playerIds.length
 	const checkbox = (
 		<div onClick={(e) => e.stopPropagation()}>
