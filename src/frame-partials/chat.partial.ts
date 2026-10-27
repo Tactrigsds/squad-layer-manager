@@ -23,6 +23,10 @@ export type ChatSlice = {
 	selectedMatchOrdinal: number | null
 	// which body the activity panel shows while a historical match is selected; meaningless when live
 	historicalView: 'feed' | 'teams'
+	historicalTeamsSort: CHAT.HistoricalTeamsSort
+	historicalTeamsSearch: string
+	// hides the players the team breakdown leaves out
+	historicalTeamsCountedOnly: boolean
 	wrapLines: boolean
 }
 
@@ -48,6 +52,9 @@ export function initChat(args: Args) {
 		eventGeneration: 0,
 		selectedMatchOrdinal: null,
 		historicalView: 'feed',
+		historicalTeamsSort: CHAT.DEFAULT_HISTORICAL_TEAMS_SORT,
+		historicalTeamsSearch: '',
+		historicalTeamsCountedOnly: false,
 		wrapLines: true,
 		handleChatEvents(events) {
 			const config = SettingsClient.getSettings()
@@ -161,6 +168,15 @@ export namespace Sel {
 	}
 	export function historicalView(store: Store) {
 		return store.chat.historicalView
+	}
+	export function historicalTeamsSort(store: Store) {
+		return store.chat.historicalTeamsSort
+	}
+	export function historicalTeamsSearch(store: Store) {
+		return store.chat.historicalTeamsSearch
+	}
+	export function historicalTeamsCountedOnly(store: Store) {
+		return store.chat.historicalTeamsCountedOnly
 	}
 	// the match the dashboard is showing: the live one, or the historical one picked out of recent matches
 	export function displayMatch(store: Store, currentMatch: MH.MatchDetails | undefined, recentMatches: readonly MH.MatchDetails[]) {
@@ -277,6 +293,18 @@ export namespace Actions {
 
 	export function setHistoricalView(stores: KeyProp, view: ChatSlice['historicalView']) {
 		Zus.toPartialStore(stores.chat, 'chat').setState({ historicalView: view })
+	}
+
+	export function setHistoricalTeamsSort(stores: KeyProp, historicalTeamsSort: CHAT.HistoricalTeamsSort) {
+		Zus.toPartialStore(stores.chat, 'chat').setState({ historicalTeamsSort })
+	}
+
+	export function setHistoricalTeamsSearch(stores: KeyProp, historicalTeamsSearch: string) {
+		Zus.toPartialStore(stores.chat, 'chat').setState({ historicalTeamsSearch })
+	}
+
+	export function setHistoricalTeamsCountedOnly(stores: KeyProp, historicalTeamsCountedOnly: boolean) {
+		Zus.toPartialStore(stores.chat, 'chat').setState({ historicalTeamsCountedOnly })
 	}
 
 	export function setWrapLines(stores: KeyProp, wrapLines: boolean) {

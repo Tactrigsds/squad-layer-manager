@@ -2,12 +2,13 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import type { SquadDetailsWindowProps } from '@/components/squad-details-window.helpers'
+import { StatsSortOptions } from '@/components/stats-sort-options'
+import { statMetricLabel } from '@/components/stats-sort-options.helpers'
 import {
 	FILTER_ALL,
 	type FilterOption,
 	sameFilterOptions,
-	STATS_SORT_METRICS,
-	type StatsSortColumn,
+	STATS_HEADING_LETTERS,
 	type StatsSortState,
 } from '@/components/teams-panel/teams-panel.helpers'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -137,16 +138,11 @@ export const ColumnFilterSelect = React.memo(
 		sameFilterOptions(prev.options, next.options),
 )
 
-export function StatsColumnHeader({
-	column,
-	statsSort,
-	mayBeInaccurate,
-}: {
-	column: StatsSortColumn
-	statsSort: StatsSortState
-	mayBeInaccurate: boolean
-}) {
-	const { metric, setMetric, open, setOpen, sorted } = statsSort
+export function StatsColumnHeader({ statsSort, mayBeInaccurate }: { statsSort: StatsSortState; mayBeInaccurate: boolean }) {
+	const { metric, scope, dir, open, setOpen } = statsSort
+	const metricLabel = tr.text(statMetricLabel(metric))
+	// a lit letter names a player sort by kills, wounds or deaths; any other stats sort lights the whole heading
+	const wholeHeadingLit = scope === 'squads' || (scope === 'players' && (metric === 'kd' || metric === 'wd'))
 	return (
 		<span className="inline-flex items-center gap-1">
 			{mayBeInaccurate && (
@@ -165,68 +161,36 @@ export function StatsColumnHeader({
 						onClick={(e) => e.stopPropagation()}
 						className="inline-flex items-center"
 						title={tr.text(
-							sorted
-								? SM_Msgs.sortedByStat(tr.text(STATS_SORT_METRICS.find((s) => s.metric === metric)!.label()))
-								: SM_Msgs.sortByStatsHint(),
+							scope ? SM_Msgs.sortedByStat(tr.text(SM_Msgs.statsSortLabel(scope, metricLabel))) : SM_Msgs.sortByStatsHint(),
 						)}
 					>
-						<span>
-							{STATS_SORT_METRICS.map(({ metric: m, short }, i) => (
+						<span className={wholeHeadingLit ? 'text-primary font-semibold' : undefined}>
+							{STATS_HEADING_LETTERS.map(({ metric: m, short }, i) => (
 								<React.Fragment key={m}>
 									{i > 0 && <span className="text-muted-foreground">/</span>}
-									<span className={sorted && metric === m ? 'text-primary font-semibold' : undefined}>{tr.text(short())}</span>
+									<span className={scope === 'players' && metric === m ? 'text-primary font-semibold' : undefined}>
+										{tr.text(short())}
+									</span>
 								</React.Fragment>
 							))}
 						</span>
+						{wholeHeadingLit && scope && (
+							<span className="ms-1 text-primary font-semibold">{tr.text(SM_Msgs.statsSortLabel(scope, metricLabel))}</span>
+						)}
 						<Icons.ArrowUpDown className="ms-1 h-3 w-3 text-muted-foreground" />
 					</button>
 				</PopoverTrigger>
-				<PopoverContent side="top" align="start" className="w-auto p-1" onClick={(e) => e.stopPropagation()}>
-					<div className="flex flex-col gap-0.5">
-						<div className="flex gap-0.5">
-							{STATS_SORT_METRICS.map(({ metric: m, label }) => (
-								<button
-									key={m}
-									type="button"
-									className={cn(
-										'text-xs px-2 py-0.5 rounded',
-										sorted && metric === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-									)}
-									onClick={() => {
-										setMetric(m)
-										column.toggleSorting(sorted !== 'asc')
-									}}
-								>
-									{tr.text(label())}
-								</button>
-							))}
-						</div>
-						<div className="flex gap-0.5">
-							{(['desc', 'asc'] as const).map((dir) => (
-								<button
-									key={dir}
-									type="button"
-									className={cn(
-										'text-xs px-2 py-0.5 rounded',
-										sorted === dir ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-									)}
-									onClick={() => column.toggleSorting(dir === 'desc')}
-								>
-									{tr.text(dir === 'desc' ? SM_Msgs.sortDescending() : SM_Msgs.sortAscending())}
-								</button>
-							))}
-							<button
-								type="button"
-								className="text-xs px-2 py-0.5 rounded text-muted-foreground hover:text-foreground ms-auto"
-								onClick={() => {
-									column.clearSorting()
-									setOpen(false)
-								}}
-							>
-								{tr.text(SM_Msgs.clearFilter())}
-							</button>
-						</div>
-					</div>
+				<PopoverContent side="top" align="start" className="w-auto max-w-80 p-1" onClick={(e) => e.stopPropagation()}>
+					<StatsSortOptions
+						scope={scope}
+						sortKey={metric}
+						desc={dir !== 'asc'}
+						onPick={(pick) => statsSort.set({ scope: pick.scope, metric: pick.key, desc: pick.desc })}
+						onClear={() => {
+							statsSort.clear()
+							setOpen(false)
+						}}
+					/>
 				</PopoverContent>
 			</Popover>
 		</span>

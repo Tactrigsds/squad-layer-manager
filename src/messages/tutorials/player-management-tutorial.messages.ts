@@ -280,7 +280,11 @@ export const showSpoilers = {
 
 export const scoreSorting = {
 	title: def('Sort by score'),
-	body: def(rt('Click <em>K/W/D</em> to sort by kills, wounds or deaths, highest or lowest first.')),
+	body: def(
+		rt(
+			"Click <em>K/W/D</em> to sort players, or squads by their players' combined score, by kills, wounds, deaths, K/D or W/D, highest or lowest first. Each squad's header row shows its kills, wounds, deaths and K/D while spoilers are shown.",
+		),
+	),
 }
 
 export const selecting = {

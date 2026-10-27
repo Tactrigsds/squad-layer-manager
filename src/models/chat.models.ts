@@ -53,6 +53,54 @@ export type PlayerStats = {
 
 export type PlayerStatsMap = Record<SM.PlayerId, PlayerStats>
 
+export type StatsSortScope = 'players' | 'squads'
+
+export const STAT_METRICS = ['kills', 'wounds', 'deaths', 'kd', 'wd'] as const
+export type StatMetric = (typeof STAT_METRICS)[number]
+
+// A ratio with no deaths ranks above any with deaths, as Str.formatRatio displays it as infinite.
+function ratioForSort(numerator: number, deaths: number) {
+	if (deaths === 0) return numerator > 0 ? Number.POSITIVE_INFINITY : 0
+	return numerator / deaths
+}
+
+export function statForSort(stats: PlayerStats | undefined, metric: StatMetric): number {
+	if (!stats) return 0
+	switch (metric) {
+		case 'kills':
+		case 'wounds':
+		case 'deaths':
+			return stats[metric]
+		case 'kd':
+			return ratioForSort(stats.kills, stats.deaths)
+		case 'wd':
+			return ratioForSort(stats.wounds, stats.deaths)
+		default:
+			assertNever(metric)
+	}
+}
+
+// How the historical teams view orders each team. 'squads' keeps players under their squads and orders the squads by
+// their summed stats; 'players' lists a team's players in one run. 'default' is squad number, then name.
+export type HistoricalTeamsSort = {
+	scope: StatsSortScope
+	key: 'default' | 'name' | 'time' | StatMetric
+	desc: boolean
+}
+
+export const DEFAULT_HISTORICAL_TEAMS_SORT: HistoricalTeamsSort = { scope: 'squads', key: 'default', desc: false }
+
+export function sumPlayerStats(stats: Iterable<PlayerStats>): PlayerStats {
+	const sum = { kills: 0, wounds: 0, deaths: 0, teamkills: 0 }
+	for (const s of stats) {
+		sum.kills += s.kills
+		sum.wounds += s.wounds
+		sum.deaths += s.deaths
+		sum.teamkills += s.teamkills
+	}
+	return sum
+}
+
 export type InterpolableState = {
 	// the live roster: only players currently connected
 	players: Map<SM.PlayerId, SM.Player>

@@ -7,7 +7,7 @@ import type { SwitchRequestsWindowProps } from '@/components/switch-requests-win
 import { useOpenTeamSwapsWindow } from '@/components/team-swaps-window.helpers'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { ColumnFilterSelect } from '@/components/teams-panel/cells'
-import { FILTER_NONE, PHONE_SORTS, type PhoneSort, useGroupingModes } from '@/components/teams-panel/teams-panel.helpers'
+import { FILTER_NONE, isPhoneSortActive, PHONE_SORTS, useGroupingModes } from '@/components/teams-panel/teams-panel.helpers'
 import type { TimeoutsWindowProps } from '@/components/timeouts-window.helpers'
 import { Button } from '@/components/ui/button'
 import { OpenWindowInteraction } from '@/components/ui/draggable-window'
@@ -181,10 +181,7 @@ export function PhoneSortSheet(props: {
 		ClientOnlySettings.Store,
 		TeamsPanelPrt.Sel.squadsWithTeam,
 	)
-	// the combined default sorts by faction then squad; anything else in first place is a sort the user picked
-	const activeKey = sorting.find((s) => s.id !== 'faction')?.id ?? 'squad'
-	const pick = (sort: PhoneSort) =>
-		TeamsPanelPrt.Actions.setSorting(panelStores, 'combined', sort.id === 'squad' ? TeamsPanelPrt.DEFAULT_COMBINED_SORTING : [sort])
+	const statsMetric = Zus.useStore(squadServer, TeamsPanelPrt.Sel.statsMetric('combined'))
 	const row = 'flex min-h-(--mi-h) items-center gap-3 px-3 text-base'
 	return (
 		<MenuSheet
@@ -199,10 +196,19 @@ export function PhoneSortSheet(props: {
 		>
 			<div className="fd-mlabel">{tr.text(SM_Msgs.sortBy())}</div>
 			{PHONE_SORTS.filter((o) => !o.spoiler || showSpoilers).map((o) => (
-				<button key={o.key} type="button" className={cn(row, 'w-full text-start')} onClick={() => pick(o.sort)}>
-					<span className="fd-rad" data-state={activeKey === o.key ? 'checked' : undefined} />
+				<button
+					key={o.key}
+					type="button"
+					className={cn(row, 'w-full text-start')}
+					onClick={() =>
+						o.stats
+							? TeamsPanelPrt.Actions.setStatsSort(panelStores, 'combined', { ...o.stats, desc: true })
+							: TeamsPanelPrt.Actions.setSorting(panelStores, 'combined', o.sorting)
+					}
+				>
+					<span className="fd-rad" data-state={isPhoneSortActive(o, sorting, statsMetric) ? 'checked' : undefined} />
 					{o.label()}
-					<span className="ms-auto font-mono text-xs text-text-3">{o.sort.desc ? '↓' : '↑'}</span>
+					<span className="ms-auto font-mono text-xs text-text-3">{o.sorting[0].desc ? '↓' : '↑'}</span>
 				</button>
 			))}
 			<div className="fd-msep" />

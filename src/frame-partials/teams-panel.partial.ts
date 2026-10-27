@@ -7,6 +7,7 @@ import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import type * as BM from '@/models/battlemetrics.models'
+import * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
@@ -30,6 +31,25 @@ export const DEFAULT_COMBINED_SORTING: SortingState = [
 	{ id: 'squad', desc: false },
 ]
 
+// Sorts players, or squads by their players' summed stats, by the metric in TeamsPanel.statsMetric. The squad entry
+// keeps each squad's players in role order.
+export function statsSorting(scope: CHAT.StatsSortScope, desc: boolean): SortingState {
+	switch (scope) {
+		case 'players':
+			return [{ id: 'stats', desc }]
+		case 'squads':
+			return [
+				{ id: 'squadStats', desc },
+				{ id: 'squad', desc: false },
+			]
+		default:
+			assertNever(scope)
+	}
+}
+
+// sorts that would leak combat stats while spoilers are hidden
+const SPOILER_SORT_IDS = ['stats', 'squadStats']
+
 export type TeamsPanel = {
 	searchQuery: string
 	showSelected: boolean
@@ -39,6 +59,8 @@ export type TeamsPanel = {
 	groupFilter: string | null
 	squadFilters: Record<SquadFilterTarget, string | null>
 	sorting: Record<SortingTarget, SortingState>
+	// what the 'stats' and 'squadStats' sorts compare
+	statsMetric: Record<SortingTarget, CHAT.StatMetric>
 	// the phone list shows one side or both; a tap on its team button cycles through the three
 	phoneTeam: 'both' | MH.NormedTeamId
 	// squad rows fold their players away: the button sets the base for every squad, a tap on one row overrides it
@@ -74,6 +96,7 @@ export function initTeamsPanel(args: Args) {
 		groupFilter: null,
 		squadFilters: { A: null, B: null, combined: null },
 		sorting: { teams: DEFAULT_TEAM_SORTING, combined: DEFAULT_COMBINED_SORTING },
+		statsMetric: { teams: 'kills', combined: 'kills' },
 		phoneTeam: 'both',
 		squadsCollapsed: false,
 		squadCollapseOverrides: {},
@@ -244,14 +267,29 @@ export namespace Sel {
 	export function squadFilter(target: SquadFilterTarget) {
 		return (store: Store) => store.teamsPanel.squadFilters[target]
 	}
-	export function sorting(target: SortingTarget) {
-		return (store: Store) => store.teamsPanel.sorting[target]
+	// The sort in effect. A sort by combat stats gives way to the default while spoilers are hidden, since the row
+	// order alone would give the stats away. The stored sort is kept, so showing spoilers again restores it.
+	export const sorting = RSel.memoizeFactory((target: SortingTarget) =>
+		RSel.createSelector(
+			[(store: Store) => store.teamsPanel.sorting[target], (store: Pick<Deps, 'showSpoilers'>) => store.showSpoilers],
+			(sort, showSpoilers) =>
+				showSpoilers || !sort.some((s) => SPOILER_SORT_IDS.includes(s.id))
+					? sort
+					: target === 'teams'
+						? DEFAULT_TEAM_SORTING
+						: DEFAULT_COMBINED_SORTING,
+		),
+	)
+
+	export function statsMetric(target: SortingTarget) {
+		return (store: Store) => store.teamsPanel.statsMetric[target]
 	}
 
 	// squad-separator rows are only coherent while the sort keeps same-squad rows contiguous
 	export function squadGroupsEnabled(target: SortingTarget) {
-		return (store: Store) => {
-			const sort = store.teamsPanel.sorting[target]
+		return (store: Store & Pick<Deps, 'showSpoilers'>) => {
+			const sort = sorting(target)(store)
+			if (sort[0]?.id === 'squadStats') return true
 			return target === 'teams' ? sort[0]?.id === 'squad' : sort[0]?.id === 'faction' && sort[1]?.id === 'squad'
 		}
 	}
@@ -322,6 +360,36 @@ export namespace Sel {
 				}
 			}
 			return sizes
+		},
+	)
+
+	// Each squad's summed K/W/D, by squadGroupKey, off its current members on the unfiltered roster. Players who left
+	// the squad take their stats with them. Squadless players have no entry.
+	export const squadScores = RSel.createSelector(
+		[
+			(...[store, currentMatch]: RosterInputs) => ChatPrt.Sel.playersForTeam('A')(store, currentMatch),
+			(...[store, currentMatch]: RosterInputs) => ChatPrt.Sel.playersForTeam('B')(store, currentMatch),
+			(...[store]: RosterInputs) => ChatPrt.Sel.chatState(store).playerStats,
+		],
+		(playersA, playersB, playerStats) => {
+			const statsBySquad = new Map<string, CHAT.PlayerStats[]>()
+			for (const [normedTeam, players] of [
+				['A', playersA],
+				['B', playersB],
+			] as const) {
+				for (const player of players) {
+					if (player.squadId === null) continue
+					const key = squadGroupKey(normedTeam, player.squadId)
+					const stats = playerStats[SM.PlayerIds.getPlayerId(player.ids)]
+					if (!stats) continue
+					const members = statsBySquad.get(key)
+					if (members) members.push(stats)
+					else statsBySquad.set(key, [stats])
+				}
+			}
+			const scores = new Map<string, CHAT.PlayerStats>()
+			for (const [key, members] of statsBySquad) scores.set(key, CHAT.sumPlayerStats(members))
+			return scores
 		},
 	)
 
@@ -499,6 +567,19 @@ export namespace Actions {
 		}))
 	}
 
+	// Always writes a fresh sorting array: the table re-sorts on a change of sorting state, not of the column defs a new
+	// metric rebuilds.
+	export function setStatsSort(
+		stores: KeyProp,
+		target: SortingTarget,
+		sort: { scope: CHAT.StatsSortScope; metric: CHAT.StatMetric; desc: boolean },
+	) {
+		slice(stores).setState((s) => ({
+			sorting: { ...s.sorting, [target]: statsSorting(sort.scope, sort.desc) },
+			statsMetric: { ...s.statsMetric, [target]: sort.metric },
+		}))
+	}
+
 	export function onSortingChange(stores: KeyProp, target: SortingTarget): OnChangeFn<SortingState> {
 		return (update) => setSorting(stores, target, update)
 	}
@@ -555,6 +636,7 @@ export namespace Actions {
 			groupFilter: null,
 			squadFilters: { A: null, B: null, combined: null },
 			sorting: { teams: DEFAULT_TEAM_SORTING, combined: DEFAULT_COMBINED_SORTING },
+			statsMetric: { teams: 'kills', combined: 'kills' },
 		})
 	}
 }

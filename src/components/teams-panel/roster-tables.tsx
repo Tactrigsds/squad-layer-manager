@@ -416,6 +416,8 @@ export function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: st
 	const groupColorByName = useGroupColorByName(groups, groupingModes)
 	const squads = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.squadsForTeam(props.teamId))
 	const squadSizes = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadSizes)
+	const squadScores = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadScores)
+	const showSpoilers = Zus.useStore(squadServer, SquadServerFrame.Sel.showSpoilers)
 	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters(props.teamId))
 	const columnFit = React.useMemo(
@@ -429,13 +431,18 @@ export function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: st
 		[squadServer, props.teamId],
 	)
 
+	const squadKeyOf = React.useCallback(
+		(player: TeamsPanelModels.EnrichedPlayer) => TeamsPanelPrt.squadGroupKey(props.teamId, player.squadId),
+		[props.teamId],
+	)
 	const getSquadGroup = (player: TeamsPanelModels.EnrichedPlayer): SquadGroupInfo | null => {
-		const key = TeamsPanelPrt.squadGroupKey(props.teamId, player.squadId)
+		const key = squadKeyOf(player)
 		const totalSize = squadSizes.get(key) ?? 0
-		if (player.squadId === null) return { key, squad: null, creatorName: null, faction: null, totalSize }
+		if (player.squadId === null) return { key, squad: null, creatorName: null, faction: null, totalSize, score: null }
 		const squad = squads.find((s) => s.squadId === player.squadId)
 		if (!squad) return null
-		return { key, squad, creatorName: creatorNames.get(squad.creator) || null, faction: null, totalSize }
+		const score = showSpoilers ? (squadScores.get(key) ?? null) : null
+		return { key, squad, creatorName: creatorNames.get(squad.creator) || null, faction: null, totalSize, score }
 	}
 
 	const renderCtx = useRenderCtx(props.stores)
@@ -463,10 +470,15 @@ export function TeamPlayerTable(props: { teamId: MH.NormedTeamId; className?: st
 			)}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
+			squadKeyOf={squadKeyOf}
 			columnFit={columnFit}
 			className={props.className}
 		/>
 	)
+}
+
+function combinedSquadKeyOf(player: CombinedPlayer) {
+	return TeamsPanelPrt.squadGroupKey(player.normedTeam, player.squadId)
 }
 
 export function CombinedPlayerTable(props: { className?: string; stores: SquadServerFrame.KeyProp }) {
@@ -507,6 +519,8 @@ export function CombinedPlayerTable(props: { className?: string; stores: SquadSe
 	const displayTeamsNormalized = Zus.useStore(ClientOnlySettings.Store, (s) => s.displayTeamsNormalized)
 	const ordinal = match?.ordinal ?? 0
 	const squadSizes = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadSizes)
+	const squadScores = Zus.useStore(squadServer, currentMatch$, TeamsPanelPrt.Sel.squadScores)
+	const showSpoilers = Zus.useStore(squadServer, SquadServerFrame.Sel.showSpoilers)
 	const statsMayBeInaccurate = Zus.useStore(squadServer, currentMatch$, ChatPrt.Sel.statsMayBeInaccurate)
 	const filters = Zus.useStore(squadServer, TeamsPanelPrt.Sel.columnFilters('combined'))
 	const phone = Browser.useIsSmallViewport()
@@ -552,16 +566,17 @@ export function CombinedPlayerTable(props: { className?: string; stores: SquadSe
 	const getSquadGroup = React.useCallback(
 		(player: CombinedPlayer): SquadGroupInfo | null => {
 			const faction = { label: getFaction(player.normedTeam), color: getTeamColor(player.normedTeam) }
-			const key = TeamsPanelPrt.squadGroupKey(player.normedTeam, player.squadId)
+			const key = combinedSquadKeyOf(player)
 			const totalSize = squadSizes.get(key) ?? 0
-			if (player.squadId === null) return { key, squad: null, creatorName: null, faction, totalSize }
+			if (player.squadId === null) return { key, squad: null, creatorName: null, faction, totalSize, score: null }
 			const squad = squadsWithTeam.find(
 				({ squad: s, normedTeam }) => s.squadId === player.squadId && normedTeam === player.normedTeam,
 			)?.squad
 			if (!squad) return null
-			return { key, squad, creatorName: creatorNames.get(squad.creator) || null, faction, totalSize }
+			const score = showSpoilers ? (squadScores.get(key) ?? null) : null
+			return { key, squad, creatorName: creatorNames.get(squad.creator) || null, faction, totalSize, score }
 		},
-		[squadsWithTeam, getFaction, getTeamColor, creatorNames, squadSizes],
+		[squadsWithTeam, getFaction, getTeamColor, creatorNames, squadSizes, squadScores, showSpoilers],
 	)
 
 	const renderCtx = useRenderCtx(props.stores)
@@ -594,6 +609,7 @@ export function CombinedPlayerTable(props: { className?: string; stores: SquadSe
 			label={tr.text(SM_Msgs.combinedTableLabel())}
 			stores={props.stores}
 			getSquadGroup={getSquadGroup}
+			squadKeyOf={combinedSquadKeyOf}
 			columnFit={columnFit}
 			className={props.className}
 		/>

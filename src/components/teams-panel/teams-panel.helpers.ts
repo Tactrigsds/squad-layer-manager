@@ -2,6 +2,7 @@ import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import React from 'react'
 
 import type * as RC from '@/components/feed/render-context'
+import { statMetricLabel } from '@/components/stats-sort-options.helpers'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as TeamsPanelPrt from '@/frame-partials/teams-panel.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -9,6 +10,7 @@ import type * as FitCols from '@/lib/fitted-columns'
 import * as RSel from '@/lib/reselect'
 import * as Zus from '@/lib/zustand'
 import * as SM_Msgs from '@/messages/squad.messages'
+import type * as CHAT from '@/models/chat.models'
 import * as MH from '@/models/match-history.models'
 import * as PG from '@/models/player-groupings.models'
 import * as SM from '@/models/squad.models'
@@ -18,14 +20,39 @@ import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as TSWClient from '@/systems/teamswaps.client'
 
-export type PhoneSort = { id: string; desc: boolean }
+// The phone sort sheet's choices. A stats choice sorts through TeamsPanelPrt.Actions.setStatsSort, and is active only
+// while its metric is picked.
+export type PhoneSort = {
+	key: string
+	sorting: SortingState
+	stats?: { scope: CHAT.StatsSortScope; metric: CHAT.StatMetric }
+	label: () => string
+	spoiler?: boolean
+}
 
-export const PHONE_SORTS: { key: string; sort: PhoneSort; label: () => string; spoiler?: boolean }[] = [
-	{ key: 'squad', sort: { id: 'squad', desc: false }, label: () => tr.text(SM_Msgs.sortSquad()) },
-	{ key: 'name', sort: { id: 'name', desc: false }, label: () => tr.text(SM_Msgs.sortName()) },
-	{ key: 'tks', sort: { id: 'tks', desc: true }, label: () => tr.text(SM_Msgs.sortTeamKills()) },
-	{ key: 'stats', sort: { id: 'stats', desc: true }, label: () => tr.text(SM_Msgs.sortKills()), spoiler: true },
+export const PHONE_SORTS: PhoneSort[] = [
+	{ key: 'squad', sorting: TeamsPanelPrt.DEFAULT_COMBINED_SORTING, label: () => tr.text(SM_Msgs.sortSquad()) },
+	{ key: 'name', sorting: [{ id: 'name', desc: false }], label: () => tr.text(SM_Msgs.sortName()) },
+	{ key: 'tks', sorting: [{ id: 'tks', desc: true }], label: () => tr.text(SM_Msgs.sortTeamKills()) },
+	...(['players', 'squads'] as const).flatMap((scope) =>
+		(['kills', 'kd'] as const).map((metric): PhoneSort => ({
+			key: `${scope}-${metric}`,
+			sorting: TeamsPanelPrt.statsSorting(scope, true),
+			stats: { scope, metric },
+			label: () => tr.text(SM_Msgs.statsSortLabel(scope, tr.text(statMetricLabel(metric)))),
+			spoiler: true,
+		})),
+	),
 ]
+
+// the first sort entry other than faction, which is what the sheet's choices differ in
+function leadingSortId(sorting: SortingState) {
+	return sorting.find((s) => s.id !== 'faction')?.id ?? 'squad'
+}
+
+export function isPhoneSortActive(option: PhoneSort, sorting: SortingState, metric: CHAT.StatMetric) {
+	return leadingSortId(option.sorting) === leadingSortId(sorting) && (option.stats === undefined || option.stats.metric === metric)
+}
 
 // shift+click anywhere in the squad/role/group cell selects the players sharing it
 export function shiftClickCellProps(
@@ -130,13 +157,14 @@ export type PlayerColumns<T, M> = { defs: ColumnDef<T, any>[]; cells: Record<str
 // the table is sorted by squad. `key` identifies a contiguous group of same-squad rows. A null `squad`
 // is the catch-all group for players not in any squad ("Unassigned"). `faction`, when set (combined
 // table only), renders in its own cell aligned with the faction column. `totalSize` is the squad's size
-// on the unfiltered roster, which is what the header reports.
+// on the unfiltered roster, which is what the header reports. `score` is null while spoilers are hidden.
 export type SquadGroupInfo = {
 	key: string
 	squad: SM.UniqueSquad | null
 	creatorName: string | null
 	faction: { label: string; color: string } | null
 	totalSize: number
+	score: CHAT.PlayerStats | null
 }
 
 const FILTERED_COLUMN_IDS = ['role', 'group', 'squad']
@@ -180,29 +208,24 @@ export function sameFilterOptions(a: FilterOption[], b: FilterOption[]) {
 	return true
 }
 
-export type StatsSortMetric = 'kills' | 'wounds' | 'deaths'
+// the letters of the stats column's K/W/D heading, each lit while its metric sorts the players
+export const STATS_HEADING_LETTERS = [
+	{ metric: 'kills', short: SM_Msgs.statsKillsShort },
+	{ metric: 'wounds', short: SM_Msgs.statsWoundsShort },
+	{ metric: 'deaths', short: SM_Msgs.statsDeathsShort },
+] as const
 
-export const STATS_SORT_METRICS: { metric: StatsSortMetric; short: typeof SM_Msgs.statsKillsShort; label: typeof SM_Msgs.sortKills }[] = [
-	{ metric: 'kills', short: SM_Msgs.statsKillsShort, label: SM_Msgs.sortKills },
-	{ metric: 'wounds', short: SM_Msgs.statsWoundsShort, label: SM_Msgs.sortWounds },
-	{ metric: 'deaths', short: SM_Msgs.statsDeathsShort, label: SM_Msgs.sortDeaths },
-]
-
-export type StatsSortColumn = {
-	toggleSorting: (desc?: boolean) => void
-	clearSorting: () => void
-}
-
-// lives in the table component and flows in through table meta: picking a metric rebuilds the column
-// def, so anything captured in the column def's closures would go stale or remount the header.
-// `sorted` is derived from the sorting react state rather than read via column.getIsSorted() — the
-// react compiler memoizes on the (stable) column identity, so getIsSorted() calls in render go stale
+// Flows into the stats header through table meta. `scope` and `dir` are derived from the sorting state rather than
+// read via column.getIsSorted(): the react compiler memoizes on the (stable) column identity, so getIsSorted() calls
+// in render go stale. `scope` is null while no stats sort is active.
 export type StatsSortState = {
-	metric: StatsSortMetric
-	setMetric: (m: StatsSortMetric) => void
+	metric: CHAT.StatMetric
+	scope: CHAT.StatsSortScope | null
+	dir: false | 'asc' | 'desc'
 	open: boolean
 	setOpen: (open: boolean) => void
-	sorted: false | 'asc' | 'desc'
+	set: (sort: { scope: CHAT.StatsSortScope; metric: CHAT.StatMetric; desc: boolean }) => void
+	clear: () => void
 }
 
 // derive sort direction from the sorting react state rather than column.getIsSorted(): the react
@@ -263,6 +286,9 @@ export function sameSquadGroup(a: SquadGroupInfo, b: SquadGroupInfo) {
 		a.squad === b.squad &&
 		a.creatorName === b.creatorName &&
 		a.totalSize === b.totalSize &&
+		a.score?.kills === b.score?.kills &&
+		a.score?.wounds === b.score?.wounds &&
+		a.score?.deaths === b.score?.deaths &&
 		a.faction?.label === b.faction?.label &&
 		a.faction?.color === b.faction?.color
 	)
