@@ -15,7 +15,7 @@ overrides:
    mdast-util-to-hast: ^13.2.1
    tar@6: ^7.5.19
    '@grpc/grpc-js': ^1.14.5
-   markdown-it: ^14.3.2
+   markdown-it: ^14.3.3
    ip-address: ^10.7.3
    # every Radix primitive must share the app's DirectionProvider context
    '@radix-ui/react-direction': ^1.1.4
