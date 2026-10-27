@@ -95,7 +95,9 @@ function LinkedSteamAccountsEditor({ links, onClose }: { links: readonly USR.Ste
 							<div className="text-xs text-muted-foreground">
 								{link.origin === 'assigned'
 									? tr.text(USR_Msgs.steamLinkedByAdmin(link.linkedBy?.displayName ?? 'an admin'))
-									: tr.text(USR_Msgs.selfLinked())}
+									: link.origin === 'discord-connection'
+										? tr.text(USR_Msgs.steamLinkedFromDiscord())
+										: tr.text(USR_Msgs.selfLinked())}
 							</div>
 						</div>
 						<Button

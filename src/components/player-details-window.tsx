@@ -696,7 +696,11 @@ function PlayerDiscordLinkEditor({ steamId }: { steamId: string | undefined }) {
 						{link.discordUsername}
 					</span>
 					<span className="text-muted-foreground shrink-0">
-						{link.origin === 'assigned' ? tr.text(USR_Msgs.linkedBy(link.linkedBy?.displayName)) : tr.text(USR_Msgs.selfLinked())}
+						{link.origin === 'assigned'
+							? tr.text(USR_Msgs.linkedBy(link.linkedBy?.displayName))
+							: link.origin === 'discord-connection'
+								? tr.text(USR_Msgs.linkedFromDiscord())
+								: tr.text(USR_Msgs.selfLinked())}
 					</span>
 					<Button type="button" size="sm" variant="ghost" className="h-6 px-1 text-destructive" disabled={pending} onClick={onRemove}>
 						{tr.text(USR_Msgs.unlink())}

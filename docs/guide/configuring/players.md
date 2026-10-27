@@ -26,7 +26,8 @@ TacTrig's grouping mode for monitoring balance:
 ![TacTrig's Balance grouping mode](../../images/configuring/player_groupings_balance.png)
 
 > [!NOTE]
-> Discord and Steam accounts are linked by hand, from _Linked Steam Accounts_ in the user menu. See
+> SLM links the Steam accounts connected to a user's Discord account each time the user signs in. Other Steam
+> accounts are linked by hand, from _Linked Steam Accounts_ in the user menu. See
 > [Assigning roles](permissions.md#assigning-roles).
 
 SLM then colour-codes the usernames of grouped players wherever they appear:

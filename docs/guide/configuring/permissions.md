@@ -97,6 +97,9 @@ every action:
 ![Linked Steam Accounts in the user menu](../../images/configuring/linked_steam_accounts_button.png)
 ![the Linked Steam Accounts dialog](../../images/configuring/linked_steam_accounts_dialog.png)
 
+SLM links the Steam accounts connected to a user's Discord account each time the user signs in. A Steam account
+disconnected from Discord is unlinked from SLM at the user's next sign-in.
+
 Linking is optional. It matters to someone who holds elevated permissions on their user account and wants to use them
 in game.
 
