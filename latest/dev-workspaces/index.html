@@ -146,8 +146,8 @@ The per-workspace differences (ports, <code>ORIGIN</code>, and the overrides abo
 needs any other credential.</p>
 <p>A fresh checkout lacks two gitignored files that a dev instance needs. <code>layer-db.json</code> is copied from the primary
 checkout. <code>assets/layer-engine.wasm</code> is built from the checkout&#x27;s own <code>layer-engine/</code> whenever a worktree is created or
-provisioned, so it always matches the branch. Cargo skips the build when nothing changed, and a cold build takes about
-20 seconds. Run <code>pnpm build:engine</code> after changing <code>layer-engine/</code> while a dev instance is running.</p>
+provisioned, so it always matches the branch. The build is skipped when the wasm already matches <code>layer-engine/</code>, and a
+cold build takes about 20 seconds. Run <code>pnpm build:engine</code> after changing <code>layer-engine/</code> while a dev instance is running.</p>
 <p>Provisioning also links private Claude Code skills into the checkout. A private skill is kept in
 <code>../slm-private-skills/&lt;name&gt;/SKILL.md</code> beside the main checkout (or under <code>SLM_PRIVATE_SKILLS_DIR</code>), outside every
 checkout, so git never tracks it and a worktree session can edit it. It is for skills that must not be published with
