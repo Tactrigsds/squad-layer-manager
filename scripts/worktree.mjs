@@ -12,8 +12,6 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { inFlake } from './nix-shell.mjs'
-
 const WORKTREE_ROOT = process.env.SLM_WORKTREE_ROOT || path.join(os.homedir(), 'projects', 'slm')
 const BRANCH_PREFIX = 'worktree-'
 
@@ -91,7 +89,8 @@ function createWorktree(name, cwd) {
 	if (!branchExists && !process.env.SLM_WORKTREE_BASE && base.startsWith('origin/')) {
 		tryGit(['fetch', '--quiet', 'origin', base.slice('origin/'.length)], cwd)
 	}
-	const args = branchExists ? ['worktree', 'add', dest, branch] : ['worktree', 'add', '-b', branch, dest, base]
+	// --no-track: setting an upstream writes the shared .git/config, and a concurrent create then fails on its lock.
+	const args = branchExists ? ['worktree', 'add', dest, branch] : ['worktree', 'add', '--no-track', '-b', branch, dest, base]
 	childProcess.execFileSync('git', args, { cwd, stdio: ['ignore', 2, 2] })
 	return { path: dest, created: true, branch, base }
 }
@@ -130,8 +129,8 @@ function install(dest, opts) {
 const LAYER_DB = 'layer-db.json'
 
 // The engine is always built rather than copied: a copy from the main checkout matches whatever source the main
-// checkout last built, not this branch's layer-engine/. Cargo skips the build when nothing changed, which leaves
-// the nix shell startup (a couple of seconds) as the cost. A cold build is under half a minute.
+// checkout last built, not this branch's layer-engine/. build:engine returns at once when the wasm already matches
+// the sources. A cold build is under half a minute.
 function ensureArtifacts(dest, { force = false } = {}) {
 	const root = mainCheckout(dest)
 	const link = path.join(dest, LAYER_DB)
@@ -147,8 +146,7 @@ function ensureArtifacts(dest, { force = false } = {}) {
 	linkPrivateSkills(dest)
 
 	console.error('  building the layer engine')
-	const [cmd, args] = inFlake('pnpm', ['run', 'build:engine'])
-	run(cmd, args, dest, { quiet: true })
+	run('pnpm', ['run', 'build:engine'], dest, { quiet: true })
 }
 
 // Skills that must not be published with the repo, such as ones naming production hosts. Claude Code reads a linked

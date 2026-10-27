@@ -27,7 +27,8 @@
         nodePkgs.corepack_24
 
         # `pnpm run build:engine`. The wasm32-unknown-unknown std ships with nixpkgs' rustc, but the bundled
-        # rust-lld does not: that rustc links the target through whatever `lld` is on PATH.
+        # rust-lld does not: that rustc links the target through whatever `lld` is on PATH. Cargo also links its
+        # build scripts for the host through `cc`, which stdenv.cc below supplies.
         pkgs.cargo
         pkgs.lld
         pkgs.rustc

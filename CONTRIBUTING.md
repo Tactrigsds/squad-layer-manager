@@ -48,7 +48,8 @@ nix develop path:./nix -c pnpm dev    # one command inside it
 Keep the `path:` prefix. Without it, nix copies every tracked file in the repository into the store whenever one
 changes.
 
-On linux, `pnpm test:e2e`, `pnpm probe` and the pre-push hook run inside this shell when `nix` is installed.
+On linux, `pnpm build:engine`, `pnpm test:e2e`, `pnpm probe` and the pre-push hook run inside this shell when `nix` is
+installed.
 
 The flake pins node through its `nixpkgs-node` input. Update that input together with `.tool-versions` and the
 production `Dockerfile`.
@@ -136,7 +137,8 @@ that checkout's isolated database with a freshly seeded one. `pnpm dev --emu-onl
 Both the integration and e2e suites spawn a real app instance (child process, ephemeral db and ports) against
 an emulated squad server. They need no external services, but they are much slower than the unit tests.
 
-`test:e2e` rebuilds the engine only when `layer-engine/` has changed since the last build. On linux with `nix`
+`test:e2e` and `test:integration` rebuild the engine when `layer-engine/` has changed since the last build. `pnpm test`
+rebuilds it only when an engine has been built before, and skips the engine tests otherwise. On linux with `nix`
 installed, `test:e2e` runs inside the [nix](#nix) dev shell.
 
 `test:e2e:firefox` needs firefox installed once (`pnpm exec playwright install firefox`), and `check:compat`
