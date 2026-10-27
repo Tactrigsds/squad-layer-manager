@@ -286,7 +286,8 @@ export default function NavBar() {
 			)}
 			<DropdownMenuSeparator />
 			<form action={AR.route('/logout')} method="POST">
-				<DropdownMenuItem asChild>
+				{/* selecting an item closes the menu, which would unmount this form before the click submits it */}
+				<DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
 					<button className="w-full" type="submit">
 						<Icons.LogOut className="rtl:-scale-x-100" />
 						{tr.text(APP_Msgs.logOut())}

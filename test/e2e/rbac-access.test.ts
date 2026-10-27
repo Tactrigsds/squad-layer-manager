@@ -104,3 +104,12 @@ test.describe('a console-reader user', { tag: '@firefox' }, () => {
 		await expect(output.getByText('rcon <-').first()).toBeVisible({ timeout: 30_000 })
 	})
 })
+
+test('log out in the user menu ends the session', async ({ page }) => {
+	await gotoReady(page, app.loginUrl(VIEWER))
+	await page.getByLabel('User menu').click()
+	const loggedOut = page.waitForResponse((res) => res.url().endsWith('/logout') && res.request().method() === 'POST')
+	await page.getByRole('menuitem', { name: 'Log Out' }).click()
+	expect((await loggedOut).status()).toBe(302)
+	expect((await page.request.get(`${app.appUrl}/check-auth`)).status()).toBe(401)
+})
