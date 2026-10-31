@@ -245,7 +245,7 @@ async function handleInteraction(interaction: D.Interaction) {
 	const command = SLASH_COMMANDS[interaction.commandName]
 	if (!command) return
 	try {
-		const ctx = DB.addPooledDb({
+		const ctx = DB.withDb({
 			...CS.init(),
 			user: { discordId: BigInt(interaction.user.id) },
 			// TODO is this the best we can do?
@@ -276,7 +276,7 @@ async function handleInteraction(interaction: D.Interaction) {
 async function restartSlm(ctx: SlashCommandCtx, interaction: D.ChatInputCommandInteraction) {
 	await interaction.reply({ content: 'Shutting down SLM. It should be restarted shortly.' })
 	log.warn('restart-slm invoked by %s (%s), shutting down', interaction.user.username, interaction.user.id)
-	await AppEventsSys.persistAppEvent(
+	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.AppRestarted>({
 			type: 'APP_RESTARTED',

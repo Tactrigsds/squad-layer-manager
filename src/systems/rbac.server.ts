@@ -1,5 +1,4 @@
 import * as E from 'drizzle-orm'
-import { unionAll } from 'drizzle-orm/sqlite-core'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedSubject } from '@/lib/isolated-subject'
@@ -15,10 +14,12 @@ import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
+import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Sql from '@/server/sql'
 import * as AdminList from '@/systems/adminlist.server'
 import * as Discord from '@/systems/discord.server'
 import * as Users from '@/systems/users.server'
@@ -251,6 +252,57 @@ async function fetchIsSuperUser(userId: bigint): Promise<boolean> {
 
 const module = initModule('rbac')
 const orpcBase = getOrpcBase(module)
+const SQL = Sql.forModule(module)
+
+namespace Q {
+	const eosIdP = SQL.params({ eosId: Schema.players.eosId })
+	export const steamIdByEosId = SQL.def(
+		'steamIdByEosId',
+		eosIdP,
+		SQL.select({ steamId: Schema.players.steamId }).from(Schema.players).where(E.eq(Schema.players.eosId, eosIdP.eosId)),
+	)
+	const ownerP = SQL.params({ userId: Schema.filters.ownerUserId })
+	export const ownedFilters = SQL.def(
+		'ownedFilters',
+		ownerP,
+		SQL.select({ filterId: Schema.filters.id }).from(Schema.filters).where(E.eq(Schema.filters.ownerUserId, ownerP.userId)),
+	)
+	export const ownedRotations = SQL.def(
+		'ownedRotations',
+		ownerP,
+		SQL.select({ rotationId: Schema.rotations.id }).from(Schema.rotations).where(E.eq(Schema.rotations.ownerUserId, ownerP.userId)),
+	)
+	const contributorP = SQL.params({ userId: Schema.filterUserContributors.userId })
+	export const userContributedFilters = SQL.def(
+		'userContributedFilters',
+		contributorP,
+		SQL.select({ filterId: Schema.filterUserContributors.filterId })
+			.from(Schema.filterUserContributors)
+			.where(E.eq(Schema.filterUserContributors.userId, contributorP.userId)),
+	)
+	export const userContributedRotations = SQL.def(
+		'userContributedRotations',
+		contributorP,
+		SQL.select({ rotationId: Schema.rotationUserContributors.rotationId })
+			.from(Schema.rotationUserContributors)
+			.where(E.eq(Schema.rotationUserContributors.userId, contributorP.userId)),
+	)
+	const roleIdsP = SQL.params({ roleIds: SQL.list(Schema.filterRoleContributors.roleId) })
+	export const roleContributedFilters = SQL.def(
+		'roleContributedFilters',
+		roleIdsP,
+		SQL.select({ filterId: Schema.filterRoleContributors.filterId })
+			.from(Schema.filterRoleContributors)
+			.where(SQL.inJson(Schema.filterRoleContributors.roleId, roleIdsP.roleIds)),
+	)
+	export const roleContributedRotations = SQL.def(
+		'roleContributedRotations',
+		roleIdsP,
+		SQL.select({ rotationId: Schema.rotationRoleContributors.rotationId })
+			.from(Schema.rotationRoleContributors)
+			.where(SQL.inJson(Schema.rotationRoleContributors.roleId, roleIdsP.roleIds)),
+	)
+}
 
 export const getRbacForDiscordUser = Instr.spanOp(
 	'getRbacForDiscordUser',
@@ -259,7 +311,7 @@ export const getRbacForDiscordUser = Instr.spanOp(
 		const discordUserId = ctx.user.discordId
 		const cached = cache.users.get(discordUserId)
 		if (cached) return await cached
-		const playerIds = await Users.findUserPlayerIds(ctx, discordUserId)
+		const playerIds = Users.findUserPlayerIds(ctx, discordUserId)
 
 		const userRbacPromise = resolveUserRbac(ctx, discordUserId, playerIds)
 
@@ -289,11 +341,7 @@ export const getRbacForPlayer = Instr.spanOp(
 		if (cached) return await cached
 		let steamId: bigint | undefined
 		if (ids.steam === undefined) {
-			const [row] = await ctx
-				.db()
-				.select({ steamId: Schema.players.steamId })
-				.from(Schema.players)
-				.where(E.eq(Schema.players.eosId, ids.eos))
+			const row = DB.get(ctx, Q.steamIdByEosId({ eosId: ids.eos }))
 			if (row && row.steamId) steamId = row.steamId
 		} else {
 			steamId = BigInt(ids.steam)
@@ -301,7 +349,7 @@ export const getRbacForPlayer = Instr.spanOp(
 
 		let discordId: bigint | undefined
 		if (steamId) {
-			discordId = await Users.findDiscordIdBySteam64Id(ctx, steamId)
+			discordId = Users.findDiscordIdBySteam64Id(ctx, steamId)
 		}
 
 		const rbacPromise = (async () => {
@@ -321,7 +369,7 @@ export const getRbacForPlayer = Instr.spanOp(
 			})()
 
 			const baseRoles = RBAC.Role.merge(await adminListAssignmentsPromise, await discordUserRolesPromise)
-			const inferredRoles = await resolveInferredRoleAssignments(ctx, baseRoles, discordId)
+			const inferredRoles = resolveInferredRoleAssignments(ctx, baseRoles, discordId)
 			const roles = RBAC.Role.merge(baseRoles, inferredRoles)
 			const perms = permsFromRoles(roles)
 			if (discordId) {
@@ -358,7 +406,7 @@ async function resolveUserRbac(
 	})()
 	const discordRolesPromise = resolveDiscordAssignments(ctx, discordUserId)
 	const baseRoles = RBAC.Role.merge(await ingameRolesPromise, await discordRolesPromise)
-	const inferredRoles = await resolveInferredRoleAssignments(ctx, baseRoles, discordUserId)
+	const inferredRoles = resolveInferredRoleAssignments(ctx, baseRoles, discordUserId)
 	const roles = RBAC.Role.merge(baseRoles, inferredRoles)
 	const perms = permsFromRoles(roles)
 	const superUserPerms = await resolveSuperUserPerms(discordUserId)
@@ -380,7 +428,7 @@ export async function tryDenySteamLinkEscalation(
 	steamId: bigint,
 ): Promise<RBAC.PermissionDeniedResponse | undefined> {
 	const steam = steamId.toString()
-	const linked = await Users.findUserPlayerIds(ctx, subjectDiscordId)
+	const linked = Users.findUserPlayerIds(ctx, subjectDiscordId)
 	const without = linked.filter((ids) => ids.steam !== steam)
 	const withLink = [...without, { steam }]
 
@@ -596,98 +644,29 @@ async function resolveSuperUserPerms(userId: bigint) {
 	return perms
 }
 
-async function resolveInferredRoleAssignments(ctx: C.Db, baseRoles: RBAC.Role[], discordUserId?: bigint): Promise<RBAC.Role[]> {
-	const db = ctx.db()
-	if (!discordUserId && baseRoles.length === 0) return []
-	type Source = 'owner' | 'user-contributor' | 'role-contributor'
-	// unionAll's arms are positional, so an inapplicable arm has to select nothing rather than be omitted: drop one and
-	// drizzle dereferences an undefined arm.
-	const owned = db
-		.select({
-			source: E.sql<Source>`'owner'`.as('source'),
-			filterId: Schema.filters.id,
-		})
-		.from(Schema.filters)
-		.where(discordUserId ? E.eq(Schema.filters.ownerUserId, discordUserId) : E.sql`false`)
-	const userContributed = db
-		.select({
-			source: E.sql<Source>`'user-contributor'`.as('source'),
-			filterId: Schema.filterUserContributors.filterId,
-		})
-		.from(Schema.filterUserContributors)
-		.where(discordUserId ? E.eq(Schema.filterUserContributors.userId, discordUserId) : E.sql`false`)
-	const roleContributed = db
-		.select({
-			source: E.sql<Source>`'role-contributor'`.as('source'),
-			filterId: Schema.filterRoleContributors.filterId,
-		})
-		.from(Schema.filterRoleContributors)
-		.where(
-			E.inArray(
-				Schema.filterRoleContributors.roleId,
-				baseRoles.map((r) => r.type),
-			),
-		)
-
-	const rotationOwned = db
-		.select({
-			source: E.sql<Source>`'owner'`.as('source'),
-			rotationId: Schema.rotations.id,
-		})
-		.from(Schema.rotations)
-		.where(discordUserId ? E.eq(Schema.rotations.ownerUserId, discordUserId) : E.sql`false`)
-	const rotationUserContributed = db
-		.select({
-			source: E.sql<Source>`'user-contributor'`.as('source'),
-			rotationId: Schema.rotationUserContributors.rotationId,
-		})
-		.from(Schema.rotationUserContributors)
-		.where(discordUserId ? E.eq(Schema.rotationUserContributors.userId, discordUserId) : E.sql`false`)
-	const rotationRoleContributed = db
-		.select({
-			source: E.sql<Source>`'role-contributor'`.as('source'),
-			rotationId: Schema.rotationRoleContributors.rotationId,
-		})
-		.from(Schema.rotationRoleContributors)
-		.where(
-			E.inArray(
-				Schema.rotationRoleContributors.roleId,
-				baseRoles.map((r) => r.type),
-			),
-		)
-
-	const rows = await unionAll(owned, userContributed, roleContributed)
-	const rotationRows = await unionAll(rotationOwned, rotationUserContributed, rotationRoleContributed)
-
+function resolveInferredRoleAssignments(ctx: C.Db, baseRoles: RBAC.Role[], discordUserId?: bigint): RBAC.Role[] {
 	const roles: RBAC.Role[] = []
-	for (const row of rows) {
-		switch (row.source) {
-			case 'owner':
-				RBAC.Role.push(roles, { type: 'filter-owner', filterId: row.filterId })
-				break
-			case 'user-contributor':
-				RBAC.Role.push(roles, { type: 'filter-user-contributor', filterId: row.filterId })
-				break
-			case 'role-contributor':
-				RBAC.Role.push(roles, { type: 'filter-role-contributor', filterId: row.filterId })
-				break
-			default:
-				assertNever(row.source)
+	if (discordUserId) {
+		for (const { filterId } of DB.all(ctx, Q.ownedFilters({ userId: discordUserId }))) {
+			RBAC.Role.push(roles, { type: 'filter-owner', filterId })
+		}
+		for (const { filterId } of DB.all(ctx, Q.userContributedFilters({ userId: discordUserId }))) {
+			RBAC.Role.push(roles, { type: 'filter-user-contributor', filterId })
+		}
+		for (const { rotationId } of DB.all(ctx, Q.ownedRotations({ userId: discordUserId }))) {
+			RBAC.Role.push(roles, { type: 'rotation-owner', rotationId })
+		}
+		for (const { rotationId } of DB.all(ctx, Q.userContributedRotations({ userId: discordUserId }))) {
+			RBAC.Role.push(roles, { type: 'rotation-user-contributor', rotationId })
 		}
 	}
-	for (const row of rotationRows) {
-		switch (row.source) {
-			case 'owner':
-				RBAC.Role.push(roles, { type: 'rotation-owner', rotationId: row.rotationId })
-				break
-			case 'user-contributor':
-				RBAC.Role.push(roles, { type: 'rotation-user-contributor', rotationId: row.rotationId })
-				break
-			case 'role-contributor':
-				RBAC.Role.push(roles, { type: 'rotation-role-contributor', rotationId: row.rotationId })
-				break
-			default:
-				assertNever(row.source)
+	if (baseRoles.length > 0) {
+		const roleIds = baseRoles.map((r) => r.type)
+		for (const { filterId } of DB.all(ctx, Q.roleContributedFilters({ roleIds }))) {
+			RBAC.Role.push(roles, { type: 'filter-role-contributor', filterId })
+		}
+		for (const { rotationId } of DB.all(ctx, Q.roleContributedRotations({ roleIds }))) {
+			RBAC.Role.push(roles, { type: 'rotation-role-contributor', rotationId })
 		}
 	}
 	return roles

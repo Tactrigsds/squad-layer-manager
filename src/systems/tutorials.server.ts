@@ -24,9 +24,11 @@ import type * as SQS from '@/models/squad-server.models'
 import * as TUT from '@/models/tutorial.models'
 import type * as V from '@/models/vote.models'
 import type * as C from '@/server/context'
+import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Sql from '@/server/sql'
 import * as FilterEntity from '@/systems/filter-entity.server'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import * as MatchHistory from '@/systems/match-history.server'
@@ -47,6 +49,7 @@ import * as WsSessionSys from '@/systems/ws-session.server'
 // (schemas, importable from the client) is src/models/tutorial.models.ts.
 
 const module = initModule('tutorials')
+const SQL = Sql.forModule(module)
 const orpcBase = getOrpcBase(module)
 let log!: CS.Logger
 
@@ -228,7 +231,7 @@ const layerQueue = defScenario({
 		},
 		// a second editor, so the queue stops saving on its own and force save has something to override
 		'second-editor': async (ctx) => {
-			await ensurePeerUser(ctx)
+			ensurePeerUser(ctx)
 			await UserPresence.dispatchFabricatedEditor(ctx.serverId, PEER_USER_ID, peerClientId(ctx.serverId))
 			return { code: 'ok' }
 		},
@@ -299,7 +302,7 @@ async function restoreRoster(ctx: StageCtx, flipped = false) {
 	const rosterIds = ROSTER.map((spec) => world.findPlayer(spec.name)?.eos ?? ctx.sandbox.players.get(spec.name)?.eos).filter(
 		(id): id is string => !!id,
 	)
-	for (const timeout of await Timeouts.getActiveTimeouts(ctx, rosterIds)) {
+	for (const timeout of Timeouts.getActiveTimeouts(ctx, rosterIds)) {
 		await Timeouts.cancelTimeout(ctx, { timeoutId: timeout.id, actor: { type: 'system' } })
 	}
 
@@ -475,28 +478,13 @@ async function backdatePastMatches(ctx: StageCtx, reader: ReaderClock) {
 		const newStart = now - Math.floor(plan.startedAgoMin * 60_000 * scale)
 		const newEnd = newStart + Math.floor(plan.lastedMin * 60_000 * scale)
 		const oldSpan = Math.max(1, oldEnd - oldStart)
-		await ctx
-			.db()
-			.update(Schema.matchHistory)
-			.set({ startTime: new Date(newStart), endTime: new Date(newEnd), createdAt: new Date(newStart) })
-			.where(E.eq(Schema.matchHistory.id, match.historyEntryId))
-		// the log reads server events and SLM's own (app) events together, so both move. What the roll records
-		// after the match ends is pinned to the end, rather than landing after the next match began.
-		const rescaled = (column: typeof Schema.serverEvents.time | typeof Schema.appEvents.time) =>
-			E.sql`cast(${newStart} + (min(max(${column} - ${oldStart}, 0), ${oldSpan}) * ${newEnd - newStart}) / ${oldSpan} as integer)`
-		await ctx
-			.db()
-			.update(Schema.serverEvents)
-			.set({ time: rescaled(Schema.serverEvents.time) })
-			.where(E.eq(Schema.serverEvents.matchId, match.historyEntryId))
-		await ctx
-			.db()
-			.update(Schema.appEvents)
-			.set({ time: rescaled(Schema.appEvents.time) })
-			.where(E.eq(Schema.appEvents.matchId, match.historyEntryId))
+		DB.run(ctx, Q.retimeMatch({ id: match.historyEntryId, startTime: new Date(newStart), endTime: new Date(newEnd) }))
+		const span = { matchId: match.historyEntryId, newStart, oldStart, oldSpan, newSpan: newEnd - newStart }
+		DB.run(ctx, Q.rescaleServerEventTimes(span))
+		DB.run(ctx, Q.rescaleAppEventTimes(span))
 		ctx.matchEventsCache.events.delete(match.historyEntryId)
 	}
-	await MatchHistory.loadState(ctx)
+	MatchHistory.loadState(ctx)
 	ctx.matchHistory.dispatchUpdate()
 }
 
@@ -544,7 +532,7 @@ const playerManagement = defScenario({
 		LL.createItem({ type: 'single-list-item', layerId: TUT.lqTutorialLayers().initial[0] }, { type: 'manual', userId: owner }),
 	],
 	setup: async (ctx, reader) => {
-		await ensurePeerUser(ctx)
+		ensurePeerUser(ctx)
 		await playMatchHistory(ctx)
 		await restoreRoster(ctx)
 		await playBeats(ctx, BACKSTORY)
@@ -656,7 +644,7 @@ async function ensureTutorialRepeatRuleset(ctx: C.Db) {
 	const next = existing
 		? rulesets.map((r) => (r.id === TUTORIAL_REPEAT_RULESET.id ? { ...TUTORIAL_REPEAT_RULESET, name } : r))
 		: [...rulesets, { ...TUTORIAL_REPEAT_RULESET, name }]
-	const res = await Settings.patchGlobalSettings(ctx, { repeatRulesets: next }, { type: 'system' })
+	const res = Settings.patchGlobalSettings(ctx, { repeatRulesets: next }, { type: 'system' })
 	if (res.code !== 'ok') throw new Error(`could not write the tutorial repeat ruleset: ${res.message}`)
 }
 
@@ -706,6 +694,12 @@ function filterIdsFor(owner: bigint) {
 	const prefix = `${TUTORIAL_FILTER_PREFIX}${owner}-`
 	return { pool: `${prefix}pool`, indicator: `${prefix}large`, all: [`${prefix}pool`, `${prefix}large`] }
 }
+// event times are stored as epoch milliseconds, which is what the rescale does arithmetic on
+const epochMs = SQL.value((ms: number) => ms)
+// the log reads server events and SLM's own (app) events together, so both move. What the roll records after the
+// match ends is pinned to the end, rather than landing after the next match began.
+const rescaled = (column: typeof Schema.serverEvents.time | typeof Schema.appEvents.time) =>
+	E.sql`cast(${Q.rescaleP.newStart} + (min(max(${column} - ${Q.rescaleP.oldStart}, 0), ${Q.rescaleP.oldSpan}) * ${Q.rescaleP.newSpan}) / ${Q.rescaleP.oldSpan} as integer)`
 
 // The second editor a run stands up so the force-save step has something to override. One identity shared by every
 // run rather than one each: presence is keyed by client, so concurrent runs get their own editor from the clientId
@@ -718,13 +712,9 @@ function peerClientId(serverId: string) {
 	return `${serverId}-peer`
 }
 
-async function ensurePeerUser(ctx: C.Db) {
-	await ctx
-		.db()
-		.insert(Schema.discordAccounts)
-		.values({ discordId: PEER_USER_ID, username: PEER_USERNAME, updatedAt: new Date(0) })
-		.onConflictDoNothing()
-	await ctx.db().insert(Schema.users).values({ discordId: PEER_USER_ID }).onConflictDoNothing()
+function ensurePeerUser(ctx: C.Db) {
+	DB.run(ctx, Q.insertPeerAccount({ discordId: PEER_USER_ID, updatedAt: new Date(0) }))
+	DB.run(ctx, Q.insertPeerUser({ discordId: PEER_USER_ID }))
 }
 
 // What a run's rows look like, so a sweep matches only those. The prefix alone is not enough: an owner is a
@@ -775,7 +765,7 @@ async function teardown(ctx: C.Db, owner: bigint) {
 	// before the server goes, so the fabricated editor leaves the way a real client would
 	await UserPresence.dispatchFabricatedDisconnect(peerClientId(serverIdFor(owner)))
 	await SquadServerLifecycle.deleteServer(serverIdFor(owner))
-	await FilterEntity.deleteRuntimeFilters(ctx, filterIdsFor(owner).all)
+	FilterEntity.deleteRuntimeFilters(ctx, filterIdsFor(owner).all)
 }
 
 // ============================== stage execution ==============================
@@ -822,24 +812,21 @@ async function runStage(
 	return pending
 }
 
-// ============================== lifecycle ==============================
-
 // A run's server and its filters are created together and only make sense together, so boot sweeps both: a
 // process killed mid-run leaves the server row enabled and its filters behind, and clearing one without the other
 // would leave a server pointing at a filter that no longer exists. Nothing else owns this id prefix.
 export async function setup(ctx: C.Db) {
 	log = module.getLogger()
-	const like = `${TUTORIAL_FILTER_PREFIX}%`
-	const servers = (await ctx.db().select({ id: Schema.servers.id }).from(Schema.servers).where(E.like(Schema.servers.id, like)))
+	const servers = DB.all(ctx, Q.tutorialServerIds({}))
 		.map(({ id }) => id)
 		.filter((id) => TUTORIAL_SERVER_ID.test(id))
 	for (const id of servers) await SquadServerLifecycle.deleteServer(id)
-	const filterIds = (await ctx.db().select({ id: Schema.filters.id }).from(Schema.filters).where(E.like(Schema.filters.id, like)))
+	const filterIds = DB.all(ctx, Q.tutorialFilterIds({}))
 		.map(({ id }) => id)
 		.filter((id) => TUTORIAL_FILTER_ID.test(id))
-	const filters = await FilterEntity.deleteRuntimeFilters(ctx, filterIds)
+	const filters = FilterEntity.deleteRuntimeFilters(ctx, filterIds)
 	// no run holds the second editor at boot, so its identity goes with them; the user row cascades from the account
-	await ctx.db().delete(Schema.discordAccounts).where(E.eq(Schema.discordAccounts.discordId, PEER_USER_ID))
+	DB.run(ctx, Q.deletePeerAccount({ discordId: PEER_USER_ID }))
 	if (servers.length || filters) log.info('swept %d tutorial servers and %d filters left by an earlier run', servers.length, filters)
 }
 
@@ -855,9 +842,9 @@ const start = Instr.spanOp(
 		try {
 			const scenario = SCENARIOS[scenarioId]
 			const initialQueue = scenario.initialQueue(owner)
-			await FilterEntity.putRuntimeFilters(ctx, buildTutorialFilters(owner))
+			FilterEntity.putRuntimeFilters(ctx, buildTutorialFilters(owner))
 			await ensureTutorialRepeatRuleset(ctx)
-			const created = await Settings.createServerEntry(ctx, {
+			const created = Settings.createServerEntry(ctx, {
 				id: serverId,
 				displayName: DISPLAY_NAME,
 				settings: buildSandboxSettings(owner, scenario, LL.getNextLayerId(initialQueue)),
@@ -880,40 +867,153 @@ const start = Instr.spanOp(
 	},
 )
 
-// ============================== progress ==============================
-
-// A user's place in each tutorial, which outlives the run: the server a run stands up is ephemeral and gets
-// reaped, but where the reader got to is theirs. Written on every step, so it is one upsert of a tiny row.
-async function readProgress(ctx: C.Db, userId: bigint): Promise<TUT.Progress[]> {
-	const rows = await ctx.db().select().from(Schema.tutorialProgress).where(E.eq(Schema.tutorialProgress.userId, userId))
+function readProgress(ctx: C.Db, userId: bigint): TUT.Progress[] {
+	const rows = DB.all(ctx, Q.progressOf({ userId }))
 	return rows
 		.filter((row): row is typeof row & { scenarioId: TUT.ScenarioId } => TUT.ScenarioIdSchema.safeParse(row.scenarioId).success)
 		.map((row) => ({ scenarioId: row.scenarioId, stepId: row.stepId, completed: row.completedAt !== null }))
 }
 
-async function writeProgress(ctx: C.Db, userId: bigint, progress: TUT.Progress) {
-	const completedAt = progress.completed ? new Date() : null
-	await ctx
-		.db()
-		.insert(Schema.tutorialProgress)
-		.values({ userId, scenarioId: progress.scenarioId, stepId: progress.stepId, completedAt, updatedAt: new Date() })
-		.onConflictDoUpdate({
-			target: [Schema.tutorialProgress.userId, Schema.tutorialProgress.scenarioId],
-			// completion is not undone by starting the tutorial again, so it only ever goes from null to a date
-			set: {
-				stepId: progress.stepId,
-				updatedAt: new Date(),
-				...(completedAt ? { completedAt } : {}),
-			},
-		})
+function writeProgress(ctx: C.Db, userId: bigint, progress: TUT.Progress) {
+	const now = new Date()
+	DB.run(
+		ctx,
+		Q.upsertProgress(progress.completed)({
+			userId,
+			scenarioId: progress.scenarioId,
+			stepId: progress.stepId,
+			completedAt: progress.completed ? now : null,
+			updatedAt: now,
+		}),
+	)
 }
 
-// ============================== page prompts ==============================
+namespace Q {
+	const retimeP = SQL.params({
+		id: Schema.matchHistory.id,
+		startTime: Schema.matchHistory.startTime,
+		endTime: Schema.matchHistory.endTime,
+	})
+	export const retimeMatch = SQL.def(
+		'retimeMatch',
+		retimeP,
+		SQL.update(Schema.matchHistory)
+			.set({ startTime: retimeP.startTime, endTime: retimeP.endTime, createdAt: retimeP.startTime })
+			.where(E.eq(Schema.matchHistory.id, retimeP.id)),
+	)
+	export const rescaleP = SQL.params({
+		matchId: Schema.serverEvents.matchId,
+		newStart: epochMs,
+		oldStart: epochMs,
+		oldSpan: SQL.value<number>(),
+		newSpan: SQL.value<number>(),
+	})
+	export const rescaleServerEventTimes = SQL.def(
+		'rescaleServerEventTimes',
+		rescaleP,
+		SQL.update(Schema.serverEvents)
+			.set({ time: rescaled(Schema.serverEvents.time) })
+			.where(E.eq(Schema.serverEvents.matchId, rescaleP.matchId)),
+	)
+	export const rescaleAppEventTimes = SQL.def(
+		'rescaleAppEventTimes',
+		rescaleP,
+		SQL.update(Schema.appEvents)
+			.set({ time: rescaled(Schema.appEvents.time) })
+			.where(E.eq(Schema.appEvents.matchId, rescaleP.matchId)),
+	)
+	const peerAccountP = SQL.params({ discordId: Schema.discordAccounts.discordId, updatedAt: Schema.discordAccounts.updatedAt })
+	export const insertPeerAccount = SQL.def(
+		'insertPeerAccount',
+		peerAccountP,
+		SQL.insert(Schema.discordAccounts)
+			.values({ discordId: peerAccountP.discordId, username: SQL.lit(PEER_USERNAME), updatedAt: peerAccountP.updatedAt })
+			.onConflictDoNothing(),
+	)
+	const peerUserP = SQL.params({ discordId: Schema.users.discordId })
+	export const insertPeerUser = SQL.def('insertPeerUser', peerUserP, SQL.insert(Schema.users).values(peerUserP).onConflictDoNothing())
+	const peerIdP = SQL.params({ discordId: Schema.discordAccounts.discordId })
+	export const deletePeerAccount = SQL.def(
+		'deletePeerAccount',
+		peerIdP,
+		SQL.delete(Schema.discordAccounts).where(E.eq(Schema.discordAccounts.discordId, peerIdP.discordId)),
+	)
+	// ============================== lifecycle ==============================
 
-// Which pages the user has told to stop offering their tutorials. A row per dismissal, so nothing is written for
-// the ordinary case of never having dismissed one.
-async function readDismissedPrompts(ctx: C.Db, userId: bigint): Promise<TUT.SurfaceId[]> {
-	const rows = await ctx.db().select().from(Schema.tutorialPromptDismissals).where(E.eq(Schema.tutorialPromptDismissals.userId, userId))
+	export const tutorialServerIds = SQL.def(
+		'tutorialServerIds',
+		SQL.params({}),
+		SQL.select({ id: Schema.servers.id })
+			.from(Schema.servers)
+			.where(E.like(Schema.servers.id, SQL.lit(`${TUTORIAL_FILTER_PREFIX}%`))),
+		{ scans: ['servers'] },
+	)
+	export const tutorialFilterIds = SQL.def(
+		'tutorialFilterIds',
+		SQL.params({}),
+		SQL.select({ id: Schema.filters.id })
+			.from(Schema.filters)
+			.where(E.like(Schema.filters.id, SQL.lit(`${TUTORIAL_FILTER_PREFIX}%`))),
+		{ scans: ['filters'] },
+	)
+	// ============================== progress ==============================
+
+	// A user's place in each tutorial, which outlives the run: the server a run stands up is ephemeral and gets
+	// reaped, but where the reader got to is theirs. Written on every step, so it is one upsert of a tiny row.
+	const progressUserP = SQL.params({ userId: Schema.tutorialProgress.userId })
+	export const progressOf = SQL.def(
+		'progressOf',
+		progressUserP,
+		SQL.select().from(Schema.tutorialProgress).where(E.eq(Schema.tutorialProgress.userId, progressUserP.userId)),
+	)
+	const progressP = SQL.params({
+		userId: Schema.tutorialProgress.userId,
+		scenarioId: Schema.tutorialProgress.scenarioId,
+		stepId: Schema.tutorialProgress.stepId,
+		completedAt: Schema.tutorialProgress.completedAt,
+		updatedAt: Schema.tutorialProgress.updatedAt,
+	})
+	export const upsertProgress = SQL.def(
+		'upsertProgress',
+		progressP,
+		(completed: boolean) =>
+			SQL.insert(Schema.tutorialProgress)
+				.values(progressP)
+				.onConflictDoUpdate({
+					target: [Schema.tutorialProgress.userId, Schema.tutorialProgress.scenarioId],
+					// completion is not undone by starting the tutorial again, so it only ever goes from null to a date
+					set: {
+						stepId: progressP.stepId,
+						updatedAt: progressP.updatedAt,
+						...(completed ? { completedAt: progressP.completedAt } : {}),
+					},
+				}),
+		{ domains: [[true, false]] },
+	)
+	// ============================== page prompts ==============================
+
+	// Which pages the user has told to stop offering their tutorials. A row per dismissal, so nothing is written for
+	// the ordinary case of never having dismissed one.
+	const dismissalUserP = SQL.params({ userId: Schema.tutorialPromptDismissals.userId })
+	export const dismissalsOf = SQL.def(
+		'dismissalsOf',
+		dismissalUserP,
+		SQL.select().from(Schema.tutorialPromptDismissals).where(E.eq(Schema.tutorialPromptDismissals.userId, dismissalUserP.userId)),
+	)
+	const dismissalP = SQL.params({
+		userId: Schema.tutorialPromptDismissals.userId,
+		surfaceId: Schema.tutorialPromptDismissals.surfaceId,
+		dismissedAt: Schema.tutorialPromptDismissals.dismissedAt,
+	})
+	export const insertDismissal = SQL.def(
+		'insertDismissal',
+		dismissalP,
+		SQL.insert(Schema.tutorialPromptDismissals).values(dismissalP).onConflictDoNothing(),
+	)
+}
+
+function readDismissedPrompts(ctx: C.Db, userId: bigint): TUT.SurfaceId[] {
+	const rows = DB.all(ctx, Q.dismissalsOf({ userId }))
 	return rows
 		.map((row) => TUT.SurfaceIdSchema.safeParse(row.surfaceId))
 		.filter((parsed) => parsed.success)
@@ -930,11 +1030,7 @@ export const orpcRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ surfaceId: TUT.SurfaceIdSchema }))
 		.handler(async ({ context, input }) => {
-			await context
-				.db()
-				.insert(Schema.tutorialPromptDismissals)
-				.values({ userId: context.user.discordId, surfaceId: input.surfaceId, dismissedAt: new Date() })
-				.onConflictDoNothing()
+			DB.run(context, Q.insertDismissal({ userId: context.user.discordId, surfaceId: input.surfaceId, dismissedAt: new Date() }))
 			return { code: 'ok' as const }
 		}),
 
@@ -945,7 +1041,7 @@ export const orpcRouter = {
 		.meta({ type: 'mutation', logLevel: 'trace' })
 		.input(TUT.ProgressSchema)
 		.handler(async ({ context, input }) => {
-			await writeProgress(context, context.user.discordId, input)
+			writeProgress(context, context.user.discordId, input)
 			return { code: 'ok' as const }
 		}),
 

@@ -43,7 +43,7 @@ export async function create(ctx: PluginsSys.Ctx<any>, filter: NewFilter) {
 	const owner: F.FilterOwner = filter.owner
 		? { type: 'slm-user', userId: filter.owner.userId }
 		: { type: 'plugin', pluginId: ctx.plugin.id }
-	return await FilterEntity.createFilter(
+	return FilterEntity.createFilter(
 		ctx,
 		F.FilterEntitySchema.parse({
 			...filter,
@@ -59,19 +59,19 @@ export async function update(
 	id: F.FilterEntityId,
 	update: Partial<F.FilterEntityUpdate>,
 ): Promise<{ code: 'ok'; filter: F.FilterEntity } | { code: 'err:not-found' } | { code: 'err:cyclical-reference'; cycle: string[] }> {
-	const res = await FilterEntity.updateFilter(ctx, id, F.UpdateFilterEntitySchema.partial().parse(update), actorFor(ctx))
+	const res = FilterEntity.updateFilter(ctx, id, F.UpdateFilterEntitySchema.partial().parse(update), actorFor(ctx))
 	// the host also hands back the pre-update filter, which only the app-event diff needs
 	return res.code === 'ok' ? { code: 'ok', filter: res.filter } : res
 }
 
 /** Refuses to delete a filter anything still points at, and reports what those references are. */
 export async function remove(ctx: PluginsSys.Ctx<any>, id: F.FilterEntityId) {
-	return await FilterEntity.deleteFilter(ctx, id, actorFor(ctx))
+	return FilterEntity.deleteFilter(ctx, id, actorFor(ctx))
 }
 
 /** The users and roles that can edit the filter without owning it. Empty for a filter that does not exist. */
 export async function getContributors(ctx: PluginsSys.Ctx<any>, id: F.FilterEntityId): Promise<RBAC.Contributor[]> {
-	return await FilterEntity.listFilterContributors(ctx, id)
+	return FilterEntity.listFilterContributors(ctx, id)
 }
 
 /** `err:unknown-user` means the user has never signed in to SLM. */
@@ -80,7 +80,7 @@ export async function addContributor(
 	id: F.FilterEntityId,
 	contributor: RBAC.Contributor,
 ): Promise<{ code: 'ok' } | { code: 'err:not-found' } | { code: 'err:unknown-user' } | { code: 'err:already-exists' }> {
-	return await FilterEntity.addFilterContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
+	return FilterEntity.addFilterContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
 }
 
 /** `err:not-found` means the filter does not exist, or does not have that contributor. */
@@ -89,7 +89,7 @@ export async function removeContributor(
 	id: F.FilterEntityId,
 	contributor: RBAC.Contributor,
 ): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
-	return await FilterEntity.removeFilterContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
+	return FilterEntity.removeFilterContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
 }
 
 /**
@@ -101,7 +101,7 @@ export async function copyContributors(
 	sourceId: F.FilterEntityId,
 	targetId: F.FilterEntityId,
 ): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
-	return await FilterEntity.copyFilterContributors(ctx, sourceId, targetId, actorFor(ctx))
+	return FilterEntity.copyFilterContributors(ctx, sourceId, targetId, actorFor(ctx))
 }
 
 export type FilterChange = { type: 'add' | 'update' | 'delete'; filter: F.FilterEntity }

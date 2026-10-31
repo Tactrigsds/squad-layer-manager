@@ -19,7 +19,7 @@ import type { MigrationDriver } from '@/server/migrate'
  * The next breaking change goes to 1.0.0, after which a breaking change bumps the major and an addition the minor.
  * A bump also has to update the manifests in plugins/ and test/fixtures/plugin-hello.
  */
-export const API_VERSION = { major: 0, minor: 20, patch: 0 }
+export const API_VERSION = { major: 0, minor: 21, patch: 0 }
 
 /** `API_VERSION` as a semver string, for the report header and anything shown to an admin. */
 export function formatApiVersion(): string {

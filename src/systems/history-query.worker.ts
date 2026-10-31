@@ -1,7 +1,6 @@
 import DatabaseConstructor from 'better-sqlite3'
 import * as E from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as Timers from 'node:timers/promises'
 import { parentPort, workerData } from 'node:worker_threads'
 
@@ -12,8 +11,10 @@ import * as CHAT from '@/models/chat.models'
 import * as CS from '@/models/context-shared.models'
 import type * as HQ from '@/models/history.models'
 import type * as C from '@/server/context'
+import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup, initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import {
 	ae,
 	aea,
@@ -29,6 +30,7 @@ import {
 	inJsonSet,
 	matchBoundsCond,
 	matchTime,
+	Q,
 	type Bounds,
 	type QueryError,
 	type ResolvedArtifacts,
@@ -49,6 +51,9 @@ import * as MatchEventsCache from '@/systems/match-events-cache.server'
 // This file owns query execution -- everything below the conditions history-query.shared.ts compiles -- because
 // nothing on the main thread runs a history query. There is no in-process fallback: a query with no worker to
 // run it fails, rather than quietly moving the scan onto the loop the worker exists to protect.
+
+const module = initModule('history-query-worker')
+const SQL = Sql.forModule(module)
 
 const pei = Schema.playerEventIndex
 const mh = Schema.matchHistory
@@ -94,8 +99,9 @@ function comparator(order: EventOrder) {
  * split: a page can legitimately be all server events or all app events. Both read a page's worth even when
  * one contributes nothing, which is the cost of the merge and is bounded by the page size.
  */
-export async function queryEventHits(ctx: C.Db & CS.AbortSignal, opts: EventPageOpts): Promise<EventHit[]> {
-	const [serverHits, appHits] = await Promise.all([queryServerEventHits(ctx, opts), queryAppEventHits(ctx, opts)])
+export function queryEventHits(ctx: C.Db, opts: EventPageOpts): EventHit[] {
+	const serverHits = queryServerEventHits(ctx, opts)
+	const appHits = queryAppEventHits(ctx, opts)
 	return [...serverHits, ...appHits].sort(comparator(opts.order)).slice(0, opts.pageSize)
 }
 
@@ -125,10 +131,8 @@ type SoleEventPlayer = NonNullable<ReturnType<typeof soleEventPlayer>>
 // row to its event. The general form would materialize and sort the player's whole history for every page
 // (44ms against 0.2ms for a player with 51k events). Grouped because one event can name a player twice, as
 // both ends of a suicide.
-function playerEventHits(ctx: C.Db, opts: EventQueryOpts, sole: SoleEventPlayer, cursor: E.SQL | undefined) {
-	return ctx
-		.db()
-		.select({ serverEventId: sei.serverEventId, matchId: sei.matchId, time: sei.time })
+function playerEventHits(opts: EventQueryOpts, sole: SoleEventPlayer, cursor: E.SQL | undefined) {
+	return SQL.select({ serverEventId: sei.serverEventId, matchId: sei.matchId, time: sei.time })
 		.from(pei)
 		.innerJoin(sei, E.eq(sei.serverEventId, pei.serverEventId))
 		.where(
@@ -143,28 +147,30 @@ function playerEventHits(ctx: C.Db, opts: EventQueryOpts, sole: SoleEventPlayer,
 		.groupBy(pei.time, pei.serverEventId)
 }
 
-async function queryServerEventHits(ctx: C.Db & CS.AbortSignal, opts: EventPageOpts): Promise<EventHit[]> {
+function queryServerEventHits(ctx: C.Db, opts: EventPageOpts): EventHit[] {
 	const sole = soleEventPlayer(opts.node, opts.art)
 	if (sole) {
-		return await playerEventHits(ctx, opts, sole, serverCursorCond(pei, opts.cursor, opts.order))
-			.orderBy(...serverOrder(pei, opts.order))
-			.limit(opts.pageSize)
+		return DB.all(
+			ctx,
+			playerEventHits(opts, sole, serverCursorCond(pei, opts.cursor, opts.order))
+				.orderBy(...serverOrder(pei, opts.order))
+				.limit(opts.pageSize),
+		)
 	}
-	return await ctx
-		.db()
-		.select({ serverEventId: sei.serverEventId, matchId: sei.matchId, time: sei.time })
-		.from(sei)
-		.where(E.and(eventBoundsCond(opts.bounds), compileEventCond(opts.node, opts.art), serverCursorCond(sei, opts.cursor, opts.order)))
-		.orderBy(...serverOrder(sei, opts.order))
-		.limit(opts.pageSize)
+	return DB.all(
+		ctx,
+		SQL.select({ serverEventId: sei.serverEventId, matchId: sei.matchId, time: sei.time })
+			.from(sei)
+			.where(E.and(eventBoundsCond(opts.bounds), compileEventCond(opts.node, opts.art), serverCursorCond(sei, opts.cursor, opts.order)))
+			.orderBy(...serverOrder(sei, opts.order))
+			.limit(opts.pageSize),
+	)
 }
 
-async function queryAppEventHits(ctx: C.Db & CS.AbortSignal, opts: EventPageOpts): Promise<EventHit[]> {
+function queryAppEventHits(ctx: C.Db, opts: EventPageOpts): EventHit[] {
 	const cursor = opts.cursor
 	const newest = opts.order === 'newest'
-	const rows = await ctx
-		.db()
-		.select({ appEventId: ae.id, matchId: ae.matchId, time: ae.time })
+	const query = SQL.select({ appEventId: ae.id, matchId: ae.matchId, time: ae.time })
 		.from(ae)
 		.where(
 			E.and(
@@ -184,6 +190,7 @@ async function queryAppEventHits(ctx: C.Db & CS.AbortSignal, opts: EventPageOpts
 		)
 		.orderBy(...(newest ? [E.desc(ae.time), E.desc(ae.id)] : [E.asc(ae.time), E.asc(ae.id)]))
 		.limit(opts.pageSize)
+	const rows = DB.all(ctx, query)
 	// appEventBoundsCond keeps only rows with a match, so the null is unreachable; narrowing rather than casting
 	return rows.flatMap((r) => (r.matchId === null ? [] : [{ appEventId: r.appEventId, matchId: r.matchId, time: r.time }]))
 }
@@ -195,60 +202,64 @@ async function queryAppEventHits(ctx: C.Db & CS.AbortSignal, opts: EventPageOpts
  * would be worse than no count at all. One grouped query per family over the page's keys, rather than a
  * correlated subquery per row.
  */
-async function eventCountsFor(
-	ctx: C.Db & CS.AbortSignal,
+function eventCountsFor(
+	ctx: C.Db,
 	opts: { node: HQ.Node; art: ResolvedArtifacts; bounds: Bounds },
 	dimension: 'player' | 'match',
 	keys: (string | number)[],
-): Promise<Record<string, number>> {
+): Record<string, number> {
 	const counts: Record<string, number> = {}
 	if (keys.length === 0) return counts
 
 	// a player's events are the ones playerEventIndex names them in, and it has a row per player to group on
 	const serverRows =
 		dimension === 'player'
-			? await ctx
-					.db()
-					.select({ key: pei.playerId, n: sql<number>`count(DISTINCT ${pei.serverEventId})` })
-					.from(pei)
-					.where(
-						E.and(
-							inJsonSet(pei.playerId, keys),
-							E.ne(pei.assocType, GAME_PARTICIPANT),
-							eventBoundsCond(opts.bounds, pei),
-							compileEventCond(opts.node, opts.art, pei),
-						),
-					)
-					.groupBy(pei.playerId)
-			: await ctx
-					.db()
-					.select({ key: sei.matchId, n: sql<number>`count(*)` })
-					.from(sei)
-					.where(E.and(inJsonSet(sei.matchId, keys), eventBoundsCond(opts.bounds), compileEventCond(opts.node, opts.art)))
-					.groupBy(sei.matchId)
+			? DB.all(
+					ctx,
+					SQL.select({ key: pei.playerId, n: sql<number>`count(DISTINCT ${pei.serverEventId})` })
+						.from(pei)
+						.where(
+							E.and(
+								inJsonSet(pei.playerId, keys),
+								E.ne(pei.assocType, GAME_PARTICIPANT),
+								eventBoundsCond(opts.bounds, pei),
+								compileEventCond(opts.node, opts.art, pei),
+							),
+						)
+						.groupBy(pei.playerId),
+				)
+			: DB.all(
+					ctx,
+					SQL.select({ key: sei.matchId, n: sql<number>`count(*)` })
+						.from(sei)
+						.where(E.and(inJsonSet(sei.matchId, keys), eventBoundsCond(opts.bounds), compileEventCond(opts.node, opts.art)))
+						.groupBy(sei.matchId),
+				)
 	for (const row of serverRows) counts[String(row.key)] = (counts[String(row.key)] ?? 0) + row.n
 
 	const appCond = E.and(appEventBoundsCond(opts.bounds), compileAppEventCond(opts.node, opts.art))
 	if (dimension === 'match') {
-		const appRows = await ctx
-			.db()
-			.select({ key: ae.matchId, n: sql<number>`count(DISTINCT ${ae.id})` })
-			.from(ae)
-			.where(E.and(inJsonSet(ae.matchId, keys), appCond))
-			.groupBy(ae.matchId)
+		const appRows = DB.all(
+			ctx,
+			SQL.select({ key: ae.matchId, n: sql<number>`count(DISTINCT ${ae.id})` })
+				.from(ae)
+				.where(E.and(inJsonSet(ae.matchId, keys), appCond))
+				.groupBy(ae.matchId),
+		)
 		for (const row of appRows) counts[String(row.key)] = (counts[String(row.key)] ?? 0) + row.n
 		return counts
 	}
 
 	// a player's app events are the ones the association sidecar attributes to them, which is the same
 	// dimension the `player` column compiles against
-	const appRows = await ctx
-		.db()
-		.select({ key: aea.value, n: sql<number>`count(DISTINCT ${ae.id})` })
-		.from(aea)
-		.innerJoin(ae, E.eq(ae.id, aea.appEventId))
-		.where(E.and(E.eq(aea.dimension, 'player'), inJsonSet(aea.value, keys), appCond))
-		.groupBy(aea.value)
+	const appRows = DB.all(
+		ctx,
+		SQL.select({ key: aea.value, n: sql<number>`count(DISTINCT ${ae.id})` })
+			.from(aea)
+			.innerJoin(ae, E.eq(ae.id, aea.appEventId))
+			.where(E.and(E.eq(aea.dimension, 'player'), inJsonSet(aea.value, keys), appCond))
+			.groupBy(aea.value),
+	)
 	for (const row of appRows) counts[row.key] = (counts[row.key] ?? 0) + row.n
 	return counts
 }
@@ -282,33 +293,25 @@ export async function queryPlayerRows(
 		total: sql<number>`count(*) OVER ()`,
 	}
 	const sortCol = aggregates[opts.sort.column]
-	const rows = await ctx
-		.db()
-		.select(aggregates)
-		.from(pei)
-		.where(cond)
-		.groupBy(pei.playerId)
-		.having(opts.minMatches ? sql`count(DISTINCT ${pei.matchId}) >= ${opts.minMatches}` : undefined)
-		.orderBy(opts.sort.dir === 'asc' ? E.asc(sortCol) : E.desc(sortCol), E.asc(pei.playerId))
-		.limit(opts.limit)
-		.offset(opts.offset)
+	const rows = DB.all(
+		ctx,
+		SQL.select(aggregates)
+			.from(pei)
+			.where(cond)
+			.groupBy(pei.playerId)
+			.having(opts.minMatches ? sql`count(DISTINCT ${pei.matchId}) >= ${opts.minMatches}` : undefined)
+			.orderBy(opts.sort.dir === 'asc' ? E.asc(sortCol) : E.desc(sortCol), E.asc(pei.playerId))
+			.limit(opts.limit)
+			.offset(opts.offset),
+	)
 
 	const total = rows[0]?.total ?? 0
 	if (rows.length === 0) return { rows: [], total }
 	await yieldToCancel(ctx)
 
-	const nameRows = await ctx
-		.db()
-		.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
-		.from(Schema.players)
-		.where(
-			E.inArray(
-				Schema.players.eosId,
-				rows.map((r) => r.playerId),
-			),
-		)
+	const nameRows = DB.all(ctx, Q.playerNamesByEosIds({ ids: rows.map((r) => r.playerId) }))
 	const names = new Map(nameRows.map((r) => [r.eosId, r]))
-	const events = await eventCountsFor(
+	const events = eventCountsFor(
 		ctx,
 		opts,
 		'player',
@@ -355,20 +358,21 @@ export async function queryMatchRows(
 	},
 ): Promise<{ rows: SchemaModels.MatchHistory[]; total: number; events: Record<string, number> }> {
 	const cond = E.and(matchBoundsCond(opts.bounds), compileMatchCond(opts.node, opts.art, opts.bounds))
-	const [{ count: total } = { count: 0 }] = await ctx.db().select({ count: E.count() }).from(mh).where(cond)
+	const total = DB.get(ctx, SQL.select({ count: E.count() }).from(mh).where(cond))?.count ?? 0
 	await yieldToCancel(ctx)
 	const sortExpr = MATCH_SORT_EXPRS[opts.sort.column]
-	const rows = await ctx
-		.db()
-		.select()
-		.from(mh)
-		.where(cond)
-		// nulls last in both directions: a match still running has neither a length nor a ticket difference,
-		// and a page of blanks is not what "shortest first" was asking for
-		.orderBy(sql`${sortExpr} IS NULL`, opts.sort.dir === 'asc' ? E.asc(sortExpr) : E.desc(sortExpr), E.desc(mh.id))
-		.limit(opts.limit)
-		.offset(opts.offset)
-	const events = await eventCountsFor(
+	const rows = DB.all(
+		ctx,
+		SQL.select()
+			.from(mh)
+			.where(cond)
+			// nulls last in both directions: a match still running has neither a length nor a ticket difference,
+			// and a page of blanks is not what "shortest first" was asking for
+			.orderBy(sql`${sortExpr} IS NULL`, opts.sort.dir === 'asc' ? E.asc(sortExpr) : E.desc(sortExpr), E.desc(mh.id))
+			.limit(opts.limit)
+			.offset(opts.offset),
+	)
+	const events = eventCountsFor(
 		ctx,
 		opts,
 		'match',
@@ -429,7 +433,7 @@ async function loadEventPage(
 ): Promise<EventPage> {
 	if (hits.length === 0) return { events: null, matches: [] }
 	const matchIds = [...new Set(hits.map((h) => h.matchId))]
-	const matchRows = await ctx.db().select().from(mh).where(E.inArray(mh.id, matchIds))
+	const matchRows = DB.all(ctx, Q.matchesByIds({ ids: matchIds }))
 
 	const optsKey = JSON.stringify(opts.chat)
 	if (optsKey !== feedCacheOptsKey) {
@@ -444,12 +448,7 @@ async function loadEventPage(
 		if (!rows) byServer.set(row.serverId, (rows = []))
 		rows.push(row)
 	}
-	const newestRows = await ctx
-		.db()
-		.select({ serverId: mh.serverId, ordinal: sql<number>`max(${mh.ordinal})` })
-		.from(mh)
-		.where(E.inArray(mh.serverId, [...byServer.keys()]))
-		.groupBy(mh.serverId)
+	const newestRows = DB.all(ctx, Q.newestOrdinalByServer({ ids: [...byServer.keys()] }))
 	const newestOrdinal = new Map(newestRows.map((r) => [r.serverId, r.ordinal]))
 
 	// hits from either family; a replayed entry is kept when it stands for one of them (see iterContainedEventIds)
@@ -496,7 +495,7 @@ async function loadEventPage(
 	const events = ordered.flatMap((row) => kept.get(row.id) ?? [])
 	// the same direction the hits were paged in, so each further page stacks on in reading order
 	events.sort((a, b) => (opts.order === 'newest' ? b.time - a.time : a.time - b.time))
-	const revived = await MatchEventsCache.reviveNoops(ctx, events, { keepSuppressed: true })
+	const revived = MatchEventsCache.reviveNoops(ctx, events, { keepSuppressed: true })
 	return { events: revived.length > 0 ? CHAT.Wire.encode(revived) : null, matches: matchRows }
 }
 
@@ -552,40 +551,30 @@ export const EVENT_TOTAL_CAP = 10_000
 async function countEventHits(ctx: C.Db & CS.AbortSignal, opts: EventQueryOpts): Promise<{ total: number; capped: boolean }> {
 	const sole = soleEventPlayer(opts.node, opts.art)
 	const serverHits = sole
-		? playerEventHits(ctx, opts, sole, undefined).limit(EVENT_TOTAL_CAP + 1)
-		: ctx
-				.db()
-				.select({ one: sql`1` })
+		? playerEventHits(opts, sole, undefined).limit(EVENT_TOTAL_CAP + 1)
+		: SQL.select({ one: sql`1` })
 				.from(sei)
 				.where(E.and(eventBoundsCond(opts.bounds), compileEventCond(opts.node, opts.art)))
 				.limit(EVENT_TOTAL_CAP + 1)
-	const appHits = ctx
-		.db()
-		.select({ one: sql`1` })
+	const appHits = SQL.select({ one: sql`1` })
 		.from(ae)
 		.where(E.and(appEventBoundsCond(opts.bounds), compileAppEventCond(opts.node, opts.art)))
 		.limit(EVENT_TOTAL_CAP + 1)
-	const [row] = await ctx
-		.db()
-		.select({ n: sql<number>`count(*)` })
-		.from(serverHits.as('hits'))
+	const row = DB.get(ctx, SQL.select({ n: sql<number>`count(*)` }).from(serverHits.as('hits')))
 	await yieldToCancel(ctx)
-	const [appRow] = await ctx
-		.db()
-		.select({ n: sql<number>`count(*)` })
-		.from(appHits.as('hits'))
+	const appRow = DB.get(ctx, SQL.select({ n: sql<number>`count(*)` }).from(appHits.as('hits')))
 	const n = (row?.n ?? 0) + (appRow?.n ?? 0)
 	return { total: Math.min(n, EVENT_TOTAL_CAP), capped: n > EVENT_TOTAL_CAP }
 }
 
 export async function runEngineRequest(ctx: C.Db & CS.Log & CS.AbortSignal, req: EngineRequest): Promise<EngineResponse | QueryError> {
-	const res = await resolveArtifacts(ctx, req.node, req.bounds)
+	const res = resolveArtifacts(ctx, req.node, req.bounds)
 	if (res.code !== 'ok') return res
 	const art = res.artifacts
 	switch (req.kind) {
 		case 'events': {
 			const opts = { node: req.node, art, bounds: req.bounds }
-			const hits = await queryEventHits(ctx, { ...opts, cursor: req.cursor, pageSize: req.pageSize, order: req.order })
+			const hits = queryEventHits(ctx, { ...opts, cursor: req.cursor, pageSize: req.pageSize, order: req.order })
 			await yieldToCancel(ctx)
 			const counted = req.withTotal ? await countEventHits(ctx, opts) : undefined
 			const page = await loadEventPage(ctx, hits, req)
@@ -593,9 +582,9 @@ export async function runEngineRequest(ctx: C.Db & CS.Log & CS.AbortSignal, req:
 		}
 		case 'players': {
 			let groupPlayerIds: string[] | undefined
-			if (req.group.players?.length) groupPlayerIds = await resolvePlayerRefs(ctx, req.group.players)
+			if (req.group.players?.length) groupPlayerIds = resolvePlayerRefs(ctx, req.group.players)
 			if (req.group.name) {
-				const named = await resolveNamedPlayerIds(ctx, req.group.name)
+				const named = resolveNamedPlayerIds(ctx, req.group.name)
 				groupPlayerIds = groupPlayerIds ? groupPlayerIds.filter((id) => named.includes(id)) : named
 			}
 			const { rows, total } = await queryPlayerRows(ctx, {
@@ -653,9 +642,8 @@ ensureLoggerSetup()
 const driver = new DatabaseConstructor(dbPath, { readonly: true })
 driver.pragma('busy_timeout = 5000')
 driver.pragma(`mmap_size = ${256 * 1024 * 1024}`)
-const db = drizzle(driver)
 
-const baseCtx = { ...CS.init(), db: () => db, log: initModule('history').getLogger() }
+const baseCtx = { ...CS.init(), db: DB.connect(driver), log: module.getLogger() }
 
 // layer predicates read their parts out of the layer id, so this thread needs the components the
 // abbreviations index into. Not the layer engine's wasm artifact, which stays on the main thread: a

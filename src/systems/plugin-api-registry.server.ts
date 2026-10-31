@@ -32,6 +32,7 @@ import * as pluginPermissions from '@/plugin-api/plugin/permissions'
 import * as pluginRpcServer from '@/plugin-api/plugin/rpc.server'
 import * as pluginSchedule from '@/plugin-api/plugin/schedule'
 import * as pluginServers from '@/plugin-api/plugin/servers'
+import * as serverDb from '@/plugin-api/server/db'
 import * as serverInstrumentation from '@/plugin-api/server/instrumentation'
 import * as serverLogger from '@/plugin-api/server/logger'
 import * as systemsAppEvents from '@/plugin-api/systems/app-events'
@@ -87,6 +88,7 @@ export function setup() {
 		'slm/plugin/rpc.server': pluginRpcServer,
 		'slm/plugin/schedule': pluginSchedule,
 		'slm/plugin/servers': pluginServers,
+		'slm/server/db': serverDb,
 		'slm/server/instrumentation': serverInstrumentation,
 		'slm/server/logger': serverLogger,
 		'slm/systems/app-events': systemsAppEvents,

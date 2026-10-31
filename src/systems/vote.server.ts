@@ -1,9 +1,7 @@
 import * as Otel from '@opentelemetry/api'
 import { Mutex, withTimeout } from 'async-mutex'
 import * as dateFns from 'date-fns'
-import * as E from 'drizzle-orm'
 
-import * as Schema from '$root/drizzle/schema'
 import type * as Cleanup from '@/lib/cleanup'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
@@ -106,7 +104,7 @@ export const router = {
 						const voteState = ctx.vote.state
 						if (!voteState) return { code: 'initial-state', state: null }
 						const ids = getVoteStateDiscordIds(voteState)
-						const users = await Users.buildUsers(await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, ids)))
+						const users = await Users.buildUsers(Users.getDbUsers(ctx, ids))
 						return { code: 'initial-state', state: { ...voteState, parts: { users } } }
 					}),
 				),
@@ -499,7 +497,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 					const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 					if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
 					const timeLeft = ctx.vote.state.deadline - Date.now()
-					const serverState = await SquadServer.getServerState(ctx)
+					const serverState = SquadServer.getServerState(ctx)
 					if (!SETTINGS.remindersEnabled(serverState.settings)) return
 					const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
 					if (!voteItem || !LL.isVoteItem(voteItem)) return
@@ -526,7 +524,7 @@ function registerVoteDeadlineAndReminder$(ctx: C.Db & SQS.Ctx & V.Ctx & SETTINGS
 					Instr.durableSub('final-vote-reminder', { module }, async (_, signal) => {
 						const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
 						if (!ctx.vote.state || ctx.vote.state.code !== 'in-progress') return
-						const serverState = await SquadServer.getServerState(ctx)
+						const serverState = SquadServer.getServerState(ctx)
 						if (!SETTINGS.remindersEnabled(serverState.settings)) return
 						const { item: voteItem } = Obj.destrNullable(LL.findItemById(serverState.layerQueue, ctx.vote.state.itemId))
 						if (!voteItem || !LL.isVoteItem(voteItem)) return
@@ -723,7 +721,7 @@ async function includeVoteStateUpdatePart(ctx: C.Db, update: V.VoteStateUpdate) 
 		discordIds = new Set([...discordIds, ...getVoteStateDiscordIds(update.state)])
 	}
 	const discordIdsArray = Array.from(discordIds)
-	const dbUsers = await Users.selectUsers(ctx).where(E.inArray(Schema.users.discordId, discordIdsArray))
+	const dbUsers = Users.getDbUsers(ctx, discordIdsArray)
 	const users = await Users.buildUsers(dbUsers)
 	const withParts: V.VoteStateUpdate & Parts<USR.UserPart> = { ...update, parts: { users } }
 	return withParts
@@ -746,5 +744,5 @@ function getVoteStateDiscordIds(state: V.VoteState) {
 }
 
 function getBaseCtx() {
-	return C.initMutexStore(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	return C.initMutexStore(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 }

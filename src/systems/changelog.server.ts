@@ -8,6 +8,7 @@ import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Sql from '@/server/sql'
 import * as ChangelogFiles from '@/systems/changelog-files.server'
 
 // The in-app changelog. At boot it reads the fragments this build ships, records when this install first ran each
@@ -16,32 +17,29 @@ import * as ChangelogFiles from '@/systems/changelog-files.server'
 
 const module = initModule('changelog')
 const orpcBase = getOrpcBase(module)
+const SQL = Sql.forModule(module)
 
 export let version = CL.runningVersion(null, 0)
 let releases: CL.ServedRelease[] = []
 
-export async function setup(ctx: C.Db) {
+export function setup(ctx: C.Db) {
 	const log = module.getLogger()
 	const loaded = ChangelogFiles.load(Paths.CHANGELOG, Paths.CHANGES)
 	for (const err of loaded.errors) log.warn('changelog: %s', err)
 	version = CL.runningVersion(loaded.index[0]?.version ?? null, loaded.pending.length)
 
 	const now = Date.now()
-	const servedAt = await DB.runTransaction(ctx, async (ctx) => {
-		const rows = await ctx.db().select().from(Schema.changelogEntries)
+	const { known: servedAt } = DB.transaction(ctx, {}, (ctx) => {
+		const rows = DB.all(ctx, Q.allEntries({}))
 		const known = new Map(rows.map((row) => [row.entryId, row.firstServedAt.getTime()]))
 		// an install's first boot with a changelog: everything it ships is history, not news
 		const stampedAt = rows.length === 0 ? 0 : now
 		const arrived = loaded.releases.flatMap((r) => r.entries).filter((e) => !known.has(e.id))
-		if (arrived.length > 0) {
-			await ctx
-				.db()
-				.insert(Schema.changelogEntries)
-				.values(arrived.map((e) => ({ entryId: e.id, firstServedAt: new Date(stampedAt) })))
-				.onConflictDoNothing()
-			for (const e of arrived) known.set(e.id, stampedAt)
+		for (const e of arrived) {
+			DB.run(ctx, Q.insertEntry({ entryId: e.id, firstServedAt: new Date(stampedAt) }))
+			known.set(e.id, stampedAt)
 		}
-		return known
+		return { code: 'ok' as const, known }
 	})
 
 	releases = loaded.releases.map((release) => ({
@@ -60,32 +58,70 @@ export async function setup(ctx: C.Db) {
 	}
 }
 
+namespace Q {
+	export const allEntries = SQL.def('allEntries', SQL.params({}), SQL.select().from(Schema.changelogEntries), {
+		scans: ['changelogEntries'],
+	})
+	const entryP = SQL.params({ entryId: Schema.changelogEntries.entryId, firstServedAt: Schema.changelogEntries.firstServedAt })
+	export const insertEntry = SQL.def(
+		'insertEntry',
+		entryP,
+		SQL.insert(Schema.changelogEntries).values({ entryId: entryP.entryId, firstServedAt: entryP.firstServedAt }).onConflictDoNothing(),
+	)
+	const userIdP = SQL.params({ userId: Schema.changelogUserState.userId })
+	export const userState = SQL.def(
+		'userState',
+		userIdP,
+		SQL.select().from(Schema.changelogUserState).where(E.eq(Schema.changelogUserState.userId, userIdP.userId)),
+	)
+	const newUserStateP = SQL.params({ userId: Schema.changelogUserState.userId, seenAt: Schema.changelogUserState.seenAt })
+	export const insertUserState = SQL.def(
+		'insertUserState',
+		newUserStateP,
+		SQL.insert(Schema.changelogUserState)
+			.values({ userId: newUserStateP.userId, seenAt: newUserStateP.seenAt })
+			.onConflictDoUpdate({ target: Schema.changelogUserState.userId, set: { userId: newUserStateP.userId } })
+			.returning(),
+	)
+	const markSeenP = SQL.params({ userId: Schema.changelogUserState.userId, seenAt: Schema.changelogUserState.seenAt })
+	export const markSeenUpTo = SQL.def(
+		'markSeenUpTo',
+		markSeenP,
+		SQL.update(Schema.changelogUserState)
+			.set({ seenAt: markSeenP.seenAt })
+			.where(E.and(E.eq(Schema.changelogUserState.userId, markSeenP.userId), E.lt(Schema.changelogUserState.seenAt, markSeenP.seenAt))),
+	)
+	const prefsP = SQL.params({
+		userId: Schema.changelogUserState.userId,
+		notifyLevel: Schema.changelogUserState.notifyLevel,
+		showOperatorNotes: Schema.changelogUserState.showOperatorNotes,
+	})
+	export const setUserPrefs = SQL.def(
+		'setUserPrefs',
+		prefsP,
+		SQL.update(Schema.changelogUserState)
+			.set({ notifyLevel: prefsP.notifyLevel, showOperatorNotes: prefsP.showOperatorNotes })
+			.where(E.eq(Schema.changelogUserState.userId, prefsP.userId)),
+	)
+}
+
 // the caller's place in the changelog, created on first read as having seen everything so far, so a new user does
 // not start with the install's whole history marked unread
-async function readUserState(ctx: C.Db, userId: bigint): Promise<CL.UserState> {
-	const [existing] = await ctx.db().select().from(Schema.changelogUserState).where(E.eq(Schema.changelogUserState.userId, userId))
+function readUserState(ctx: C.Db, userId: bigint): CL.UserState {
 	const row =
-		existing ??
-		(
-			await ctx
-				.db()
-				.insert(Schema.changelogUserState)
-				.values({ userId, seenAt: new Date(CL.latestServedAt(releases)) })
-				.onConflictDoUpdate({ target: Schema.changelogUserState.userId, set: { userId } })
-				.returning()
-		)[0]
+		DB.get(ctx, Q.userState({ userId })) ?? DB.get(ctx, Q.insertUserState({ userId, seenAt: new Date(CL.latestServedAt(releases)) }))!
 	return { seenAt: row.seenAt.getTime(), notifyLevel: row.notifyLevel, showOperatorNotes: row.showOperatorNotes }
 }
 
 export const orpcRouter = {
 	// the caller's own state alongside the releases, which are public: nothing to check
-	get: orpcBase.handler(async ({ context }) => {
-		const state = await readUserState(context, context.user.discordId)
+	get: orpcBase.handler(({ context }) => {
+		const state = readUserState(context, context.user.discordId)
 		return { version, releases, ...state }
 	}),
 
-	getStatus: orpcBase.meta({ logLevel: 'trace' }).handler(async ({ context }) => {
-		const state = await readUserState(context, context.user.discordId)
+	getStatus: orpcBase.meta({ logLevel: 'trace' }).handler(({ context }) => {
+		const state = readUserState(context, context.user.discordId)
 		return { version, unseen: CL.countUnseen(releases, state) }
 	}),
 
@@ -94,27 +130,27 @@ export const orpcRouter = {
 	markSeen: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ upTo: z.number().int().nonnegative() }))
-		.handler(async ({ context, input }) => {
-			await readUserState(context, context.user.discordId)
+		.handler(({ context, input }) => {
+			readUserState(context, context.user.discordId)
 			const seenAt = new Date(Math.min(input.upTo, Date.now()))
-			await context
-				.db()
-				.update(Schema.changelogUserState)
-				.set({ seenAt })
-				.where(E.and(E.eq(Schema.changelogUserState.userId, context.user.discordId), E.lt(Schema.changelogUserState.seenAt, seenAt)))
+			DB.run(context, Q.markSeenUpTo({ userId: context.user.discordId, seenAt }))
 			return { code: 'ok' as const }
 		}),
 
 	setPrefs: orpcBase
 		.meta({ type: 'mutation' })
 		.input(CL.PrefsSchema.partial().refine((p) => Object.keys(p).length > 0, { message: 'nothing to set' }))
-		.handler(async ({ context, input }) => {
-			await readUserState(context, context.user.discordId)
-			await context
-				.db()
-				.update(Schema.changelogUserState)
-				.set(input)
-				.where(E.eq(Schema.changelogUserState.userId, context.user.discordId))
+		.handler(({ context, input }) => {
+			const userId = context.user.discordId
+			const state = readUserState(context, userId)
+			DB.run(
+				context,
+				Q.setUserPrefs({
+					userId,
+					notifyLevel: input.notifyLevel ?? state.notifyLevel,
+					showOperatorNotes: input.showOperatorNotes ?? state.showOperatorNotes,
+				}),
+			)
 			return { code: 'ok' as const }
 		}),
 }

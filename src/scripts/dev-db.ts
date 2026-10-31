@@ -1,20 +1,20 @@
 import DatabaseConstructor, { type Database } from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { parseArgs } from 'node:util'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Color from '@/lib/color'
-import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
 import * as CS from '@/models/context-shared.models'
 import * as RRS from '@/models/repeat-rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
+import * as DB from '@/server/db'
 import * as Env from '@/server/env'
-import { ensureLoggerSetup } from '@/server/logger'
+import { ensureLoggerSetup, initModule } from '@/server/logger'
 import * as Migrate from '@/server/migrate'
 import * as SecretBox from '@/server/secret-box.server'
+import * as Sql from '@/server/sql'
 import * as Seed from '@/systems/seed.server'
 
 import * as DevInstance from '../dev/instance.ts'
@@ -25,6 +25,8 @@ import * as BmServer from '../emulator/bm-server.ts'
 const DEV_ADMIN_LIST = 'dev'
 
 const DEV_SERVER_NAME = 'Emulated Server'
+
+const SQL = Sql.forModule(initModule('dev-db'))
 
 // Gives this worktree a fresh database for its instance, migrated by the worktree's own build and seeded the way the
 // app's own first boot would seed it, with its one server pointed at the worktree's emulator. Never a copy of another
@@ -138,8 +140,8 @@ function withDevAdmins(rbac: SETTINGS.GlobalSettings['rbac']): SETTINGS.GlobalSe
 // empty globalSettings table means, so the filters the pool config below names are seeded before the global
 // settings row that would make the app skip them.
 async function seed(driver: Database) {
-	const db = drizzle(driver)
-	await Seed.setup({ ...CS.init(), db: () => db })
+	const ctx = { ...CS.init(), db: DB.connect(driver) }
+	Seed.setup(ctx)
 
 	const defaults = SETTINGS.parseGlobalSettings({})
 	if (!defaults.success) throw new Error('default global settings failed schema validation', { cause: defaults.error })
@@ -151,8 +153,9 @@ async function seed(driver: Database) {
 		ownerServerId: DevInstance.DEV_SERVER_ID,
 		rules: [...RRS.DEFAULT_RULES],
 	}
-	await db.insert(Schema.globalSettings).values(
-		superjsonify(Schema.globalSettings, {
+	DB.run(
+		ctx,
+		SQL.insert(Schema.globalSettings).values({
 			id: 1,
 			settings: SETTINGS.GlobalSettingsSchema.encode({
 				...globalSettings,
@@ -174,8 +177,8 @@ async function seed(driver: Database) {
 	// The user `instanceUrl` signs in as. It carries a configured super user's id where there is one, since that
 	// is the only route to a permission with discord off: RBAC's other roles are discord roles.
 	const discordId = superUsers[0] ?? DevInstance.DEV_USER.discordId
-	await db.insert(Schema.discordAccounts).values({ discordId, username: DevInstance.DEV_USER.username })
-	await db.insert(Schema.users).values({ discordId })
+	DB.run(ctx, SQL.insert(Schema.discordAccounts).values({ discordId, username: DevInstance.DEV_USER.username }))
+	DB.run(ctx, SQL.insert(Schema.users).values({ discordId }))
 	if (superUsers.length === 0) {
 		console.error(`SUPER_USERS is empty, so ${DevInstance.DEV_USER.username} can administer nothing; put ${discordId} in it`)
 	}
@@ -188,8 +191,9 @@ async function seed(driver: Database) {
 		}),
 	)
 	settings.queue.mainPool.repeatRulesetId = ownRuleset.id
-	await db.insert(Schema.servers).values(
-		superjsonify(Schema.servers, {
+	DB.run(
+		ctx,
+		SQL.insert(Schema.servers).values({
 			id: DevInstance.DEV_SERVER_ID,
 			displayName: DEV_SERVER_NAME,
 			enabled: true,

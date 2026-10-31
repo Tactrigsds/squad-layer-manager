@@ -29,6 +29,15 @@ export namespace Module {
 	export const NAME = 'slm.module.name'
 }
 
+export namespace Db {
+	// how a transaction() scope ended
+	export const TX_OUTCOME = 'slm.db.tx.outcome'
+	export type TxOutcome = 'committed' | 'released' | 'rolled-back'
+	// statements a span's op ran, and the time they took
+	export const STATEMENTS = 'slm.db.statements'
+	export const STATEMENTS_MS = 'slm.db.statements_ms'
+}
+
 // A plugin's logs, spans and op metrics are separated from the host's by its module name, which is
 // always `plugin:<id>` (PLG.moduleName). These carry the rest of its identity. All four are bounded by
 // what is installed, so they are safe as metric dimensions; only ID is used as one, on slm.op.duration.

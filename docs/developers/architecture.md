@@ -233,12 +233,11 @@ a self-deadlock, and sorts multiple acquisitions into a stable global order so o
 deadlock. The `IsolatedSubject` family exists because of this: they re-enter the root async context before emitting,
 so a subscriber does not inherit the publisher's mutex ownership.
 
-Three parallel buckets defer work until an enclosing critical section fully ends. All three are mutable arrays, shared
-by reference through ctx spreads:
+Three mechanisms defer work until an enclosing critical section fully ends:
 
-| Bucket               | Runs after                | Typical use                                                   |
+| Mechanism            | Runs after                | Typical use                                                   |
 | -------------------- | ------------------------- | ------------------------------------------------------------- |
-| `ctx.tx.unlockTasks` | a db transaction commits  | don't broadcast a change a rollback would undo                |
+| `DB.afterCommit`     | the outermost commit      | don't broadcast a change a rollback would undo                |
 | mutex `releaseTasks` | a mutex set fully unlocks |                                                               |
 | `ctx.deferred`       | an ancestor awaits it     | best-effort background work, kept inside the ancestor's scope |
 
@@ -863,8 +862,9 @@ text. A unit test fails on any setting without a label. Mark a subtree `opaque` 
 ## Data and persistence
 
 better-sqlite3 + drizzle, WAL mode. The schema is deliberately small, because most structured state is stored in JSON
-columns rather than being normalized. Those columns are **superjson**, not plain JSON, transformed by a pair that
-walks the drizzle table config, which is what lets bigints (Discord snowflakes) and Dates round-trip.
+columns rather than being normalized. Most of those columns are **superjson**, not plain JSON, which is what lets bigints
+(Discord snowflakes), Dates and Maps round-trip. [database.md](database.md) describes how server code reads and writes
+the database: statements, definitions, transactions and the checks on them.
 
 **Checkpoints, backup snapshots and vacuuming run on a worker thread** (`src/server/db-maintenance.worker.ts`) with
 its own connection. On the main connection, sqlite checkpoints inside whichever COMMIT pushes the WAL past
@@ -877,23 +877,10 @@ to the filesystem 128 pages at a time, which holds the write lock for a couple o
 created before this was switched over by one full `VACUUM`, which `applyPendingMigrations` runs under its exclusive
 lock (`src/server/migrate.ts`).
 
-**Transactions serialize globally.** better-sqlite3 is one synchronous connection, so `runTransaction` serializes
-logical transactions behind a promise-chain lock. It is re-entrant: an inner transaction joins the outer one, and an
-inner rollback rolls back the outer.
-
-Because that lock is process-wide, **a `runTransaction` callback must never await anything but a query.** Queries
-resolve immediately, so a query-only transaction holds the lock for microseconds. Awaiting rcon, discord, sftp or
-any other network call inside one stalls every write in the process for that round-trip, and the external call is
-not rolled back with the transaction anyway. Two ways out, both already used:
-
-- **Hoist** the call above the transaction, when the write depends on its result.
-- **Defer** it onto `ctx.tx.unlockTasks`, when it is a side effect of the write. These belong to the _outermost_
-  transaction, so a deferred task escapes an enclosing transaction too.
-
-**The rule is enforced.** `runTransaction` races every callback against a `setImmediate`: a query-only callback settles
-on a microtask and always wins, while one that reaches the network, the disk or a timer has to yield and loses. Losing
-throws in development and test and warns in production, where a violation is a latency bug and failing the write would
-be worse.
+**Transactions are synchronous.** better-sqlite3 is one synchronous connection, so a statement never yields, and a
+`DB.transaction` callback may not await. Nothing else can run between a transaction's statements, so it needs no lock.
+Work that waits, such as an rcon command, goes before the transaction or after it, and in-memory state that mirrors a
+write changes in `DB.afterCommit`. Async flows that read, wait and then write hold a mutex across the whole flow instead.
 
 **Migrations** use a custom runner (`src/server/migrate.ts`, `pnpm db:migrate`) that merges the `.sql` files
 drizzle-kit generated up to 0007 with the hand-written `.ts` migrations after them into one filename-ordered sequence.

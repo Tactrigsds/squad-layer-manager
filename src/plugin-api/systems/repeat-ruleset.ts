@@ -27,7 +27,7 @@ export async function setForServer(
 	ctx: PluginsSys.ServerCtx<any>,
 	id: RRS.RulesetId,
 ): Promise<{ code: 'ok' } | { code: 'err:unknown-repeat-ruleset'; message: string }> {
-	return await Settings.setServerRepeatRuleset(ctx, id, ctx.plugin.id)
+	return Settings.setServerRepeatRuleset(ctx, id, ctx.plugin.id)
 }
 
 /**
@@ -38,7 +38,7 @@ export async function save(
 	ctx: PluginsSys.Ctx<any>,
 	ruleset: RRS.Ruleset,
 ): Promise<{ code: 'ok'; ruleset: RRS.Ruleset } | { code: 'err:invalid-settings'; message: string }> {
-	return await Settings.saveRepeatRuleset(ctx, RRS.RulesetSchema.parse(ruleset), { type: 'plugin', pluginId: ctx.plugin.id })
+	return Settings.saveRepeatRuleset(ctx, RRS.RulesetSchema.parse(ruleset), { type: 'plugin', pluginId: ctx.plugin.id })
 }
 
 /** Refuses a ruleset that a server or rotation still uses. */
@@ -51,7 +51,7 @@ export async function remove(
 	| { code: 'err:repeat-ruleset-in-use'; message: string }
 	| { code: 'err:invalid-settings'; message: string }
 > {
-	return await Settings.deleteRepeatRuleset(ctx, id, { type: 'plugin', pluginId: ctx.plugin.id })
+	return Settings.deleteRepeatRuleset(ctx, id, { type: 'plugin', pluginId: ctx.plugin.id })
 }
 
 /** The rulesets after each change to them, whoever made it. Ends with the ctx. */

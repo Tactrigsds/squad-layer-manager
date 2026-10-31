@@ -11,9 +11,11 @@ import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as CleanupSys from '@/systems/cleanup.server'
 
 const module = initModule('event-archive')
+const SQL = Sql.forModule(module)
 let log!: CS.Logger
 
 const buildEnv = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db, ...Env.groups.backups })
@@ -30,7 +32,7 @@ export function setup() {
 }
 
 async function runCompactionLoop() {
-	const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+	const ctx = DB.withDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
 	try {
 		for (;;) {
 			await Timers.setTimeout(ENV.EVENT_ARCHIVE_INTERVAL, undefined, { signal: ctx.signal })
@@ -52,27 +54,95 @@ const COMPACT_BATCH = 200
 
 // The ordinal below which matches may leave the hot table, or undefined while the server has not yet played
 // enough of them for any to be eligible.
-async function hotFloorOrdinal(ctx: C.Db, serverId: string, minHotMatches: number): Promise<number | undefined> {
-	if (minHotMatches === 0) {
-		const [newest] = await ctx
-			.db()
-			.select({ ordinal: Schema.matchHistory.ordinal })
+function hotFloorOrdinal(ctx: C.Db, serverId: string, minHotMatches: number): number | undefined {
+	// with minHotMatches 0 this is the newest match, which is still never compacted: its events are being written as it
+	// plays
+	return DB.get(ctx, Q.newestOrdinal({ serverId, offset: Math.max(minHotMatches - 1, 0) }))?.ordinal
+}
+
+const se = Schema.serverEvents
+
+namespace Q {
+	export const serverIds = SQL.def(
+		'serverIds',
+		SQL.params({}),
+		SQL.selectDistinct({ serverId: Schema.matchHistory.serverId }).from(Schema.matchHistory),
+		{ scans: ['matchHistory'] },
+	)
+	const newestOrdinalP = SQL.params({ serverId: Schema.matchHistory.serverId, offset: SQL.count() })
+	export const newestOrdinal = SQL.def(
+		'newestOrdinal',
+		newestOrdinalP,
+		SQL.select({ ordinal: Schema.matchHistory.ordinal })
 			.from(Schema.matchHistory)
-			.where(E.eq(Schema.matchHistory.serverId, serverId))
+			.where(E.eq(Schema.matchHistory.serverId, newestOrdinalP.serverId))
 			.orderBy(E.desc(Schema.matchHistory.ordinal))
 			.limit(1)
-		// still never the current match: its events are being written as it plays
-		return newest ? newest.ordinal : undefined
-	}
-	const [floor] = await ctx
-		.db()
-		.select({ ordinal: Schema.matchHistory.ordinal })
-		.from(Schema.matchHistory)
-		.where(E.eq(Schema.matchHistory.serverId, serverId))
-		.orderBy(E.desc(Schema.matchHistory.ordinal))
-		.limit(1)
-		.offset(minHotMatches - 1)
-	return floor?.ordinal
+			.offset(newestOrdinalP.offset),
+	)
+	// a match that never recorded an end (crashed, or was never finalized) is dated by its start, and failing that by
+	// when we first saw it. a null time compares as null, so such a match is kept hot.
+	const candidatesP = SQL.params({
+		serverId: Schema.matchHistory.serverId,
+		floor: Schema.matchHistory.ordinal,
+		cutoff: SQL.value<number>(),
+	})
+	export const candidates = SQL.def(
+		'candidates',
+		candidatesP,
+		SQL.select({ id: Schema.matchHistory.id })
+			.from(Schema.matchHistory)
+			.where(
+				E.and(
+					E.eq(Schema.matchHistory.serverId, candidatesP.serverId),
+					E.lt(Schema.matchHistory.ordinal, candidatesP.floor),
+					E.lt(
+						E.sql<number>`coalesce(${Schema.matchHistory.endTime}, ${Schema.matchHistory.startTime}, ${Schema.matchHistory.createdAt})`,
+						candidatesP.cutoff,
+					),
+					E.notExists(
+						SQL.select({ one: E.sql`1` })
+							.from(Schema.archivedMatches)
+							.where(E.eq(Schema.archivedMatches.matchId, Schema.matchHistory.id)),
+					),
+				),
+			)
+			.orderBy(E.asc(Schema.matchHistory.ordinal))
+			.limit(COMPACT_BATCH),
+	)
+	const matchIdP = SQL.params({ matchId: se.matchId })
+	// time and data as stored, since packing only writes them back out (see EA.pack). json_valid stands in for the parse a
+	// mapped select does, so a row the archive could not read back is refused here.
+	export const storedEventsOfMatch = SQL.def(
+		'storedEventsOfMatch',
+		matchIdP,
+		SQL.select({
+			id: se.id,
+			type: se.type,
+			time: E.sql<number>`${se.time}`,
+			appEventId: se.appEventId,
+			version: se.version,
+			data: E.sql<string>`${se.data}`,
+			valid: E.sql<number>`json_valid(${se.data})`,
+		})
+			.from(se)
+			.where(E.eq(se.matchId, matchIdP.matchId))
+			.orderBy(E.asc(se.id)),
+	)
+	const archiveP = SQL.params(E.getTableColumns(Schema.archivedMatches))
+	export const insertArchive = SQL.def('insertArchive', archiveP, SQL.insert(Schema.archivedMatches).values(archiveP))
+	export const deleteEventsOfMatch = SQL.def('deleteEventsOfMatch', matchIdP, SQL.delete(se).where(E.eq(se.matchId, matchIdP.matchId)))
+	const matchIdsP = SQL.params({ ids: SQL.list(se.matchId) })
+	export const hotEventsOfMatches = SQL.def(
+		'hotEventsOfMatches',
+		matchIdsP,
+		SQL.select().from(se).where(SQL.inJson(se.matchId, matchIdsP.ids)).orderBy(E.asc(se.id)),
+	)
+	export const archivesOfMatches = SQL.def(
+		'archivesOfMatches',
+		matchIdsP,
+		SQL.select().from(Schema.archivedMatches).where(SQL.inJson(Schema.archivedMatches.matchId, matchIdsP.ids)),
+	)
 }
 
 /**
@@ -89,78 +159,38 @@ export const compactAgedMatches = Instr.spanOp(
 	{ module },
 	async (ctx: C.Db & CS.AbortSignal, opts: { window: number; minHotMatches: number }) => {
 		const cutoff = Date.now() - opts.window
-		const serverIds = await ctx.db().selectDistinct({ serverId: Schema.matchHistory.serverId }).from(Schema.matchHistory)
+		const servers = DB.all(ctx, Q.serverIds({}))
 
 		let matches = 0
 		let events = 0
 		let rawBytes = 0
 		let packedBytes = 0
 
-		for (const { serverId } of serverIds) {
+		for (const { serverId } of servers) {
 			ctx.signal.throwIfAborted()
 
 			// the ordinal of the oldest match kept hot regardless of age. absent while the server is still
 			// inside its first minHotMatches, in which case nothing on it can be compacted yet.
-			const floor = await hotFloorOrdinal(ctx, serverId, opts.minHotMatches)
+			const floor = hotFloorOrdinal(ctx, serverId, opts.minHotMatches)
 			if (floor === undefined) continue
 
-			// a match that never recorded an end (crashed, or was never finalized) is dated by its start, and
-			// failing that by when we first saw it. a null time compares as null, so such a match is kept hot.
-			const matchTime = E.sql<number>`coalesce(${Schema.matchHistory.endTime}, ${Schema.matchHistory.startTime}, ${Schema.matchHistory.createdAt})`
-			const candidates = await ctx
-				.db()
-				.select({ id: Schema.matchHistory.id })
-				.from(Schema.matchHistory)
-				.where(
-					E.and(
-						E.eq(Schema.matchHistory.serverId, serverId),
-						E.lt(Schema.matchHistory.ordinal, floor),
-						E.lt(matchTime, cutoff),
-						E.notExists(
-							ctx
-								.db()
-								.select({ one: E.sql`1` })
-								.from(Schema.archivedMatches)
-								.where(E.eq(Schema.archivedMatches.matchId, Schema.matchHistory.id)),
-						),
-					),
-				)
-				.orderBy(E.asc(Schema.matchHistory.ordinal))
-				.limit(COMPACT_BATCH)
+			const toCompact = DB.all(ctx, Q.candidates({ serverId, floor, cutoff }))
 
-			for (const { id: matchId } of candidates) {
+			for (const { id: matchId } of toCompact) {
 				ctx.signal.throwIfAborted()
 
-				const se = Schema.serverEvents
-				// time and data as stored, since packing only writes them back out (see EA.pack). json_valid stands
-				// in for the parse a mapped select does, so a row the archive could not read back is refused here.
-				const rows = await ctx
-					.db()
-					.select({
-						id: se.id,
-						type: se.type,
-						time: E.sql<number>`${se.time}`,
-						appEventId: se.appEventId,
-						version: se.version,
-						data: E.sql<string>`${se.data}`,
-						valid: E.sql<number>`json_valid(${se.data})`,
-					})
-					.from(se)
-					.where(E.eq(se.matchId, matchId))
-					.orderBy(E.asc(se.id))
+				const rows = DB.all(ctx, Q.storedEventsOfMatch({ matchId }))
 				if (rows.length === 0) continue
 				const invalid = rows.find((row) => row.valid !== 1)
 				if (invalid) throw new Error(`server event ${invalid.id} of match ${matchId} does not hold valid json`)
 
-				// packed before the transaction opens: zlib runs on the threadpool, and awaiting it under the
-				// process-wide transaction lock would stall every other write in the process for its duration.
+				// packed before the transaction opens: zlib runs on the threadpool, and a transaction may not await
 				const blob = await EA.pack(rows)
 
-				await DB.runTransaction(ctx, async (ctx) => {
-					await ctx
-						.db()
-						.insert(Schema.archivedMatches)
-						.values({
+				DB.transaction(ctx, {}, (ctx) => {
+					DB.run(
+						ctx,
+						Q.insertArchive({
 							matchId,
 							serverId,
 							eventCount: rows.length,
@@ -168,8 +198,10 @@ export const compactAgedMatches = Instr.spanOp(
 							maxEventId: rows[rows.length - 1].id,
 							encoding: EA.ENCODING,
 							events: blob,
-						})
-					await ctx.db().delete(Schema.serverEvents).where(E.eq(Schema.serverEvents.matchId, matchId))
+							createdAt: new Date(),
+						}),
+					)
+					DB.run(ctx, Q.deleteEventsOfMatch({ matchId }))
 				})
 
 				matches++
@@ -209,12 +241,7 @@ export const loadMatchEvents = Instr.spanOp(
 		if (matchIds.length === 0) return byMatch
 		for (const matchId of matchIds) byMatch.set(matchId, [])
 
-		const hotRows = await ctx
-			.db()
-			.select()
-			.from(Schema.serverEvents)
-			.where(E.inArray(Schema.serverEvents.matchId, matchIds))
-			.orderBy(E.asc(Schema.serverEvents.id))
+		const hotRows = DB.all(ctx, Q.hotEventsOfMatches({ ids: matchIds }))
 		for (const row of hotRows) byMatch.get(row.matchId)?.push(row)
 
 		// compaction inserts the archive row and deletes the hot rows in one transaction, so a match is in
@@ -222,7 +249,7 @@ export const loadMatchEvents = Instr.spanOp(
 		// a half-applied state (which only a corrupted db could produce) reads as the un-compacted match.
 		const archivedIds = matchIds.filter((id) => byMatch.get(id)!.length === 0)
 		if (archivedIds.length > 0) {
-			const archived = await ctx.db().select().from(Schema.archivedMatches).where(E.inArray(Schema.archivedMatches.matchId, archivedIds))
+			const archived = DB.all(ctx, Q.archivesOfMatches({ ids: archivedIds }))
 			for (const row of archived) {
 				byMatch.set(row.matchId, await EA.unpack(row.matchId, row.encoding, row.events as Buffer))
 			}

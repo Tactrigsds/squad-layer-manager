@@ -3,14 +3,26 @@ import * as E from 'drizzle-orm'
 import * as Schema from '$root/drizzle/schema'
 import * as PUN from '@/models/player-usernames.models'
 import type * as C from '@/server/context'
+import * as DB from '@/server/db'
+import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 
-export async function getPeriods(ctx: C.Db, playerId: string): Promise<PUN.UsernamePeriod[]> {
-	const rows = await ctx
-		.db()
-		.select({ username: Schema.playerUsernames.username, time: Schema.playerUsernames.time })
-		.from(Schema.playerUsernames)
-		.where(E.eq(Schema.playerUsernames.playerId, playerId))
-		.orderBy(E.desc(Schema.playerUsernames.time))
-		.limit(PUN.MAX_PERIODS)
-	return PUN.toPeriods(rows)
+const module = initModule('player-usernames')
+const SQL = Sql.forModule(module)
+
+namespace Q {
+	const periodsP = SQL.params({ playerId: Schema.playerUsernames.playerId })
+	export const usernamesOf = SQL.def(
+		'usernamesOf',
+		periodsP,
+		SQL.select({ username: Schema.playerUsernames.username, time: Schema.playerUsernames.time })
+			.from(Schema.playerUsernames)
+			.where(E.eq(Schema.playerUsernames.playerId, periodsP.playerId))
+			.orderBy(E.desc(Schema.playerUsernames.time))
+			.limit(PUN.MAX_PERIODS),
+	)
+}
+
+export function getPeriods(ctx: C.Db, playerId: string): PUN.UsernamePeriod[] {
+	return PUN.toPeriods(DB.all(ctx, Q.usernamesOf({ playerId })))
 }

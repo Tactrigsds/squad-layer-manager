@@ -154,7 +154,7 @@ async function* guardStream(ctx: C.OrpcBase, check: AccessCheck, inner: AsyncIte
 
 async function recordDenial(ctx: C.OrpcBase, procedurePath: string, denial: RBAC.PermissionDeniedResponse) {
 	const AppEventsSys = await appEventsServer()
-	await AppEventsSys.persistAppEvent(
+	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.PermissionDenied>({
 			type: 'PERMISSION_DENIED',

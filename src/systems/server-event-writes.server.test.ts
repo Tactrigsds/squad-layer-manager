@@ -1,10 +1,11 @@
 import DatabaseConstructor from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
 import path from 'node:path'
 import { beforeEach, describe, expect, test } from 'vitest'
 
 import { tsMigrations } from '@/migrations/registry'
+import * as CS from '@/models/context-shared.models'
 import type * as SE from '@/models/server-events.models'
+import * as DB from '@/server/db'
 import * as Migrate from '@/server/migrate'
 
 import * as EventWrites from './server-event-writes.server'
@@ -20,8 +21,7 @@ beforeEach(async () => {
 	await Migrate.runMigrations(driver, { sqlDir: path.resolve(import.meta.dirname, '../../drizzle-sqlite'), tsMigrations })
 	// events reference a match and a server this test has no reason to create
 	driver.pragma('foreign_keys = OFF')
-	const db = drizzle(driver)
-	ctx = { db: () => db, log: { error: () => {}, warn: () => {} } } as unknown as typeof ctx
+	ctx = { ...CS.init(), db: DB.connect(driver), log: { error: () => {}, warn: () => {} } } as unknown as typeof ctx
 })
 
 function write(event: Record<string, unknown>) {

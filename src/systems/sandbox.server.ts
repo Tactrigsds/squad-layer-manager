@@ -184,7 +184,7 @@ export async function seedServerIfEnabled(ctx: C.Db): Promise<void> {
 		...SETTINGS.PublicServerSettingsSchema.parse({}),
 		connections: SandboxConnectionSchema.parse({ type: 'sandbox' }),
 	})
-	const res = await Settings.createServerEntry(ctx, {
+	const res = Settings.createServerEntry(ctx, {
 		id: SEEDED_SERVER_ID,
 		displayName: 'Sandbox',
 		settings,
@@ -193,8 +193,8 @@ export async function seedServerIfEnabled(ctx: C.Db): Promise<void> {
 		log.warn('Could not seed the sandbox server: %s', res.code)
 		return
 	}
-	await Settings.setServerEnabled(ctx, SEEDED_SERVER_ID, true)
-	if (entries.length === 0) await Settings.setDefaultServerEntry(ctx, SEEDED_SERVER_ID)
+	Settings.setServerEnabled(ctx, SEEDED_SERVER_ID, true)
+	if (entries.length === 0) Settings.setDefaultServerEntry(ctx, SEEDED_SERVER_ID)
 	log.info('Seeded the sandbox server')
 }
 
