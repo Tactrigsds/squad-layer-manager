@@ -13,12 +13,14 @@ import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 
 const module = initModule('match-layers')
+const SQL = Sql.forModule(module)
 let log!: CS.Logger
 
 // far enough into boot that the layer artifact is loaded and the first matches have settled; the pass takes a
@@ -32,7 +34,7 @@ export function setup() {
 
 // once per boot, and a no-op on every boot whose layer artifact matches the last one reconciled against
 async function runAtBoot() {
-	const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+	const ctx = DB.withDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
 	try {
 		await Timers.setTimeout(BOOT_SETTLE_DELAY, undefined, { signal: ctx.signal })
 		await reconcileMatchLayers(ctx)
@@ -47,10 +49,68 @@ const RECONCILED_HASH_KEY = 'matchLayers.reconciledArtifactHash'
 // process-wide write lock is never held long, since this runs while the app is already serving.
 const UPDATE_BATCH = 250
 
-async function countUnresolved(ctx: C.Db): Promise<number> {
-	const [row] = await ctx.db().select({ count: E.count() }).from(Schema.matchHistory).where(E.isNull(Schema.matchHistory.layerMap))
-	return row?.count ?? 0
+const countUnresolved = SQL.def(
+	'countUnresolved',
+	SQL.params({}),
+	SQL.select({ count: E.count() }).from(Schema.matchHistory).where(E.isNull(Schema.matchHistory.layerMap)),
+)
+
+const unresolvedLayerIds = SQL.def(
+	'unresolvedLayerIds',
+	SQL.params({}),
+	SQL.selectDistinct({ layerId: Schema.matchHistory.layerId }).from(Schema.matchHistory).where(E.isNull(Schema.matchHistory.layerMap)),
+)
+
+const PARTS_COLUMNS = {
+	layerMap: Schema.matchHistory.layerMap,
+	layerGamemode: Schema.matchHistory.layerGamemode,
+	layerVersion: Schema.matchHistory.layerVersion,
+	layerTeam1Faction: Schema.matchHistory.layerTeam1Faction,
+	layerTeam1Unit: Schema.matchHistory.layerTeam1Unit,
+	layerTeam2Faction: Schema.matchHistory.layerTeam2Faction,
+	layerTeam2Unit: Schema.matchHistory.layerTeam2Unit,
 }
+function partsSet(p: Sql.Params<typeof PARTS_COLUMNS>) {
+	return {
+		layerMap: p.layerMap,
+		layerGamemode: p.layerGamemode,
+		layerVersion: p.layerVersion,
+		layerTeam1Faction: p.layerTeam1Faction,
+		layerTeam1Unit: p.layerTeam1Unit,
+		layerTeam2Faction: p.layerTeam2Faction,
+		layerTeam2Unit: p.layerTeam2Unit,
+	}
+}
+
+const setPartsP = SQL.params({ ...PARTS_COLUMNS, layerId: Schema.matchHistory.layerId })
+const setUnresolvedParts = SQL.def(
+	'setUnresolvedParts',
+	setPartsP,
+	SQL.update(Schema.matchHistory)
+		.set(partsSet(setPartsP))
+		.where(E.and(E.eq(Schema.matchHistory.layerId, setPartsP.layerId), E.isNull(Schema.matchHistory.layerMap))),
+)
+
+const unresolvedWithCommandText = SQL.def(
+	'unresolvedWithCommandText',
+	SQL.params({}),
+	SQL.select({
+		id: Schema.matchHistory.id,
+		layerId: Schema.matchHistory.layerId,
+		rawLayerCommandText: Schema.matchHistory.rawLayerCommandText,
+	})
+		.from(Schema.matchHistory)
+		.where(E.and(E.isNull(Schema.matchHistory.layerMap), E.isNotNull(Schema.matchHistory.rawLayerCommandText))),
+)
+
+const rewriteLayerP = SQL.params({ ...PARTS_COLUMNS, layerId: Schema.matchHistory.layerId, id: Schema.matchHistory.id })
+const rewriteLayer = SQL.def(
+	'rewriteLayer',
+	rewriteLayerP,
+	SQL.update(Schema.matchHistory)
+		.set({ layerId: rewriteLayerP.layerId, ...partsSet(rewriteLayerP) })
+		.where(E.eq(Schema.matchHistory.id, rewriteLayerP.id)),
+)
 
 /**
  * Re-resolves matches whose layer this build's engine could not parse when they were recorded.
@@ -68,70 +128,51 @@ async function countUnresolved(ctx: C.Db): Promise<number> {
  */
 export const reconcileMatchLayers = Instr.spanOp('reconcileMatchLayers', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	const artifactHash = LayerData.hash
-	const lastHash = await PersistedCache.load<string>(RECONCILED_HASH_KEY)
+	const lastHash = PersistedCache.load<string>(RECONCILED_HASH_KEY)
 	if (lastHash === artifactHash) return undefined
 
 	// unresolved is exactly "layerMap is null": layerParts writes all seven columns or none of them
-	const unresolvedTotal = await countUnresolved(ctx)
+	const unresolvedTotal = DB.get(ctx, countUnresolved({}))?.count ?? 0
 
 	// By distinct layer rather than by match: an id resolves the same way for every match that played it, and
 	// there are far fewer ids than matches (5k against 8.5k on the largest install, and the gap only widens).
 	// A RAW: id carries its command text inside itself, so this pass covers those too.
-	const distinctIds = await ctx
-		.db()
-		.selectDistinct({ layerId: Schema.matchHistory.layerId })
-		.from(Schema.matchHistory)
-		.where(E.isNull(Schema.matchHistory.layerMap))
+	const distinctIds = DB.all(ctx, unresolvedLayerIds({}))
 
 	let updated = 0
 
 	for (const batch of Arr.paged(distinctIds, UPDATE_BATCH)) {
 		ctx.signal.throwIfAborted()
-		await DB.runTransaction(ctx, async (ctx) => {
+		updated += DB.transaction(ctx, {}, (ctx) => {
+			let changes = 0
 			for (const { layerId } of batch) {
 				const parts = MH.layerParts(L.readStoredLayerId(layerId))
 				if (parts.layerMap === null) continue
-				const res = await ctx
-					.db()
-					.update(Schema.matchHistory)
-					.set(parts)
-					.where(E.and(E.eq(Schema.matchHistory.layerId, layerId), E.isNull(Schema.matchHistory.layerMap)))
-				updated += res.changes
+				changes += DB.run(ctx, setUnresolvedParts({ ...parts, layerId })).changes
 			}
-		})
+			return { code: 'ok' as const, changes }
+		}).changes
 		await Timers.setImmediate(undefined, { signal: ctx.signal })
 	}
 
 	// what is left is an id the engine still cannot place. Those are worth a second look one at a time,
 	// because rawLayerCommandText may name a layer the id does not -- and rewriting the id is the only case
 	// where a match's recorded layer changes, so it stays per row and stays attributable.
-	const stillUnresolved = await ctx
-		.db()
-		.select({
-			id: Schema.matchHistory.id,
-			layerId: Schema.matchHistory.layerId,
-			rawLayerCommandText: Schema.matchHistory.rawLayerCommandText,
-		})
-		.from(Schema.matchHistory)
-		.where(E.and(E.isNull(Schema.matchHistory.layerMap), E.isNotNull(Schema.matchHistory.rawLayerCommandText)))
+	const stillUnresolved = DB.all(ctx, unresolvedWithCommandText({}))
 
 	// only the rewrites are listed on the event. A plain backfill resolves thousands of ids to themselves,
 	// which the count already says; an id that CHANGED is the part that alters what a search returns.
 	const rewritten = new Map<string, { from: string; to: string; matches: number }>()
 	for (const batch of Arr.paged(stillUnresolved, UPDATE_BATCH)) {
 		ctx.signal.throwIfAborted()
-		await DB.runTransaction(ctx, async (ctx) => {
+		DB.transaction(ctx, {}, (ctx) => {
 			for (const match of batch) {
 				const parsed = L.parseRawLayerText(match.rawLayerCommandText!)
 				if (!parsed || !L.isKnownLayer(parsed)) continue
 				const parts = MH.layerParts(parsed.id)
 				if (parts.layerMap === null) continue
-				await ctx
-					.db()
-					.update(Schema.matchHistory)
-					.set({ layerId: L.toLayerText(parsed.id), ...parts })
-					.where(E.eq(Schema.matchHistory.id, match.id))
 				const to = L.toLayerText(parsed.id)
+				DB.run(ctx, rewriteLayer({ ...parts, layerId: to, id: match.id }))
 				const key = `${match.layerId} ${to}`
 				const entry = rewritten.get(key) ?? { from: match.layerId, to, matches: 0 }
 				entry.matches++
@@ -143,11 +184,11 @@ export const reconcileMatchLayers = Instr.spanOp('reconcileMatchLayers', { modul
 	}
 	const resolved = [...rewritten.values()]
 
-	await PersistedCache.save(RECONCILED_HASH_KEY, artifactHash)
+	PersistedCache.save(RECONCILED_HASH_KEY, artifactHash)
 
 	if (updated > 0) {
 		log.info('reconciled the layers of %d match(es) against artifact %s', updated, artifactHash.slice(0, 12))
-		await AppEventsSys.persistAppEvent(
+		AppEventsSys.persistAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.MatchLayersReconciled>({
 				type: 'MATCH_LAYERS_RECONCILED',

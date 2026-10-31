@@ -6,7 +6,9 @@ import * as Project from '@/models/project.models'
 import * as SB from '@/models/sandbox.models'
 import type * as SETTINGS from '@/models/settings.models'
 import type * as C from '@/server/context.ts'
+import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 
 // What a database with nothing in it starts life as. A fresh install boots straight into a working pool rather
 // than an empty one: these filters are inserted before anything reads the filters table, and the pool config
@@ -16,6 +18,7 @@ import { initModule } from '@/server/logger'
 // reconciled on later boots.
 
 const module = initModule('seed')
+const SQL = Sql.forModule(module)
 let log!: ReturnType<typeof module.getLogger>
 
 // without a missExemption, a seeded filter takes the default
@@ -197,15 +200,14 @@ export function applyInitialGlobalSettings(defaults: SETTINGS.GlobalSettings): S
 
 // Runs before anything reads the filters table, and only against a database that has never been configured --
 // which is what an empty globalSettings table means (settings.server writes that row on the same boot).
-export async function setup(ctx: C.Db) {
+export function setup(ctx: C.Db) {
 	log = module.getLogger()
-	const configured = await ctx.db().select({ id: Schema.globalSettings.id }).from(Schema.globalSettings).limit(1)
-	if (configured.length > 0) return
+	const configured = DB.get(ctx, SQL.select({ id: Schema.globalSettings.id }).from(Schema.globalSettings).limit(1))
+	if (configured) return
 
-	await ctx
-		.db()
-		.insert(Schema.filters)
-		.values(
+	DB.run(
+		ctx,
+		SQL.insert(Schema.filters).values(
 			SEEDED_FILTERS.map((filter) =>
 				F.toRow({
 					...filter,
@@ -213,6 +215,7 @@ export async function setup(ctx: C.Db) {
 					owner: F.SYSTEM_OWNER,
 				}),
 			),
-		)
+		),
+	)
 	log.info('Seeded %d filters for a fresh install', SEEDED_FILTERS.length)
 }

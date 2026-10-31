@@ -233,6 +233,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/plugin/schedule': ['at', 'blocked', 'cancel', 'daily', 'job', 'weekly'],
 	'slm/plugin/servers': ['setup'],
 	'slm/plugin/slots': ['register'],
+	'slm/server/db': ['afterCommit', 'all', 'forModule', 'get', 'run', 'transaction'],
 	'slm/server/instrumentation': ['durableSub', 'recordGenericError', 'setSpanOpAttrs', 'setSpanStatus', 'spanOp'],
 	'slm/server/logger': ['childModule'],
 	'slm/systems/app-events': ['emit'],

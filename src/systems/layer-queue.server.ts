@@ -1,7 +1,5 @@
 import { Mutex } from 'async-mutex'
-import * as E from 'drizzle-orm'
 
-import * as Schema from '$root/drizzle/schema.ts'
 import { IsolatedBehaviorSubject, IsolatedReplaySubject, IsolatedSubject } from '@/lib/isolated-subject'
 import * as ODSM from '@/lib/odsm'
 import * as OrderedLanes from '@/lib/ordered-lanes'
@@ -58,18 +56,8 @@ import * as UserPresence from '@/systems/user-presence.server'
 import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 
-// ctx for op dispatch and its side effects. `tx` is present when an op is dispatched inside a transaction (the map
-// roll does this), which side effects use to defer work that must not run under the process-wide tx lock.
-type SideEffectCtx = C.Db &
-	LQ.Ctx &
-	SQS.Ctx &
-	V.Ctx &
-	MH.Ctx &
-	SR.Ctx.Rcon &
-	SETTINGS.Ctx &
-	CS.AbortSignal &
-	Msgs.Ctx &
-	Partial<Pick<C.Tx, 'tx'>>
+// ctx for op dispatch and its side effects, which await rcon and so never run inside a transaction
+type SideEffectCtx = C.Db & LQ.Ctx & SQS.Ctx & V.Ctx & MH.Ctx & SR.Ctx.Rcon & SETTINGS.Ctx & CS.AbortSignal & Msgs.Ctx
 
 // The server MAP_SET an outside-set sync is reacting to, by the queue item the sync puts in the queue, for the length of
 // that one dispatch. Carried beside the op rather than on it: the op type is part of the plugin API.
@@ -121,7 +109,7 @@ export const setupInstance = Instr.spanOp(
 					.pipe(
 						Instr.durableSub('queue-reminders', { module, levels: { event: 'info' } }, async (_, signal) => {
 							const baseCtx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
-							const serverState = await SquadServer.getServerState(baseCtx)
+							const serverState = SquadServer.getServerState(baseCtx)
 							if (!SETTINGS.remindersEnabled(serverState.settings)) return
 							const currentMatch = await MatchHistory.getCurrentMatch(baseCtx)
 
@@ -193,7 +181,7 @@ export const setupInstance = Instr.spanOp(
 					const queue = getSavedQueue(ctx)
 					const nextLayerId = LL.getNextLayerId(queue)
 					if (!nextLayerId) return
-					const serverState = await SquadServer.getServerState(ctx)
+					const serverState = SquadServer.getServerState(ctx)
 					await syncNextLayerToServer(ctx, serverState.settings, nextLayerId, queue[0].itemId)
 				}),
 			)
@@ -228,7 +216,7 @@ export const setupInstance = Instr.spanOp(
 							if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
 							const external = externalActor(event.source)
 							if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
-								const serverState = await SquadServer.getServerState(ctx)
+								const serverState = SquadServer.getServerState(ctx)
 								if (savedNextLayerId === null) {
 									log.warn('no next layer to sync after map set')
 									return
@@ -277,7 +265,7 @@ export const setupInstance = Instr.spanOp(
 						}
 						if (event.type !== 'INGAME_VOTE_STARTED') return
 
-						const serverState = await SquadServer.getServerState(ctx)
+						const serverState = SquadServer.getServerState(ctx)
 						// A vote takes over the reason even when an admin had already turned updates off: whoever stopped
 						// SLM writing the rotation, the vote is what decides the next layer now, and the alert has to say
 						// so. Only the first stage acts, though -- each team's faction round arrives as its own container,
@@ -288,7 +276,7 @@ export const setupInstance = Instr.spanOp(
 							await toggleUpdatesToSquadServer({ ctx, input: { disabled: { type: 'ingame-vote', inferred: false } } })
 							// SLM turning itself off is an action in its own right, and the settings write alone leaves no
 							// trace of who did it or why
-							await AppEventsSys.persistAppEvent(
+							AppEventsSys.persistAppEvent(
 								ctx,
 								AppEvents.create<AppEvents.SettingsUpdated>({
 									type: 'SETTINGS_UPDATED',
@@ -342,12 +330,12 @@ export const setupInstance = Instr.spanOp(
 							}
 							missingSince = null
 
-							const from = (await SquadServer.getServerState(ctxWithSignal)).settings.updatesToSquadServerDisabled
+							const from = SquadServer.getServerState(ctxWithSignal).settings.updatesToSquadServerDisabled
 							await toggleUpdatesToSquadServer({
 								ctx: ctxWithSignal,
 								input: { disabled: { type: 'ingame-vote', inferred: true } },
 							})
-							await AppEventsSys.persistAppEvent(
+							AppEventsSys.persistAppEvent(
 								ctxWithSignal,
 								AppEvents.create<AppEvents.SettingsUpdated>({
 									type: 'SETTINGS_UPDATED',
@@ -649,58 +637,41 @@ export async function saveQueueAndUpdateServer(
 	queueUpdatedId?: string,
 ) {
 	await Vote.syncVoteStateWithQueueState(ctx, list)
-	return await DB.runTransaction(ctx, { redactParams: true }, async (txCtx) => {
-		const serverState = await SquadServer.getServerState(txCtx)
-		const nextItemId = list[0]?.itemId || null
-		const nextLayerId = LL.getNextLayerId(list)
-		const prevNextLayerId = LL.getNextLayerId(prevList)
-		const nextLayerChanged = !!nextLayerId && (!prevNextLayerId || !L.areLayersCompatible(prevNextLayerId, nextLayerId))
-
-		await SquadServer.updateServerState(
-			txCtx,
-			{ layerQueue: list },
-			{
-				type: 'system',
-				event: 'admin-change-layer',
-			},
-		)
-
-		// These reach the game server over rcon, so they're deferred rather than awaited under the (global) tx lock:
-		// onto the outermost transaction's unlockTasks, or while a roll is being recorded, onto the syncs the roll runs
-		// once it has released its locks. `tx` is dropped because it's spent by then, and a nested runTransaction would
-		// otherwise join a committed transaction and run in autocommit with a rollback() that does nothing.
-		const deferredCtx = { ...ctx, tx: undefined }
-		const syncToServer = async () => {
-			if (nextLayerId && nextItemId) {
-				await syncNextLayerToServer(
-					deferredCtx,
-					serverState.settings,
-					nextLayerId,
-					nextItemId,
-					queueUpdatedId ? { reason: 'queue-updated', causeId: queueUpdatedId } : undefined,
-				)
-			} else {
-				log.error('No next layer to sync to server')
-			}
-			// after the sync, so the warn names the layer now set rather than the one it replaced. A change SLM overrides
-			// never gets here: the override sets the layer back directly instead of saving, so it announces nothing.
-			// gated on the same settings the sync read, so the warn fires only when the layer it names really was set.
-			if (
-				deferredCtx.serverSettings.settings.warnOnNextLayerChange &&
-				nextLayerChanged &&
-				!serverState.settings.updatesToSquadServerDisabled
-			) {
-				await warnShowNext(deferredCtx, 'all-admins', { updated: true })
-			}
-		}
-		const deferredServerSyncs = ctx.layerQueue.deferredServerSyncs
-		if (deferredServerSyncs) deferredServerSyncs.push(syncToServer)
-		else txCtx.tx.unlockTasks.push(syncToServer)
-
-		return {
-			code: 'ok' as const,
-		}
+	const nextItemId = list[0]?.itemId || null
+	const nextLayerId = LL.getNextLayerId(list)
+	const prevNextLayerId = LL.getNextLayerId(prevList)
+	const nextLayerChanged = !!nextLayerId && (!prevNextLayerId || !L.areLayersCompatible(prevNextLayerId, nextLayerId))
+	const serverState = DB.transaction(ctx, {}, (txCtx) => {
+		const { settings } = SquadServer.getServerState(txCtx)
+		SquadServer.updateServerState(txCtx, { layerQueue: list }, { type: 'system', event: 'admin-change-layer' })
+		return { code: 'ok' as const, settings }
 	})
+
+	const syncToServer = async () => {
+		if (nextLayerId && nextItemId) {
+			await syncNextLayerToServer(
+				ctx,
+				serverState.settings,
+				nextLayerId,
+				nextItemId,
+				queueUpdatedId ? { reason: 'queue-updated', causeId: queueUpdatedId } : undefined,
+			)
+		} else {
+			log.error('No next layer to sync to server')
+		}
+		// after the sync, so the warn names the layer now set rather than the one it replaced. A change SLM overrides
+		// never gets here: the override sets the layer back directly instead of saving, so it announces nothing.
+		// gated on the same settings the sync read, so the warn fires only when the layer it names really was set.
+		if (ctx.serverSettings.settings.warnOnNextLayerChange && nextLayerChanged && !serverState.settings.updatesToSquadServerDisabled) {
+			await warnShowNext(ctx, 'all-admins', { updated: true })
+		}
+	}
+	// while a roll is being recorded, the roll runs the sync once it has released its locks
+	const deferredServerSyncs = ctx.layerQueue.deferredServerSyncs
+	if (deferredServerSyncs) deferredServerSyncs.push(syncToServer)
+	else await syncToServer()
+
+	return { code: 'ok' as const }
 }
 
 // Draws the next queue item and applies it. Split out of handleSideEffect because a map roll defers it past that
@@ -709,7 +680,7 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 	'generateAndDispatchQueueItem',
 	{ module, levels: { event: 'info' } },
 	async (ctx: SideEffectCtx) => {
-		const serverState = await SquadServer.getServerState(ctx)
+		const serverState = SquadServer.getServerState(ctx)
 		const constraints = SETTINGS.getSettingsConstraints(serverState.settings, Settings.repeatRulesFor(serverState.settings), {
 			generatingLayers: true,
 		})
@@ -822,7 +793,7 @@ async function generateVoteChoices(layerCtx: LQY.Ctx, constraints: LQY.Constrain
 async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal) {
 	const head = getSavedQueue(ctx)[0]
 	if (!head) return undefined
-	const serverState = await SquadServer.getServerState(ctx)
+	const serverState = SquadServer.getServerState(ctx)
 	const allConstraints = SETTINGS.getSettingsConstraints(serverState.settings, Settings.repeatRulesFor(serverState.settings), {
 		generatingLayers: false,
 	})
@@ -867,7 +838,7 @@ export async function warnShowNext(
 	let setByUser: USR.User | undefined
 	if (firstItem?.source.type === 'manual') {
 		const userId = firstItem.source.userId
-		const [user] = await Users.selectUsers(ctx).where(E.eq(Schema.users.discordId, userId))
+		const user = Users.getDbUser(ctx, userId)
 		if (user) setByUser = await Users.buildUser(user)
 	}
 	const isAdmin = playerIds === 'all-admins' || !!opts?.isAdmin
@@ -985,7 +956,7 @@ export const syncNextLayerToServer = Instr.spanOp(
 						causeId: mapSetCause.reason === 'queue-updated' ? mapSetCause.causeId : null,
 					})
 					if (AppEvents.isFeedVisible(mapSet)) await SquadServerActions.emitAppEvent(ctx, mapSet)
-					else await AppEventsSys.persistAppEvent(ctx, mapSet)
+					else AppEventsSys.persistAppEvent(ctx, mapSet)
 					// attribute to whichever app event reaches the feed, since that's what the server event collapses into:
 					// the QUEUE_UPDATED for a queue-driven set (its MAP_SET is audit-only), the MAP_SET itself for an override.
 					// the audit-only MAP_SET stays reachable from the QUEUE_UPDATED via its causeId.
@@ -1016,7 +987,7 @@ const INFER_INGAME_VOTE_GRACE_MS = 10_000
 // rotation, it has a head it would have written, and no roll is in flight to explain the gap.
 async function nextLayerMissingWithNothingToBlame(ctx: C.Db & SQS.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal) {
 	if (ctx.server.serverRolling$.value) return false
-	const serverState = await SquadServer.getServerState(ctx)
+	const serverState = SquadServer.getServerState(ctx)
 	if (serverState.settings.updatesToSquadServerDisabled) return false
 	return !!getSavedQueue(ctx)[0]?.layerId
 }
@@ -1030,17 +1001,17 @@ export async function toggleUpdatesToSquadServer({
 	input: { disabled: SETTINGS.SlmUpdatesDisabled | null }
 }) {
 	const byVote = input.disabled?.type === 'ingame-vote'
-	let turnedIngameVotingOff = false
-	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-		const serverState = await SquadServer.getServerState(ctx)
+	const { turnedIngameVotingOff } = DB.transaction(ctx, {}, (ctx) => {
+		const serverState = SquadServer.getServerState(ctx)
 		// Re-enabling while a vote is the reason has to turn the vote off too, or SLM goes straight back to setting a
 		// next layer the vote will overwrite -- the fight that standing down avoided in the first place.
-		turnedIngameVotingOff = !input.disabled && serverState.settings.updatesToSquadServerDisabled?.type === 'ingame-vote'
+		const turnedIngameVotingOff = !input.disabled && serverState.settings.updatesToSquadServerDisabled?.type === 'ingame-vote'
 		serverState.settings.updatesToSquadServerDisabled = input.disabled
-		await Settings.updateServerSettings(ctx, serverState.settings, {
+		Settings.updateServerSettings(ctx, serverState.settings, {
 			type: 'system',
 			event: byVote ? 'ingame-vote-detected' : 'updates-to-squad-server-toggled',
 		})
+		return { code: 'ok' as const, turnedIngameVotingOff }
 	})
 
 	if (turnedIngameVotingOff) await SquadRcon.setIngameVotingEnabled(ctx, false)
@@ -1061,7 +1032,7 @@ export async function toggleUpdatesToSquadServer({
 
 /** Whether SLM is currently allowed to push layer changes to the game server, and if not, whether an in-game vote is why. */
 export async function getSlmUpdatesEnabled(ctx: C.Db & SM.Ctx.UserOrPlayer & SQS.Ctx & LQ.Ctx) {
-	const serverState = await SquadServer.getServerState(ctx)
+	const serverState = SquadServer.getServerState(ctx)
 	const disabled = serverState.settings.updatesToSquadServerDisabled
 	return { code: 'ok' as const, enabled: !disabled, disabledByIngameVote: disabled?.type === 'ingame-vote' }
 }
@@ -1083,7 +1054,7 @@ export async function requestFeedback(
 }
 
 function getBaseCtx() {
-	return C.initMutexStore(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	return C.initMutexStore(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 }
 
 // -------- setup router --------
@@ -1196,7 +1167,7 @@ export const router = {
 				// it, to keep the common path cheap.
 				const forceWriteCandidates = getForceWriteCandidateLayerIds(ctx.layerQueue.session.state, op)
 				if (forceWriteCandidates.length > 0) {
-					const serverState = await SquadServer.getServerState(ctx)
+					const serverState = SquadServer.getServerState(ctx)
 					const { installedMods } = serverState.settings
 					const unsupported = forceWriteCandidates.filter((layerId) => {
 						const collection = L.toLayer(layerId).Collection
@@ -1381,7 +1352,7 @@ export async function checkBackburnerCaps(
 ) {
 	const state = ctx.layerQueue.session.state
 	const list = opts?.list ?? state.backburner
-	const serverState = await SquadServer.getServerState(ctx)
+	const serverState = SquadServer.getServerState(ctx)
 	const maxTotal = serverState.settings.queue.layerRequests.maxTotal
 	if (list.length >= maxTotal) return { code: 'err:backburner-full' as const, max: maxTotal }
 	const hasQueueWrite = !(await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write', { serverId: ctx.serverId })))
@@ -1409,7 +1380,7 @@ export async function addBackburnerRequestFromChat(
 ): Promise<AddRequestResult> {
 	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.Req.layerRequest(ctx.serverId))
 	if (denied) return denied
-	const serverState = await SquadServer.getServerState(ctx)
+	const serverState = SquadServer.getServerState(ctx)
 	// in-game requests always carry the layer request filters; only the GUI can deliberately drop them
 	const filter = BB.withFilters(args.filter, serverState.settings.queue.mainPool.layerRequestFilters)
 	if (!(await isTemplateSatisfiable(ctx, filter))) {
@@ -1501,6 +1472,7 @@ export const dispatchOp = Instr.spanOp(
 		// set for ops arriving via the dispatchOp rpc; the originating client gets an ack instead of the full op
 		opts?: { sourceWsClientId?: string },
 	) => {
+		if ((ctx as Partial<C.Tx>).tx) throw new Error('dispatchOp awaits rcon, so it cannot run inside a transaction')
 		const applied = ODSM.Server.applyOps(ctx.layerQueue.session, [op], SLL.reducer)
 		ctx.layerQueue.session = applied.session
 		if (applied.rejected) {
@@ -1535,22 +1507,12 @@ const handleSideEffect = Instr.spanOp(
 				break
 			}
 			case 'request-queue-item-generation': {
-				// Generation queries the layer engine (loading its artifact if nothing has for a while) and ends in a
-				// dispatchOp that opens its own transaction. Neither belongs under the process-wide tx lock, so when a
-				// map roll wraps this it runs once that transaction has committed. `tx` is dropped for the reason
-				// saveList drops it: it is spent by then, and a nested runTransaction would join a committed
-				// transaction and run in autocommit with a rollback() that does nothing.
-				if (ctx.tx) {
-					const deferredCtx = { ...ctx, tx: undefined }
-					ctx.tx.unlockTasks.push(() => generateAndDispatchQueueItem(deferredCtx))
-				} else {
-					await generateAndDispatchQueueItem(ctx)
-				}
+				await generateAndDispatchQueueItem(ctx)
 				break
 			}
 			case 'request-backburner-save': {
-				await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-					await SquadServer.updateServerState(ctx, { backburner: se.items }, { type: 'system', event: 'backburner-updated' })
+				DB.transaction(ctx, {}, (ctx) => {
+					SquadServer.updateServerState(ctx, { backburner: se.items }, { type: 'system', event: 'backburner-updated' })
 				})
 				if (se.trigger === 'user-save') {
 					UserPresence.dispatchEndAllLayerRequestEditing(ctx.serverId)

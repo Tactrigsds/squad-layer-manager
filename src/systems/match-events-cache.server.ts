@@ -9,12 +9,31 @@ import type * as MEC from '@/models/match-events-cache.models'
 import * as SE from '@/models/server-events.models'
 import type * as SM from '@/models/squad.models'
 import type * as C from '@/server/context'
+import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as EventArchive from '@/systems/event-archive.server'
 
 const module = initModule('match-events-cache')
+const SQL = Sql.forModule(module)
 let log!: CS.Logger
+
+const matchIdsP = SQL.params({ ids: SQL.list(Schema.appEvents.matchId) })
+const appEventsOfMatches = SQL.def(
+	'appEventsOfMatches',
+	matchIdsP,
+	SQL.select().from(Schema.appEvents).where(SQL.inJson(Schema.appEvents.matchId, matchIdsP.ids)).orderBy(E.asc(Schema.appEvents.time)),
+)
+
+const playerIdsP = SQL.params({ ids: SQL.list(Schema.players.eosId) })
+const playerNames = SQL.def(
+	'playerNames',
+	playerIdsP,
+	SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
+		.from(Schema.players)
+		.where(SQL.inJson(Schema.players.eosId, playerIdsP.ids)),
+)
 
 export function setup() {
 	log = module.getLogger()
@@ -47,12 +66,7 @@ export const readMatchFeeds = Instr.spanOp(
 		// isFeedVisible is what keeps audit-only rows (a queue-driven MAP_SET) from duplicating their cause.
 		// app events are not archived: the table is three orders of magnitude smaller than serverEvents and is
 		// read by the global audit log on a time cursor, which a per-match blob cannot serve.
-		const rawAppEvents = await ctx
-			.db()
-			.select()
-			.from(Schema.appEvents)
-			.where(E.inArray(Schema.appEvents.matchId, matchIds))
-			.orderBy(E.asc(Schema.appEvents.time))
+		const rawAppEvents = DB.all(ctx, appEventsOfMatches({ ids: matchIds }))
 
 		const appEventsByMatch = new Map<number, AppEvents.AppEvent[]>()
 		for (const appEvent of AppEvents.fromRows(ctx, rawAppEvents, 'the match feed')) {
@@ -159,11 +173,7 @@ export const getEnrichedEventsForMatches = Instr.spanOp(
  * matches it, and dropping it would leave the page short of its own result count, so the renderer stands a
  * placeholder in for it (see RenderCtx.placeholderUndrawn). A feed drops it, as the live feed does.
  */
-export async function reviveNoops(
-	ctx: C.Db,
-	events: CHAT.EventEnriched[],
-	opts: { keepSuppressed: boolean },
-): Promise<CHAT.EventEnriched[]> {
+export function reviveNoops(ctx: C.Db, events: CHAT.EventEnriched[], opts: { keepSuppressed: boolean }): CHAT.EventEnriched[] {
 	const playerFieldsOf = (type: string) =>
 		(CHAT.Wire.FIELDS as Record<string, { players?: readonly string[]; playerLists?: readonly string[] }>)[type]
 	const revivable = (e: CHAT.EventEnriched): e is CHAT.NoopEvent => e.type === 'NOOP' && e.cause === 'unresolved'
@@ -186,11 +196,7 @@ export async function reviveNoops(
 	}
 	if (missing.size === 0) return events.filter((e) => !revivable(e) && kept(e))
 
-	const nameRows = await ctx
-		.db()
-		.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
-		.from(Schema.players)
-		.where(E.inArray(Schema.players.eosId, [...missing]))
+	const nameRows = DB.all(ctx, playerNames({ ids: [...missing] }))
 	const names = new Map(nameRows.map((r) => [r.eosId, r]))
 	const synth = (value: unknown) => {
 		if (typeof value !== 'string') return value

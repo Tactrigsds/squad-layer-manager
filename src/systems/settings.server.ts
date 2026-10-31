@@ -2,7 +2,6 @@ import * as E from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Color from '@/lib/color'
-import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { z } from '@/lib/zod'
@@ -21,6 +20,7 @@ import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as SecretBox from '@/server/secret-box.server'
+import * as Sql from '@/server/sql'
 import * as AdminList from '@/systems/adminlist.server'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -30,13 +30,104 @@ import * as SquadServerLifecycle from '@/systems/squad-server-lifecycle.server'
 import * as SquadServer from '@/systems/squad-server.server'
 
 const module = initModule('settings')
+const SQL = Sql.forModule(module)
 let log!: ReturnType<typeof module.getLogger>
 const orpcBase = getOrpcBase(module)
 
-export async function setup(ctx: C.Db) {
+const globalSettingsRows = SQL.def('globalSettingsRows', SQL.params({}), SQL.select().from(Schema.globalSettings), {
+	scans: ['globalSettings'],
+})
+const globalSettingsP = SQL.params({ settings: Schema.globalSettings.settings })
+const writeGlobalSettings = SQL.def(
+	'writeGlobalSettings',
+	globalSettingsP,
+	SQL.update(Schema.globalSettings).set({ settings: globalSettingsP.settings }),
+	{ scans: ['globalSettings'] },
+)
+const insertGlobalSettings = SQL.def(
+	'insertGlobalSettings',
+	globalSettingsP,
+	SQL.insert(Schema.globalSettings).values({ settings: globalSettingsP.settings }),
+)
+
+const serverRows = SQL.def('serverRows', SQL.params({}), SQL.select().from(Schema.servers), { scans: ['servers'] })
+const serverSettingsRows = SQL.def(
+	'serverSettingsRows',
+	SQL.params({}),
+	SQL.select({ id: Schema.servers.id, settings: Schema.servers.settings }).from(Schema.servers),
+	{ scans: ['servers'] },
+)
+const serverIdP = SQL.params({ id: Schema.servers.id })
+const serverSettingsById = SQL.def(
+	'serverSettingsById',
+	serverIdP,
+	SQL.select({ id: Schema.servers.id, settings: Schema.servers.settings })
+		.from(Schema.servers)
+		.where(E.eq(Schema.servers.id, serverIdP.id)),
+)
+// the foreign keys onto servers cascade into tables with no index on serverId, which a deletion this rare can afford
+const deleteServer = SQL.def('deleteServer', serverIdP, SQL.delete(Schema.servers).where(E.eq(Schema.servers.id, serverIdP.id)), {
+	scans: ['serverEventIndex', 'playerEventIndex', 'timeouts'],
+})
+const clearDefaultServer = SQL.def(
+	'clearDefaultServer',
+	SQL.params({}),
+	SQL.update(Schema.servers).set({ defaultServer: SQL.lit(false) }),
+	{ scans: ['servers'] },
+)
+const markDefaultServer = SQL.def(
+	'markDefaultServer',
+	serverIdP,
+	SQL.update(Schema.servers)
+		.set({ defaultServer: SQL.lit(true) })
+		.where(E.eq(Schema.servers.id, serverIdP.id)),
+)
+
+const serverSettingsP = SQL.params({ id: Schema.servers.id, settings: Schema.servers.settings })
+const writeServerSettings = SQL.def(
+	'writeServerSettings',
+	serverSettingsP,
+	SQL.update(Schema.servers).set({ settings: serverSettingsP.settings }).where(E.eq(Schema.servers.id, serverSettingsP.id)),
+)
+const serverEnabledP = SQL.params({ id: Schema.servers.id, enabled: Schema.servers.enabled })
+const writeServerEnabled = SQL.def(
+	'writeServerEnabled',
+	serverEnabledP,
+	SQL.update(Schema.servers).set({ enabled: serverEnabledP.enabled }).where(E.eq(Schema.servers.id, serverEnabledP.id)),
+)
+
+const newServerP = SQL.params({
+	id: Schema.servers.id,
+	displayName: Schema.servers.displayName,
+	layerQueue: Schema.servers.layerQueue,
+	backburner: Schema.servers.backburner,
+	switchRequests: Schema.servers.switchRequests,
+	visibility: Schema.servers.visibility,
+	ownerDiscordId: Schema.servers.ownerDiscordId,
+	settings: Schema.servers.settings,
+})
+// teamswaps is left to its column default, which reads as no saved teamswaps
+const insertServer = SQL.def(
+	'insertServer',
+	newServerP,
+	SQL.insert(Schema.servers).values({
+		id: newServerP.id,
+		displayName: newServerP.displayName,
+		enabled: SQL.lit(false),
+		defaultServer: SQL.lit(false),
+		layerQueue: newServerP.layerQueue,
+		backburner: newServerP.backburner,
+		switchRequests: newServerP.switchRequests,
+		visibility: newServerP.visibility,
+		ownerDiscordId: newServerP.ownerDiscordId,
+		settings: newServerP.settings,
+	}),
+)
+
+export function setup(ctx: C.Db) {
 	log = module.getLogger()
-	await loadGlobalSettings(ctx)
-	await loadServerRegistry(ctx)
+	loadGlobalSettings(ctx)
+	loadServerRegistry(ctx)
 }
 
 // ============================== global settings ==============================
@@ -75,31 +166,22 @@ function openGlobalSecrets(encoded: unknown): { settings: unknown; unreadable: s
 	return { settings, unreadable }
 }
 
-async function persistGlobalSettings(ctx: C.Db) {
-	await ctx
-		.db({ redactParams: true })
-		.update(Schema.globalSettings)
-		.set(superjsonify(Schema.globalSettings, { settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS)) }))
+function persistGlobalSettings(ctx: C.Db) {
+	DB.run(ctx, writeGlobalSettings({ settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS)) }))
 }
 
-async function loadGlobalSettings(ctx: C.Db) {
-	const rows = await ctx.db().select().from(Schema.globalSettings)
-	if (rows.length === 0) {
+function loadGlobalSettings(ctx: C.Db) {
+	const row = DB.get(ctx, globalSettingsRows({}))
+	if (!row) {
 		// fresh install: schema defaults include the tiered admins/managers/owners RBAC preset (see defaultRbacSettings)
 		const defaultsRes = SETTINGS.parseGlobalSettings({ integrations: Env.legacyIntegrationSettings() })
 		if (!defaultsRes.success) throw new Error('Default global settings failed schema validation', { cause: defaultsRes.error })
 		const defaults = Seed.applyInitialGlobalSettings(defaultsRes.data)
-		await ctx
-			.db({ redactParams: true })
-			.insert(Schema.globalSettings)
-			.values(
-				superjsonify(Schema.globalSettings, { id: 1, settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(defaults)) }),
-			)
+		DB.run(ctx, insertGlobalSettings({ settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(defaults)) }))
 		GLOBAL_SETTINGS = defaults
 		log.info('Created default global settings row')
 	} else {
-		const raw = unsuperjsonify(Schema.globalSettings, rows[0]) as any
-		let stored: unknown = raw.settings
+		let stored: unknown = row.settings
 		// the first boot after the integration credentials moved out of the environment: carried over once, into a
 		// row that has never held them. After this the environment is reported and ignored (see main.ts).
 		let imported = false
@@ -138,7 +220,7 @@ async function loadGlobalSettings(ctx: C.Db) {
 		log.info('Loaded global settings from DB')
 		if (imported) log.info('Carried the integration credentials over from the environment into the settings')
 		if ((imported || needsReseal) && opened.unreadable.length === 0) {
-			await persistGlobalSettings(ctx)
+			persistGlobalSettings(ctx)
 			if (needsReseal) log.info('Re-encrypted integration credentials at rest')
 		}
 	}
@@ -209,18 +291,8 @@ function pushScopedServersToRbac() {
 	Rbac.applyScopedServers(map)
 }
 
-async function loadServerRegistry(ctx: C.Db) {
-	const rows = await ctx.db().select().from(Schema.servers)
-	for (const rawRow of rows) {
-		const row = unsuperjsonify(Schema.servers, rawRow) as {
-			id: SS.ServerId
-			displayName: string
-			enabled: boolean
-			defaultServer: boolean
-			visibility: SS.ServerVisibility
-			ownerDiscordId: bigint | null
-			settings: unknown
-		}
+function loadServerRegistry(ctx: C.Db) {
+	for (const row of DB.all(ctx, serverRows({}))) {
 		const settingsRes = SETTINGS.ServerSettingsSchema.safeParse(row.settings)
 		let broken = !settingsRes.success
 		let brokenReason: unknown = settingsRes.success ? undefined : settingsRes.error
@@ -231,11 +303,7 @@ async function loadServerRegistry(ctx: C.Db) {
 			try {
 				if (connectionsNeedReseal(settingsRes.data)) {
 					const sealed = resealConnections(settingsRes.data)
-					await ctx
-						.db({ redactParams: true })
-						.update(Schema.servers)
-						.set(superjsonify(Schema.servers, { settings: sealed }))
-						.where(E.eq(Schema.servers.id, row.id))
+					DB.run(ctx, writeServerSettings({ id: row.id, settings: sealed }))
 					log.info(`Re-encrypted connection secrets at rest for server ${row.id}`)
 				}
 			} catch (err) {
@@ -255,7 +323,7 @@ async function loadServerRegistry(ctx: C.Db) {
 				// force it disabled so that repairing the settings later doesn't silently bring it back online -- an admin has to
 				// explicitly re-enable it once they're confident the fix is correct
 				enabled = false
-				await ctx.db({ redactParams: true }).update(Schema.servers).set({ enabled: false }).where(E.eq(Schema.servers.id, row.id))
+				DB.run(ctx, writeServerEnabled({ id: row.id, enabled: false }))
 				log.warn(`Server ${row.id} was enabled but has broken settings; forcing it disabled`)
 			}
 		}
@@ -270,7 +338,7 @@ async function loadServerRegistry(ctx: C.Db) {
 			timeZone: settingsRes.success ? settingsRes.data.timeZone : 'UTC',
 			sandbox: settingsRes.success && settingsRes.data.connections.type === 'sandbox',
 			repeatRulesetId: settingsRes.success ? settingsRes.data.queue.mainPool.repeatRulesetId : null,
-			visibility: row.visibility,
+			visibility: row.visibility as SS.ServerVisibility,
 			ownerDiscordId: row.ownerDiscordId,
 		})
 	}
@@ -278,7 +346,7 @@ async function loadServerRegistry(ctx: C.Db) {
 	settings$.next({ scope: 'registry' })
 }
 
-export async function createServerEntry(
+export function createServerEntry(
 	ctx: C.Db,
 	input: {
 		id: SS.ServerId
@@ -312,7 +380,7 @@ export async function createServerEntry(
 			ownerServerId: input.id,
 			rules: [...RRS.DEFAULT_RULES],
 		}
-		const writeRes = await patchGlobalSettings(ctx, { repeatRulesets: [...rulesets, own] }, { type: 'system' })
+		const writeRes = patchGlobalSettings(ctx, { repeatRulesets: [...rulesets, own] }, { type: 'system' })
 		if (writeRes.code !== 'ok') return writeRes
 		settingsRes.data.queue.mainPool.repeatRulesetId = own.id
 	}
@@ -333,10 +401,20 @@ export async function createServerEntry(
 		ownerDiscordId,
 		settings: settingsRes.data,
 	}
-	await ctx
-		.db({ redactParams: true })
-		.insert(Schema.servers)
-		.values(superjsonify(Schema.servers, { ...SS.toStoredChanges(newServer), settings: sealConnections(newServer.settings) }))
+	const stored = SS.toStoredChanges(newServer)
+	DB.run(
+		ctx,
+		insertServer({
+			id: stored.id,
+			displayName: stored.displayName,
+			layerQueue: stored.layerQueue,
+			backburner: stored.backburner,
+			switchRequests: stored.switchRequests,
+			visibility: stored.visibility,
+			ownerDiscordId: stored.ownerDiscordId,
+			settings: sealConnections(newServer.settings),
+		}),
+	)
 	serverRegistry.set(newServer.id, {
 		id: newServer.id,
 		displayName: newServer.displayName,
@@ -367,21 +445,21 @@ function pickServerColor(ownerDiscordId: bigint | null): string {
 	return Color.pickDistinct(taken)
 }
 
-export async function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
+export function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	if (!serverRegistry.has(serverId)) return { code: 'err:server-not-found' as const }
-	await ctx.db({ redactParams: true }).delete(Schema.servers).where(E.eq(Schema.servers.id, serverId))
+	DB.run(ctx, deleteServer({ id: serverId }))
 	serverRegistry.delete(serverId)
 	// the server's own ruleset goes with it, unless another server has come to use it, which keeps it ownerless
 	const owned = GLOBAL_SETTINGS.repeatRulesets.filter((r) => r.ownerServerId === serverId)
 	if (owned.length > 0) {
-		const inUse = await repeatRulesetIdsInUse(ctx)
+		const inUse = repeatRulesetIdsInUse(ctx)
 		const rulesets = GLOBAL_SETTINGS.repeatRulesets.flatMap((r) => {
 			if (r.ownerServerId !== serverId) return [r]
 			if (!inUse.has(r.id)) return []
 			const { ownerServerId: _ownerServerId, ...rest } = r
 			return [rest]
 		})
-		await patchGlobalSettings(ctx, { repeatRulesets: rulesets }, { type: 'system' })
+		patchGlobalSettings(ctx, { repeatRulesets: rulesets }, { type: 'system' })
 	}
 	// the console outlives a stopped server, so deleting the server is what finally drops its tail
 	ServerConsole.disposeFor(serverId)
@@ -391,22 +469,22 @@ export async function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	return { code: 'ok' as const }
 }
 
-export async function setServerEnabled(ctx: C.Db, serverId: SS.ServerId, enabled: boolean) {
+export function setServerEnabled(ctx: C.Db, serverId: SS.ServerId, enabled: boolean) {
 	const entry = serverRegistry.get(serverId)
 	if (!entry) return { code: 'err:server-not-found' as const }
 	if (enabled && entry.broken) return { code: 'err:server-settings-invalid' as const }
-	await ctx.db({ redactParams: true }).update(Schema.servers).set({ enabled }).where(E.eq(Schema.servers.id, serverId))
+	DB.run(ctx, writeServerEnabled({ id: serverId, enabled }))
 	entry.enabled = enabled
 	settings$.next({ scope: 'registry' })
 	log.info('Server %s %s', serverId, enabled ? 'enabled' : 'disabled')
 	return { code: 'ok' as const }
 }
 
-export async function setDefaultServerEntry(ctx: C.Db, serverId: SS.ServerId) {
+export function setDefaultServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	if (!serverRegistry.has(serverId)) return { code: 'err:server-not-found' as const }
-	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-		await ctx.db({ redactParams: true }).update(Schema.servers).set({ defaultServer: false })
-		await ctx.db({ redactParams: true }).update(Schema.servers).set({ defaultServer: true }).where(E.eq(Schema.servers.id, serverId))
+	DB.transaction(ctx, {}, (ctx) => {
+		DB.run(ctx, clearDefaultServer({}))
+		DB.run(ctx, markDefaultServer({ id: serverId }))
 	})
 	for (const entry of serverRegistry.values()) {
 		entry.defaultServer = entry.id === serverId
@@ -492,29 +570,23 @@ export const openConnectionValues = (connections: SETTINGS.ServerConnection) =>
 // The DB read boundary for a full servers row: connection secrets are sealed in the column and opened here, so
 // every ServerState the app works with is plaintext. All full-row reads go through this.
 export function parseServerStateRow(rawRow: unknown): SS.ServerState {
-	const state = SS.ServerStateSchema.parse(unsuperjsonify(Schema.servers, rawRow))
+	const state = SS.ServerStateSchema.parse(rawRow)
 	return { ...state, settings: openConnections(state.settings) }
 }
 
 // reads settings for a server that may not have a live managed server (e.g. it's disabled), always going to the DB
-export async function getServerSettings(ctx: C.Db, serverId: SS.ServerId): Promise<SETTINGS.ServerSettings> {
-	const [row] = await ctx
-		.db()
-		.select({ id: Schema.servers.id, settings: Schema.servers.settings })
-		.from(Schema.servers)
-		.where(E.eq(Schema.servers.id, serverId))
+export function getServerSettings(ctx: C.Db, serverId: SS.ServerId): SETTINGS.ServerSettings {
+	const row = DB.get(ctx, serverSettingsById({ id: serverId }))
 	if (!row) throw new Error(`Server ${serverId} not found`)
-	return openConnections(SETTINGS.ServerSettingsSchema.parse(unsuperjsonify(Schema.servers, row).settings))
+	return openConnections(SETTINGS.ServerSettingsSchema.parse(row.settings))
 }
 
 // the pool configuration of every server in the registry, including disabled ones: a server that is off still
 // holds a configuration that a filter it names has to survive for. Servers whose stored settings don't parse are
 // skipped, since nothing can be read out of them.
-export async function listServerPoolConfigs(ctx: C.Db): Promise<{ serverId: SS.ServerId; mainPool: SETTINGS.PoolConfiguration }[]> {
-	const rows = await ctx.db().select({ id: Schema.servers.id, settings: Schema.servers.settings }).from(Schema.servers)
+export function listServerPoolConfigs(ctx: C.Db): { serverId: SS.ServerId; mainPool: SETTINGS.PoolConfiguration }[] {
 	const configs: { serverId: SS.ServerId; mainPool: SETTINGS.PoolConfiguration }[] = []
-	for (const rawRow of rows) {
-		const row = unsuperjsonify(Schema.servers, rawRow) as { id: SS.ServerId; settings: unknown }
+	for (const row of DB.all(ctx, serverSettingsRows({}))) {
 		const res = SETTINGS.ServerSettingsSchema.safeParse(row.settings)
 		if (!res.success) continue
 		configs.push({ serverId: row.id, mainPool: res.data.queue.mainPool })
@@ -523,28 +595,24 @@ export async function listServerPoolConfigs(ctx: C.Db): Promise<{ serverId: SS.S
 }
 
 // the one place that writes the settings column and broadcasts the change; everything else (mutations, repairs) routes through this
-export async function updateServerSettings(
+export function updateServerSettings(
 	ctx: C.Db & C.Tx & CS.ServerId,
 	newSettings: SETTINGS.ServerSettings,
 	source: SS.LQStateUpdate['source'],
 ) {
-	await ctx
-		.db({ redactParams: true })
-		.update(Schema.servers)
-		.set(superjsonify(Schema.servers, { settings: sealConnections(newSettings) }))
-		.where(E.eq(Schema.servers.id, ctx.serverId))
+	DB.run(ctx, writeServerSettings({ id: ctx.serverId, settings: sealConnections(newSettings) }))
 
-	ctx.tx.unlockTasks.push(() => {
+	DB.afterCommit(ctx, () => {
 		syncServerEntry(ctx.serverId, newSettings)
 		settings$.next({ scope: 'server', serverId: ctx.serverId, settings: newSettings, source })
 	})
 }
 
 // reads the raw, unvalidated settings blob so an admin can repair it if it fails schema validation (e.g. after a breaking change)
-export async function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
-	const [row] = await ctx.db().select({ settings: Schema.servers.settings }).from(Schema.servers).where(E.eq(Schema.servers.id, serverId))
+export function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
+	const row = DB.get(ctx, serverSettingsById({ id: serverId }))
 	if (!row) return { code: 'err:server-not-found' as const }
-	return { code: 'ok' as const, settings: unsuperjsonify(Schema.servers, row).settings }
+	return { code: 'ok' as const, settings: row.settings }
 }
 
 // global settings fields whose edit makes an already-fetched admin list wrong (its source, or the permissions that mark
@@ -562,36 +630,37 @@ function unknownRepeatRulesetError(settings: SETTINGS.PublicServerSettings) {
 	return { code: 'err:unknown-repeat-ruleset' as const, message: `No repeat ruleset has the id "${id}"` }
 }
 
-const repeatRulesetUsers: ((ctx: C.Db) => Promise<Iterable<RRS.RulesetId>>)[] = []
+const repeatRulesetUsers: ((ctx: C.Db) => Iterable<RRS.RulesetId>)[] = []
 
 // for systems this one cannot import without a cycle (rotations), whose rulesets must survive a settings save
-export function registerRepeatRulesetUsers(read: (ctx: C.Db) => Promise<Iterable<RRS.RulesetId>>) {
+export function registerRepeatRulesetUsers(read: (ctx: C.Db) => Iterable<RRS.RulesetId>) {
 	repeatRulesetUsers.push(read)
 }
 
 // the ids of the rulesets some server or rotation points at
-async function repeatRulesetIdsInUse(ctx: C.Db): Promise<Set<RRS.RulesetId>> {
+function repeatRulesetIdsInUse(ctx: C.Db): Set<RRS.RulesetId> {
 	const ids = new Set<RRS.RulesetId>()
 	for (const entry of serverRegistry.values()) {
 		if (entry.repeatRulesetId) ids.add(entry.repeatRulesetId)
 	}
 	for (const read of repeatRulesetUsers) {
-		for (const id of await read(ctx)) ids.add(id)
+		for (const id of read(ctx)) ids.add(id)
 	}
 	return ids
 }
 
 // replaces some top-level fields of the global settings, for writers that hold only those fields: server creation and
 // deletion, tutorials, the ruleset editors and inline tag creation
-export async function patchGlobalSettings(ctx: C.Db, patch: Partial<SETTINGS.GlobalSettings>, actor: AppEvents.Actor) {
+export function patchGlobalSettings(ctx: C.Db, patch: Partial<SETTINGS.GlobalSettings>, actor: AppEvents.Actor) {
 	const parseRes = SETTINGS.parseGlobalSettings({ ...GLOBAL_SETTINGS, ...patch })
 	if (!parseRes.success) return { code: 'err:invalid-settings' as const, message: parseRes.error.message }
 	const changes = Obj.diffLeaves(GLOBAL_SETTINGS, parseRes.data)
 	if (changes.length === 0) return { code: 'ok' as const }
-	GLOBAL_SETTINGS = parseRes.data
-	await persistGlobalSettings(ctx)
-	settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
-	await AppEventsSys.persistAppEvent(
+	const settings = parseRes.data
+	GLOBAL_SETTINGS = settings
+	persistGlobalSettings(ctx)
+	DB.afterCommit(ctx, () => settings$.next({ scope: 'global', settings }))
+	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.SettingsUpdated>({
 			type: 'SETTINGS_UPDATED',
@@ -606,10 +675,10 @@ export async function patchGlobalSettings(ctx: C.Db, patch: Partial<SETTINGS.Glo
 }
 
 /** Applies mutations to the global settings, validated and recorded as patchGlobalSettings does. */
-export async function editGlobalSettings(ctx: C.Db, ops: SETTINGS.SettingMutation[], actor: AppEvents.Actor) {
+export function editGlobalSettings(ctx: C.Db, ops: SETTINGS.SettingMutation[], actor: AppEvents.Actor) {
 	const next = Obj.deepClone(GLOBAL_SETTINGS)
 	SETTINGS.applySettingMutations(next, ops)
-	return await patchGlobalSettings(ctx, next, actor)
+	return patchGlobalSettings(ctx, next, actor)
 }
 
 /**
@@ -624,21 +693,25 @@ export async function editServerSettings<Denied extends object = never>(
 	source: SS.LQStateUpdate['source'],
 	authorize: ((changes: Obj.LeafChange[]) => Promise<Denied | null>) | null,
 ) {
-	let changes: Obj.LeafChange[] = []
-	const res = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-		const state = await SquadServer.getServerState(ctx)
-		const next = Obj.deepClone(state.settings)
+	for (;;) {
+		const prior = SquadServer.getServerState(ctx).settings
+		const next = Obj.deepClone(prior)
 		SETTINGS.applySettingMutations(next, ops)
-		const denied = await authorize?.(Obj.diffLeaves(state.settings, next))
+		const denied = await authorize?.(Obj.diffLeaves(prior, next))
 		if (denied) return denied
 		const parsed = parseServerSettings(next)
 		if (parsed.code !== 'ok') return parsed
-		changes = Obj.diffLeaves(state.settings, parsed.settings)
-		await updateServerSettings(ctx, parsed.settings, source)
-	})
-	if (res) return res
-	await recordServerSettingsUpdated(ctx, actor, changes)
-	return { code: 'ok' as const }
+		const changes = Obj.diffLeaves(prior, parsed.settings)
+		const res = DB.transaction(ctx, {}, (ctx) => {
+			// a write that landed while authorize was awaited changes what the ops change, so they are authorized again
+			if (!Obj.deepEqual(SquadServer.getServerState(ctx).settings, prior)) return { code: 'err:stale' as const }
+			updateServerSettings(ctx, parsed.settings, source)
+			return { code: 'ok' as const }
+		})
+		if (res.code === 'err:stale') continue
+		recordServerSettingsUpdated(ctx, actor, changes)
+		return { code: 'ok' as const }
+	}
 }
 
 // what a server's settings must pass to be saved, whichever editor wrote them
@@ -650,9 +723,9 @@ function parseServerSettings(raw: unknown) {
 	return { code: 'ok' as const, settings: parseRes.data }
 }
 
-async function recordServerSettingsUpdated(ctx: C.Db & CS.ServerId, actor: AppEvents.Actor, changes: Obj.LeafChange[]) {
+function recordServerSettingsUpdated(ctx: C.Db & CS.ServerId, actor: AppEvents.Actor, changes: Obj.LeafChange[]) {
 	if (changes.length === 0) return
-	await AppEventsSys.persistAppEvent(
+	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.SettingsUpdated>({
 			type: 'SETTINGS_UPDATED',
@@ -678,43 +751,43 @@ function denyServerSettingsChanges(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal & CS.
 
 // creates or replaces one ruleset. Ownership is decided by server creation, never by the writer, so `ownerServerId`
 // is kept from the ruleset being replaced.
-export async function saveRepeatRuleset(ctx: C.Db, input: RRS.Ruleset, actor: AppEvents.Actor) {
+export function saveRepeatRuleset(ctx: C.Db, input: RRS.Ruleset, actor: AppEvents.Actor) {
 	const existing = GLOBAL_SETTINGS.repeatRulesets
 	const prior = RRS.find(existing, input.id)
 	const { ownerServerId: _ownerServerId, ...rest } = input
 	const ruleset: RRS.Ruleset = prior?.ownerServerId !== undefined ? { ...rest, ownerServerId: prior.ownerServerId } : rest
 	const rulesets = prior ? existing.map((r) => (r.id === input.id ? ruleset : r)) : [...existing, ruleset]
-	const res = await patchGlobalSettings(ctx, { repeatRulesets: rulesets }, actor)
+	const res = patchGlobalSettings(ctx, { repeatRulesets: rulesets }, actor)
 	if (res.code !== 'ok') return res
 	return { code: 'ok' as const, ruleset }
 }
 
-export async function deleteRepeatRuleset(ctx: C.Db, id: RRS.RulesetId, actor: AppEvents.Actor) {
+export function deleteRepeatRuleset(ctx: C.Db, id: RRS.RulesetId, actor: AppEvents.Actor) {
 	if (!RRS.find(GLOBAL_SETTINGS.repeatRulesets, id)) return { code: 'err:not-found' as const }
-	if ((await repeatRulesetIdsInUse(ctx)).has(id)) {
+	if (repeatRulesetIdsInUse(ctx).has(id)) {
 		return { code: 'err:repeat-ruleset-in-use' as const, message: `A server or rotation still uses the repeat ruleset "${id}"` }
 	}
-	const res = await patchGlobalSettings(ctx, { repeatRulesets: GLOBAL_SETTINGS.repeatRulesets.filter((r) => r.id !== id) }, actor)
+	const res = patchGlobalSettings(ctx, { repeatRulesets: GLOBAL_SETTINGS.repeatRulesets.filter((r) => r.id !== id) }, actor)
 	if (res.code !== 'ok') return res
 	return { code: 'ok' as const }
 }
 
 // points a server at a ruleset, on behalf of a plugin
-export async function setServerRepeatRuleset(ctx: C.Db & CS.ServerId, id: RRS.RulesetId, pluginId: string) {
+export function setServerRepeatRuleset(ctx: C.Db & CS.ServerId, id: RRS.RulesetId, pluginId: string) {
 	if (!RRS.find(GLOBAL_SETTINGS.repeatRulesets, id)) {
 		return { code: 'err:unknown-repeat-ruleset' as const, message: `No repeat ruleset has the id "${id}"` }
 	}
 	let changes: Obj.LeafChange[] = []
-	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-		const state = await SquadServer.getServerState(ctx)
+	DB.transaction(ctx, {}, (ctx) => {
+		const state = SquadServer.getServerState(ctx)
 		if (state.settings.queue.mainPool.repeatRulesetId === id) return
 		const next = Obj.deepClone(state.settings)
 		next.queue.mainPool.repeatRulesetId = id
 		changes = Obj.diffLeaves(state.settings, next)
-		await updateServerSettings(ctx, next, { type: 'plugin', event: 'edit-settings', pluginId })
+		updateServerSettings(ctx, next, { type: 'plugin', event: 'edit-settings', pluginId })
 	})
 	if (changes.length > 0) {
-		await AppEventsSys.persistAppEvent(
+		AppEventsSys.persistAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.SettingsUpdated>({
 				type: 'SETTINGS_UPDATED',
@@ -735,27 +808,27 @@ export function unknownLayerTags(tags: readonly LTag.TagId[]): LTag.TagId[] {
 	return tags.filter((id) => !known.has(id))
 }
 
-async function upsertTag(ctx: C.Db & USR.Ctx.Id, key: 'layerTags' | 'rotationTags', input: LTag.Tag) {
+function upsertTag(ctx: C.Db & USR.Ctx.Id, key: 'layerTags' | 'rotationTags', input: LTag.Tag) {
 	const existing = GLOBAL_SETTINGS[key]
 	if (LTag.labelConflict(existing, input.label, input.id)) {
 		return { code: 'err:duplicate-label' as const, message: `Another tag is already labeled "${input.label}"` }
 	}
 	const tags = existing.some((t) => t.id === input.id) ? existing.map((t) => (t.id === input.id ? input : t)) : [...existing, input]
-	const res = await patchGlobalSettings(ctx, { [key]: tags }, { type: 'slm-user', userId: ctx.user.discordId })
+	const res = patchGlobalSettings(ctx, { [key]: tags }, { type: 'slm-user', userId: ctx.user.discordId })
 	if (res.code !== 'ok') return res
 	return { code: 'ok' as const, tag: input }
 }
 
 // the tag labeled `label`, matched without regard to case, created when there is none. For writers that name a tag
 // rather than hold its id.
-export async function ensureTag(ctx: C.Db, key: 'layerTags' | 'rotationTags', label: string, actor: AppEvents.Actor) {
+export function ensureTag(ctx: C.Db, key: 'layerTags' | 'rotationTags', label: string, actor: AppEvents.Actor) {
 	const parsed = LTag.LabelSchema.safeParse(label)
 	if (!parsed.success) return { code: 'err:invalid-label' as const, message: z.prettifyError(parsed.error) }
 	const tags = GLOBAL_SETTINGS[key]
 	const existing = tags.find((t) => t.label.trim().toLowerCase() === parsed.data.toLowerCase())
 	if (existing) return { code: 'ok' as const, tag: existing }
 	const tag: LTag.Tag = { id: LTag.createTagId(parsed.data), label: parsed.data, description: '', color: LTag.suggestColor(tags) }
-	const res = await patchGlobalSettings(ctx, { [key]: [...tags, tag] }, actor)
+	const res = patchGlobalSettings(ctx, { [key]: [...tags, tag] }, actor)
 	if (res.code !== 'ok') return res
 	return { code: 'ok' as const, tag }
 }
@@ -895,7 +968,7 @@ const globalRouter = {
 			const changes = Obj.diffLeaves(GLOBAL_SETTINGS, parseRes.data)
 
 			const keptRepeatRulesetIds = new Set(parseRes.data.repeatRulesets.map((r) => r.id))
-			const removedInUse = [...(await repeatRulesetIdsInUse(ctx))].filter((id) => !keptRepeatRulesetIds.has(id))
+			const removedInUse = [...repeatRulesetIdsInUse(ctx)].filter((id) => !keptRepeatRulesetIds.has(id))
 			if (removedInUse.length > 0) {
 				return {
 					code: 'err:repeat-ruleset-in-use' as const,
@@ -920,14 +993,14 @@ const globalRouter = {
 				}
 			}
 
-			await persistGlobalSettings(ctx)
+			persistGlobalSettings(ctx)
 
 			Rbac.applyRbacSettings(GLOBAL_SETTINGS.rbac)
 			// admin-list field edits flush rbac via AdminList.changed$ once the list refetches; the rbac subtree
 			// (roles/assignments/grants) has no other signal, so flush here when it actually changed
 			if (changes.some((c) => c.path === 'rbac' || c.path.startsWith('rbac.'))) Rbac.invalidateAll()
 			settings$.next({ scope: 'global', settings: GLOBAL_SETTINGS })
-			await AppEventsSys.persistAppEvent(
+			AppEventsSys.persistAppEvent(
 				ctx,
 				AppEvents.create<AppEvents.SettingsUpdated>({
 					type: 'SETTINGS_UPDATED',
@@ -947,7 +1020,7 @@ const globalRouter = {
 	saveRepeatRuleset: orpcBase
 		.meta({ type: 'mutation' })
 		.input(RRS.RulesetSchema)
-		.handler(async ({ context: ctx, input }) => await saveRepeatRuleset(ctx, input, { type: 'slm-user', userId: ctx.user.discordId })),
+		.handler(({ context: ctx, input }) => saveRepeatRuleset(ctx, input, { type: 'slm-user', userId: ctx.user.discordId })),
 
 	// inline tag creation/editing from the queue. A separate endpoint because updateSettings requires the caller to hold
 	// the whole settings object, which needs global-settings:read -- a queue editor holding queue:manage-tags may not have it.
@@ -955,13 +1028,13 @@ const globalRouter = {
 	upsertLayerTag: orpcBase
 		.meta({ type: 'mutation' })
 		.input(LTag.TagSchema)
-		.handler(async ({ context: ctx, input }) => await upsertTag(ctx, 'layerTags', input)),
+		.handler(({ context: ctx, input }) => upsertTag(ctx, 'layerTags', input)),
 
 	// the same, for rotation tags created from the rotation editor
 	upsertRotationTag: orpcBase
 		.meta({ type: 'mutation' })
 		.input(LTag.TagSchema)
-		.handler(async ({ context: ctx, input }) => await upsertTag(ctx, 'rotationTags', input)),
+		.handler(({ context: ctx, input }) => upsertTag(ctx, 'rotationTags', input)),
 }
 
 // one server's settings, never including its connections
@@ -995,14 +1068,14 @@ const serverRouter = {
 		}),
 }
 
-async function recordServerRegistry(
+function recordServerRegistry(
 	ctx: C.Db & USR.Ctx.Id,
 	action: AppEvents.ServerRegistryChanged['action'],
 	targetServerId: string,
 	// a deleted server is already out of the registry by the time this runs, so its name has to be passed in
 	targetServerName = serverRegistry.get(targetServerId)?.displayName,
 ) {
-	await AppEventsSys.persistAppEvent(
+	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.ServerRegistryChanged>({
 			type: 'SERVER_REGISTRY_CHANGED',
@@ -1024,7 +1097,7 @@ const adminRouter = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
 			const res = await SquadServerLifecycle.enableServer(input.serverId)
-			if (res.code === 'ok') await recordServerRegistry(ctx, 'enabled', input.serverId)
+			if (res.code === 'ok') recordServerRegistry(ctx, 'enabled', input.serverId)
 			return res
 		}),
 
@@ -1033,7 +1106,7 @@ const adminRouter = {
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
 			const res = await SquadServerLifecycle.disableServer(input.serverId)
-			if (res.code === 'ok') await recordServerRegistry(ctx, 'disabled', input.serverId)
+			if (res.code === 'ok') recordServerRegistry(ctx, 'disabled', input.serverId)
 			return res
 		}),
 
@@ -1047,8 +1120,8 @@ const adminRouter = {
 			}),
 		)
 		.handler(async ({ context: ctx, input }) => {
-			const res = await createServerEntry(ctx, input)
-			if (res.code === 'ok') await recordServerRegistry(ctx, 'created', input.id)
+			const res = createServerEntry(ctx, input)
+			if (res.code === 'ok') recordServerRegistry(ctx, 'created', input.id)
 			return res
 		}),
 
@@ -1058,7 +1131,7 @@ const adminRouter = {
 		.handler(async ({ context: ctx, input }) => {
 			const deletedName = serverRegistry.get(input.serverId)?.displayName
 			const res = await SquadServerLifecycle.deleteServer(input.serverId)
-			if (res.code === 'ok') await recordServerRegistry(ctx, 'deleted', input.serverId, deletedName)
+			if (res.code === 'ok') recordServerRegistry(ctx, 'deleted', input.serverId, deletedName)
 			return res
 		}),
 
@@ -1066,8 +1139,8 @@ const adminRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async ({ context: ctx, input }) => {
-			const res = await setDefaultServerEntry(ctx, input.serverId)
-			if (res.code === 'ok') await recordServerRegistry(ctx, 'set-default', input.serverId)
+			const res = setDefaultServerEntry(ctx, input.serverId)
+			if (res.code === 'ok') recordServerRegistry(ctx, 'set-default', input.serverId)
 			return res
 		}),
 
@@ -1075,7 +1148,7 @@ const adminRouter = {
 	// caller holds server-settings:write-sensitive
 	getRawSettings: orpcBase.input(z.object({ serverId: z.string() })).handler(async ({ context: ctx, input }) => {
 		const perms = await Rbac.getUserPermissions(ctx)
-		const res = await getRawServerSettings(ctx, input.serverId)
+		const res = getRawServerSettings(ctx, input.serverId)
 		if (res.code !== 'ok') return res
 		const settings = res.settings
 		if (!RBAC.canWriteSensitiveServerSettings(perms, input.serverId, scopedServerIds())) {
@@ -1104,7 +1177,7 @@ const adminRouter = {
 			if (!entry) return { code: 'err:server-not-found' as const }
 			const wasBroken = entry.broken
 
-			const priorRawRes = await getRawServerSettings(ctx, serverId)
+			const priorRawRes = getRawServerSettings(ctx, serverId)
 			const priorParseRes = priorRawRes.code === 'ok' ? SETTINGS.ServerSettingsSchema.safeParse(priorRawRes.settings) : undefined
 			const priorBroken = !priorParseRes?.success
 			// prior connection secrets are stored sealed; open them so every comparison and diff below runs on
@@ -1131,8 +1204,8 @@ const adminRouter = {
 
 			const connectionsChanged = priorBroken || !Obj.deepEqual(priorSettings!.connections, parsed.settings.connections)
 
-			await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-				await updateServerSettings({ ...ctx, serverId }, parsed.settings, { type: 'manual', user, event: 'edit-settings' })
+			DB.transaction(ctx, {}, (ctx) => {
+				updateServerSettings({ ...ctx, serverId }, parsed.settings, { type: 'manual', user, event: 'edit-settings' })
 			})
 
 			// a repair has no valid prior state to diff against, so every field reads as newly set
@@ -1152,7 +1225,7 @@ const adminRouter = {
 				await SquadServerLifecycle.ensureRunning(serverId)
 			}
 
-			await recordServerSettingsUpdated({ ...ctx, serverId }, { type: 'slm-user', userId: ctx.user.discordId }, changes)
+			recordServerSettingsUpdated({ ...ctx, serverId }, { type: 'slm-user', userId: ctx.user.discordId }, changes)
 			// the diff is for the audit event only: it carries the raw connection values, so it must not be echoed back
 			return { code: 'ok' as const }
 		}),

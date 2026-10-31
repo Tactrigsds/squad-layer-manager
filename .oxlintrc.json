@@ -1,6 +1,7 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
 	"plugins": ["import", "typescript", "promise", "react"],
+	"jsPlugins": ["./scripts/oxlint-sql-plugin.mjs"],
 	"categories": {
 		"correctness": "error",
 		"suspicious": "warn",
@@ -78,7 +79,25 @@
 		"import/no-named-as-default": "warn",
 		"import/extensions": "error",
 		"@typescript-eslint/no-import-type-side-effects": "error",
-		"@typescript-eslint/no-floating-promises": "error",
+		// checkThenables covers a statement built and never run, since drizzle's builders are thenable. fastify's reply
+		// and instance are thenables that are fine to leave.
+		"@typescript-eslint/no-floating-promises": [
+			"error",
+			{
+				"checkThenables": true,
+				"allowForKnownSafePromises": [{ "from": "package", "package": "fastify", "name": ["FastifyReply", "FastifyInstance"] }]
+			}
+		],
+
+		// statements (src/server/sql.ts); see scripts/oxlint-sql-plugin.mjs
+		"sql/no-async-statement": "error",
+		"sql/no-dropped-statement": "error",
+		"sql/no-module-builder": "error",
+		"sql/one-for-module": "error",
+		"sql/no-reveal-in-statement": "error",
+		"sql/no-dynamic-raw": "error",
+		"sql/no-placeholder": "error",
+		"sql/no-drizzle-instance": "error",
 		"react/no-array-index-key": "warn",
 
 		// src/lib/zod.ts installs zod's JIT compiler as a side effect, so every schema in the app has to be built
@@ -154,9 +173,21 @@
 	},
 	"overrides": [
 		{
+			"files": ["test/harness/**"],
+			"rules": {
+				// the harness seeds a database before the app boots it, through drizzle on its own connection
+				"sql/no-drizzle-instance": "off"
+			}
+		},
+		{
 			"files": ["*.test.ts"],
 			"rules": {
-				"@typescript-eslint/no-explicit-any": "off"
+				"@typescript-eslint/no-explicit-any": "off",
+				// a test opens its own connections, and drives drizzle directly to pin what the executors rely on
+				"sql/no-drizzle-instance": "off",
+				"sql/no-async-statement": "off",
+				"sql/no-dropped-statement": "off",
+				"sql/no-module-builder": "off"
 			}
 		},
 		{

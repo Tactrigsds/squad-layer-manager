@@ -103,176 +103,258 @@ export function spanOp<Cb extends (...args: any[]) => any>(
 ): (...args: Parameters<Cb>) => Promise<Awaited<ReturnType<Cb>>> {
 	const fullName = `${opts.module.name}:${name}`
 	const run = withAcquired(opts.mutexes ?? [], cb as Cb)
-	const extraTextPart = (args: any[]) => (opts.extraText ? ` : ${opts.extraText(...(args as Parameters<Cb>)).trim()}` : '')
 
 	return async (..._args: Parameters<Cb>): Promise<Awaited<ReturnType<Cb>>> => {
-		let args = _args as any[]
-
-		// -------- dynamically extract context from args --------
-		let ctx: undefined | (CS.Ctx & Partial<CS.Otel>)
-		if (CS.isCtx(args[0])) {
-			ctx = args[0]
-		} else if (Array.isArray(args[0])) {
-			// handle array-nested args(common with rxjs)
-			const arrArgs = args[0]
-			if (CS.isCtx(arrArgs[0])) {
-				ctx = arrArgs[0]
-			} else if (CS.isCtx(arrArgs[arrArgs.length - 1])) {
-				ctx = arrArgs[arrArgs.length - 1]
+		const op = beginOp(fullName, name, opts, _args)
+		return await opts.module.tracer.startActiveSpan(fullName, op.spanOpts, op.spanContext, async (span) => {
+			const done = startedOp(span, op)
+			try {
+				return done.ok(await run(...(op.args as Parameters<Cb>))) as Awaited<ReturnType<Cb>>
+			} catch (error) {
+				throw done.error(error)
+			} finally {
+				done.end()
 			}
+		})
+	}
+}
+
+export type SpanOpSyncOpts<Cb extends (...args: any[]) => any> = Omit<OtelMod.SpanOpOpts<Cb>, 'mutexes'> & {
+	module: OtelMod.OtelModule
+}
+
+/**
+ * The synchronous counterpart to spanOp, for functions that never await, such as a transaction (see DB.txOp). It
+ * takes no mutexes: synchronous code cannot be interleaved, so it is atomic by construction.
+ */
+export function spanOpSync<Cb extends (...args: any[]) => any>(name: string, opts: SpanOpSyncOpts<Cb>, cb: Cb) {
+	const fullName = `${opts.module.name}:${name}`
+	return (..._args: Parameters<Cb>): ReturnType<Cb> => {
+		const op = beginOp(fullName, name, opts, _args)
+		return opts.module.tracer.startActiveSpan(fullName, op.spanOpts, op.spanContext, (span: Otel.Span): ReturnType<Cb> => {
+			const done = startedOp(span, op)
+			try {
+				const result = cb(...op.args)
+				if (result instanceof Promise) throw new Error(`${fullName} is a spanOpSync and returned a promise: use spanOp`)
+				return done.ok(result) as ReturnType<Cb>
+			} catch (error) {
+				throw done.error(error)
+			} finally {
+				done.end()
+			}
+		})
+	}
+}
+
+// The statements an op ran, counted by the executors in db.ts. Put on the ctx by each op and shared by reference
+// through spreads, so a nested op gets its own and its parent's count leaves it out.
+export type SqlStats = { count: number; ms: number }
+
+type BegunOp = {
+	fullName: string
+	name: string
+	opts: SpanOpSyncOpts<(...args: any[]) => any>
+	args: any[]
+	spanOpts: Otel.SpanOptions
+	spanContext: Otel.Context
+	spanAttrs: Record<string, any>
+	hasSpanAttrs: boolean
+	sqlStats: SqlStats | undefined
+}
+
+function beginOp(fullName: string, name: string, opts: SpanOpSyncOpts<(...args: any[]) => any>, _args: any[]): BegunOp {
+	let args = _args
+
+	// -------- dynamically extract context from args --------
+	let ctx: undefined | (CS.Ctx & Partial<CS.Otel>)
+	if (CS.isCtx(args[0])) {
+		ctx = args[0]
+	} else if (Array.isArray(args[0])) {
+		// handle array-nested args(common with rxjs)
+		const arrArgs = args[0]
+		if (CS.isCtx(arrArgs[0])) {
+			ctx = arrArgs[0]
+		} else if (CS.isCtx(arrArgs[arrArgs.length - 1])) {
+			ctx = arrArgs[arrArgs.length - 1]
 		}
+	}
 
-		let links = opts.links?.length ? [...opts.links] : []
-		let spanContext = Otel.context.active()
+	let links = opts.links?.length ? [...opts.links] : []
+	let spanContext = Otel.context.active()
 
-		const spanAttrs: Record<string, any> = {}
-		let hasSpanAttrs = false
-		const baggageEntries: Record<string, Otel.BaggageEntry> = {}
-		let hasBaggageEntries = false
+	const spanAttrs: Record<string, any> = {}
+	let hasSpanAttrs = false
+	const baggageEntries: Record<string, Otel.BaggageEntry> = {}
+	let hasBaggageEntries = false
+	let sqlStats: SqlStats | undefined
 
-		// Only the ctx-derived attrs and stored links need a ctx; opts.attrs and the baggage merge must
-		// run regardless, or a spanOp whose callback doesn't take a ctx silently loses all its attributes.
-		if (ctx) {
-			if (ctx.otel) {
-				const [ctxLinks, spent] = spendOtelLinks(ctx as CS.Otel)
-				// substitute the spent clone so nested ops inside the callback do not re-link
-				if (args[0] === ctx) args[0] = spent
-				else if (Array.isArray(args[0])) args[0] = args[0].map((a: unknown) => (a === ctx ? spent : a))
-				for (const link of ctxLinks) {
-					const source = link.attributes?.[ATTRS.SpanLink.SOURCE]
-					// explicitly included links take precedence
-					if (source && links.some((l) => l.attributes?.[ATTRS.SpanLink.SOURCE] === source)) {
-						continue
-					}
-					links.push(link)
+	// Only the ctx-derived attrs and stored links need a ctx; opts.attrs and the baggage merge must
+	// run regardless, or a spanOp whose callback doesn't take a ctx silently loses all its attributes.
+	if (ctx) {
+		let replaced: CS.Ctx = ctx
+		if (ctx.otel) {
+			const [ctxLinks, spent] = spendOtelLinks(ctx as CS.Otel)
+			// substitute the spent clone so nested ops inside the callback do not re-link
+			replaced = spent
+			for (const link of ctxLinks) {
+				const source = link.attributes?.[ATTRS.SpanLink.SOURCE]
+				// explicitly included links take precedence
+				if (source && links.some((l) => l.attributes?.[ATTRS.SpanLink.SOURCE] === source)) {
+					continue
 				}
-			}
-
-			for (const { ctxPath, attr, mapped } of CONTEXT_ATTR_MAPPING) {
-				const value = ctxPath(ctx)
-				if (value !== undefined && value !== null) {
-					spanAttrs[attr] = value
-					hasSpanAttrs = true
-					if (mapped) {
-						baggageEntries[attr] = { value: value }
-						hasBaggageEntries = true
-					}
-				}
+				links.push(link)
 			}
 		}
-
-		if (opts.root || !Otel.trace.getActiveSpan()) {
-			baggageEntries[ATTRS.Span.ROOT_NAME] = { value: fullName }
-			hasBaggageEntries = true
+		// only an op that can run statements counts them
+		if ('db' in ctx) {
+			sqlStats = { count: 0, ms: 0 }
+			replaced = { ...replaced, sqlStats } as CS.Ctx
+		}
+		if (replaced !== ctx) {
+			if (args[0] === ctx) args = [replaced, ...args.slice(1)]
+			else if (Array.isArray(args[0])) args = [args[0].map((a: unknown) => (a === ctx ? replaced : a)), ...args.slice(1)]
 		}
 
-		const customAttrs = typeof opts.attrs === 'function' ? opts.attrs(...(args as Parameters<Cb>)) : opts.attrs
-		if (customAttrs) {
-			for (const key in customAttrs) {
-				const value = customAttrs[key]
-				spanAttrs[key] = value
+		for (const { ctxPath, attr, mapped } of CONTEXT_ATTR_MAPPING) {
+			const value = ctxPath(ctx)
+			if (value !== undefined && value !== null) {
+				spanAttrs[attr] = value
 				hasSpanAttrs = true
-				if (MAPPED_ATTRS.has(key)) {
-					baggageEntries[key] = { value: String(value) }
+				if (mapped) {
+					baggageEntries[attr] = { value: value }
 					hasBaggageEntries = true
 				}
 			}
 		}
+	}
 
-		if (hasBaggageEntries) {
-			const currentBaggage = Otel.propagation.getBaggage(spanContext)
-			let changed = !currentBaggage
-			if (currentBaggage) {
-				for (const k in baggageEntries) {
-					if (currentBaggage.getEntry(k)?.value !== baggageEntries[k].value) {
-						changed = true
-						break
-					}
-				}
-			}
-			if (changed) {
-				const newBaggageObj: Record<string, Otel.BaggageEntry> = { ...baggageEntries }
-				if (currentBaggage) {
-					for (const [k, v] of currentBaggage.getAllEntries()) {
-						if (!(k in newBaggageObj)) {
-							newBaggageObj[k] = v
-						}
-					}
-				}
-				spanContext = Otel.propagation.setBaggage(spanContext, Otel.propagation.createBaggage(newBaggageObj))
+	if (opts.root || !Otel.trace.getActiveSpan()) {
+		baggageEntries[ATTRS.Span.ROOT_NAME] = { value: fullName }
+		hasBaggageEntries = true
+	}
+
+	const customAttrs = typeof opts.attrs === 'function' ? opts.attrs(...args) : opts.attrs
+	if (customAttrs) {
+		for (const key in customAttrs) {
+			const value = customAttrs[key]
+			spanAttrs[key] = value
+			hasSpanAttrs = true
+			if (MAPPED_ATTRS.has(key)) {
+				baggageEntries[key] = { value: String(value) }
+				hasBaggageEntries = true
 			}
 		}
+	}
 
-		const tracer = opts.module.tracer
-		return await tracer.startActiveSpan(fullName, { root: opts.root, links, kind: opts.kind }, spanContext, async (span) => {
-			if (hasSpanAttrs) {
-				span.setAttributes(spanAttrs)
+	if (hasBaggageEntries) {
+		const currentBaggage = Otel.propagation.getBaggage(spanContext)
+		let changed = !currentBaggage
+		if (currentBaggage) {
+			for (const k in baggageEntries) {
+				if (currentBaggage.getEntry(k)?.value !== baggageEntries[k].value) {
+					changed = true
+					break
+				}
 			}
+		}
+		if (changed) {
+			const newBaggageObj: Record<string, Otel.BaggageEntry> = { ...baggageEntries }
+			if (currentBaggage) {
+				for (const [k, v] of currentBaggage.getAllEntries()) {
+					if (!(k in newBaggageObj)) {
+						newBaggageObj[k] = v
+					}
+				}
+			}
+			spanContext = Otel.propagation.setBaggage(spanContext, Otel.propagation.createBaggage(newBaggageObj))
+		}
+	}
 
-			const log = opts.module.getLogger()
-			const startedAt = performance.now()
-			let metricOutcome: ATTRS.Op.Outcome = 'ok'
-			try {
-				const result = await run(...(args as Parameters<Cb>))
-				let statusString: string | undefined
-				// a returned `err:*` code. Captured rather than logged here so the op produces exactly one record.
-				let valueError: { message: string; cause?: unknown } | undefined
-				if (result !== null && typeof result === 'object' && 'code' in result && typeof result.code === 'string') {
-					statusString = result.code
-					if (result.code === 'ok') {
-						setSpanStatus(Otel.SpanStatusCode.OK)
-					} else if (result.code.includes('err')) {
-						const message = result.msg ? `${result.code}: ${result.msg}` : result.code
-						valueError = { message, cause: result.error || result.err }
-						setSpanStatus(Otel.SpanStatusCode.ERROR, message)
-					}
+	return {
+		fullName,
+		name,
+		opts,
+		args,
+		spanOpts: { root: opts.root, links, kind: opts.kind },
+		spanContext,
+		spanAttrs,
+		hasSpanAttrs,
+		sqlStats,
+	}
+}
+
+// the span's bookkeeping once it has started: what an outcome records, and what ending it records
+function startedOp(span: Otel.Span, op: BegunOp) {
+	const { opts, args, fullName, name, spanAttrs } = op
+	if (op.hasSpanAttrs) span.setAttributes(spanAttrs)
+	const extraTextPart = () => (opts.extraText ? ` : ${opts.extraText(...args).trim()}` : '')
+	const log = opts.module.getLogger()
+	const startedAt = performance.now()
+	let metricOutcome: ATTRS.Op.Outcome = 'ok'
+	return {
+		ok(result: any) {
+			let statusString: string | undefined
+			// a returned `err:*` code. Captured rather than logged here so the op produces exactly one record.
+			let valueError: { message: string; cause?: unknown } | undefined
+			if (result !== null && typeof result === 'object' && 'code' in result && typeof result.code === 'string') {
+				statusString = result.code
+				if (result.code === 'ok') {
+					setSpanStatus(Otel.SpanStatusCode.OK)
+				} else if (result.code.includes('err')) {
+					const message = result.msg ? `${result.code}: ${result.msg}` : result.code
+					valueError = { message, cause: result.error || result.err }
+					setSpanStatus(Otel.SpanStatusCode.ERROR, message)
 				}
-				let spanStatus: { code: Otel.SpanStatusCode; message?: string } | undefined = spanStatuses.get(span)
-				if (!spanStatus) {
-					spanStatus = OK_STATUS
-					span.setStatus(OK_STATUS)
-				}
-				const isError = spanStatus.code === Otel.SpanStatusCode.ERROR
-				metricOutcome = valueError ? 'value-error' : isError ? 'error' : 'ok'
-				const logLevel = valueError
-					? resolveLevel(opts.levels?.valueError, 'warn', args)
-					: isError
-						? resolveLevel(opts.levels?.error, 'warn', args)
-						: resolveLevel(opts.levels?.event, 'debug', args)
-				if (log?.isLevelEnabled(logLevel)) {
-					statusString ??= isError ? (spanStatus.message ?? 'error') : 'ok'
-					// the value-error message carries the code plus its detail, so prefer it over the bare code
-					const outcome = valueError?.message ?? statusString
-					const opMsg = `op : ${fullName}${extraTextPart(args)} : ${outcome}`
-					if (valueError?.cause) {
-						log[logLevel](valueError.cause as Error, opMsg)
-					} else {
-						log[logLevel](opMsg)
-					}
-				}
-				return result as Awaited<ReturnType<Cb>>
-			} catch (error) {
-				const message = recordGenericError(error)
-				metricOutcome = Prom.isAbortError(error) ? 'aborted' : 'error'
-				if (Prom.isAbortError(error)) {
-					// expected cancellation (request dropped, managed server destroyed, shutdown) -- not a failure
-					if (log?.isLevelEnabled('debug')) log.debug(`${name}${extraTextPart(args)} : aborted: ${message}`)
-				} else if (error instanceof Error) {
-					log?.error(error, `${name}${extraTextPart(args)} : error: ${message}`)
+			}
+			let spanStatus: { code: Otel.SpanStatusCode; message?: string } | undefined = spanStatuses.get(span)
+			if (!spanStatus) {
+				spanStatus = OK_STATUS
+				span.setStatus(OK_STATUS)
+			}
+			const isError = spanStatus.code === Otel.SpanStatusCode.ERROR
+			metricOutcome = valueError ? 'value-error' : isError ? 'error' : 'ok'
+			const logLevel = valueError
+				? resolveLevel(opts.levels?.valueError, 'warn', args)
+				: isError
+					? resolveLevel(opts.levels?.error, 'warn', args)
+					: resolveLevel(opts.levels?.event, 'debug', args)
+			if (log?.isLevelEnabled(logLevel)) {
+				statusString ??= isError ? (spanStatus.message ?? 'error') : 'ok'
+				// the value-error message carries the code plus its detail, so prefer it over the bare code
+				const outcome = valueError?.message ?? statusString
+				const opMsg = `op : ${fullName}${extraTextPart()} : ${outcome}`
+				if (valueError?.cause) {
+					log[logLevel](valueError.cause as Error, opMsg)
 				} else {
-					log?.error(`${name}${extraTextPart(args)} : error: ${message}`)
+					log[logLevel](opMsg)
 				}
-				throw error
-			} finally {
-				const metricAttrs: Otel.Attributes = { [ATTRS.Op.NAME]: fullName, [ATTRS.Op.OUTCOME]: metricOutcome }
-				// already resolved from ctx by CONTEXT_ATTR_MAPPING above; both bounded, by the number of
-				// configured servers and of installed plugins
-				if (spanAttrs[ATTRS.SquadServer.ID]) metricAttrs[ATTRS.SquadServer.ID] = spanAttrs[ATTRS.SquadServer.ID]
-				if (spanAttrs[ATTRS.Plugin.ID]) metricAttrs[ATTRS.Plugin.ID] = spanAttrs[ATTRS.Plugin.ID]
-				getOpDurationHistogram().record((performance.now() - startedAt) / 1000, metricAttrs)
-				span.end()
 			}
-		})
+			return result
+		},
+		error(error: unknown) {
+			const message = recordGenericError(error)
+			metricOutcome = Prom.isAbortError(error) ? 'aborted' : 'error'
+			if (Prom.isAbortError(error)) {
+				// expected cancellation (request dropped, managed server destroyed, shutdown) -- not a failure
+				if (log?.isLevelEnabled('debug')) log.debug(`${name}${extraTextPart()} : aborted: ${message}`)
+			} else if (error instanceof Error) {
+				log?.error(error, `${name}${extraTextPart()} : error: ${message}`)
+			} else {
+				log?.error(`${name}${extraTextPart()} : error: ${message}`)
+			}
+			return error
+		},
+		end() {
+			const metricAttrs: Otel.Attributes = { [ATTRS.Op.NAME]: fullName, [ATTRS.Op.OUTCOME]: metricOutcome }
+			// already resolved from ctx by CONTEXT_ATTR_MAPPING above; both bounded, by the number of
+			// configured servers and of installed plugins
+			if (spanAttrs[ATTRS.SquadServer.ID]) metricAttrs[ATTRS.SquadServer.ID] = spanAttrs[ATTRS.SquadServer.ID]
+			if (spanAttrs[ATTRS.Plugin.ID]) metricAttrs[ATTRS.Plugin.ID] = spanAttrs[ATTRS.Plugin.ID]
+			getOpDurationHistogram().record((performance.now() - startedAt) / 1000, metricAttrs)
+			if (op.sqlStats && op.sqlStats.count > 0)
+				span.setAttributes({ [ATTRS.Db.STATEMENTS]: op.sqlStats.count, [ATTRS.Db.STATEMENTS_MS]: op.sqlStats.ms })
+			span.end()
+		},
 	}
 }
 

@@ -7,6 +7,7 @@ import { FixedSizeMap } from '@/lib/lru-map'
 import * as Obj from '@/lib/object-utils'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
+import { Secret } from '@/lib/secret'
 import { z } from '@/lib/zod'
 import * as AppEvents from '@/models/app-events.models'
 import * as BM from '@/models/battlemetrics.models'
@@ -16,11 +17,13 @@ import * as SETTINGS from '@/models/settings.models'
 import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
+import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as SecretBox from '@/server/secret-box.server'
+import * as Sql from '@/server/sql'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
@@ -30,7 +33,52 @@ import * as Users from '@/systems/users.server'
 
 const getEnv = Env.getEnvBuilder({ ...Env.groups.battlemetrics })
 const module = initModule('battlemetrics')
+const SQL = Sql.forModule(module)
 const orpcBase = getOrpcBase(module)
+
+const Tokens = Schema.battlemetricsUserTokens
+const tokenUserP = SQL.params({ userId: Tokens.userId })
+const tokenOfUser = SQL.def(
+	'tokenOfUser',
+	tokenUserP,
+	SQL.select({ token: Tokens.token }).from(Tokens).where(E.eq(Tokens.userId, tokenUserP.userId)),
+)
+const tokenUpdatedAt = SQL.def(
+	'tokenUpdatedAt',
+	tokenUserP,
+	SQL.select({ updatedAt: Tokens.updatedAt }).from(Tokens).where(E.eq(Tokens.userId, tokenUserP.userId)),
+)
+const deleteToken = SQL.def(
+	'deleteToken',
+	tokenUserP,
+	SQL.delete(Tokens).where(E.eq(Tokens.userId, tokenUserP.userId)).returning({ userId: Tokens.userId }),
+)
+const steamIdP = SQL.params({ steamId: Schema.linkedSteamAccounts.steam64Id })
+const tokenOfSteamId = SQL.def(
+	'tokenOfSteamId',
+	steamIdP,
+	SQL.select({ userId: Tokens.userId, token: Tokens.token })
+		.from(Schema.linkedSteamAccounts)
+		.innerJoin(Tokens, E.eq(Tokens.userId, Schema.linkedSteamAccounts.discordId))
+		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steamId)),
+)
+const allTokens = SQL.def('allTokens', SQL.params({}), SQL.select({ userId: Tokens.userId, token: Tokens.token }).from(Tokens), {
+	scans: ['battlemetricsUserTokens'],
+})
+const tokenP = SQL.params({ userId: Tokens.userId, token: SQL.secret(Tokens.token, z.string()), updatedAt: Tokens.updatedAt })
+const resealP = SQL.params({ userId: Tokens.userId, token: SQL.secret(Tokens.token, z.string()) })
+const writeToken = SQL.def(
+	'writeToken',
+	resealP,
+	SQL.update(Tokens).set({ token: resealP.token }).where(E.eq(Tokens.userId, resealP.userId)),
+)
+const upsertToken = SQL.def(
+	'upsertToken',
+	tokenP,
+	SQL.insert(Tokens)
+		.values({ userId: tokenP.userId, token: tokenP.token, updatedAt: tokenP.updatedAt })
+		.onConflictDoUpdate({ target: Tokens.userId, set: { token: tokenP.token, updatedAt: tokenP.updatedAt } }),
+)
 
 let ENV!: ReturnType<typeof getEnv>
 let log!: ReturnType<typeof module.getLogger>
@@ -52,10 +100,14 @@ export async function setup(ctx: C.Db) {
 	log = module.getLogger()
 	ENV = getEnv()
 
-	await resealPersonalTokens(ctx).catch((err) => log.warn({ err }, 'Failed to re-encrypt personal BM tokens'))
+	try {
+		resealPersonalTokens(ctx)
+	} catch (err) {
+		log.warn({ err }, 'Failed to re-encrypt personal BM tokens')
+	}
 
 	try {
-		const stored = await PersistedCache.load<PersistedCacheValue>(CACHE_PERSIST_KEY)
+		const stored = PersistedCache.load<PersistedCacheValue>(CACHE_PERSIST_KEY)
 		if (stored) {
 			const now = Date.now()
 			let loaded = 0
@@ -72,18 +124,26 @@ export async function setup(ctx: C.Db) {
 
 	const persistSub = Rx.interval(CACHE_PERSIST_INTERVAL_MS)
 		.pipe(
-			Instr.durableSub('bm-cache-persist', { module, root: true, taskScheduling: 'exhaust' }, () =>
-				persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM player cache')),
-			),
+			Instr.durableSub('bm-cache-persist', { module, root: true, taskScheduling: 'exhaust' }, async () => {
+				try {
+					persistCache()
+				} catch (err) {
+					log.warn({ err }, 'Failed to persist BM player cache')
+				}
+			}),
 		)
 		.subscribe()
 
 	const evictSub = Rx.interval(CACHE_EVICTION_INTERVAL_MS).subscribe(() => evictExpiredCacheEntries())
 
-	CleanupSys.register(async () => {
+	CleanupSys.register(() => {
 		persistSub.unsubscribe()
 		evictSub.unsubscribe()
-		await persistCache().catch((err) => log.warn({ err }, 'Failed to final-persist BM player cache on shutdown'))
+		try {
+			persistCache()
+		} catch (err) {
+			log.warn({ err }, 'Failed to final-persist BM player cache on shutdown')
+		}
 	})
 }
 
@@ -108,59 +168,43 @@ export function isPersonalTokenRejected(err: unknown): err is PersonalTokenRejec
 
 // A token sealed with a key this install no longer has is treated as unset, and left in the table so that
 // restoring the key brings it back.
-function openToken(userId: bigint, sealed: string): string | undefined {
+function openToken(userId: bigint, sealed: Secret<string>): string | undefined {
 	try {
-		return SecretBox.open(sealed)
+		return SecretBox.open(sealed.reveal())
 	} catch (err) {
 		log.warn({ err, userId }, 'Could not decrypt a personal BM token; writing as the org token instead')
 		return undefined
 	}
 }
 
-export async function authForUser(ctx: C.Db, userId: bigint): Promise<Auth> {
-	const [row] = await ctx
-		.db({ redactParams: true })
-		.select({ token: Schema.battlemetricsUserTokens.token })
-		.from(Schema.battlemetricsUserTokens)
-		.where(E.eq(Schema.battlemetricsUserTokens.userId, userId))
+export function authForUser(ctx: C.Db, userId: bigint): Auth {
+	const row = DB.get(ctx, tokenOfUser({ userId }))
 	const token = row && openToken(userId, row.token)
 	return token ? { kind: 'personal', userId, token } : ORG_AUTH
 }
 
 // the token of the SLM user who linked this steam account, for a command sent from in game
-export async function authForSteamId(ctx: C.Db, steamId: string | undefined): Promise<Auth> {
+export function authForSteamId(ctx: C.Db, steamId: string | undefined): Auth {
 	if (!steamId) return ORG_AUTH
-	const [row] = await ctx
-		.db({ redactParams: true })
-		.select({ userId: Schema.battlemetricsUserTokens.userId, token: Schema.battlemetricsUserTokens.token })
-		.from(Schema.linkedSteamAccounts)
-		.innerJoin(Schema.battlemetricsUserTokens, E.eq(Schema.battlemetricsUserTokens.userId, Schema.linkedSteamAccounts.discordId))
-		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, BigInt(steamId)))
+	const row = DB.get(ctx, tokenOfSteamId({ steamId: BigInt(steamId) }))
 	const token = row && openToken(row.userId, row.token)
 	return token ? { kind: 'personal', userId: row.userId, token } : ORG_AUTH
 }
 
 // brings each stored token up to the current key and envelope version (see secret-box.server.ts)
-async function resealPersonalTokens(ctx: C.Db) {
-	const rows = await ctx
-		.db({ redactParams: true })
-		.select({ userId: Schema.battlemetricsUserTokens.userId, token: Schema.battlemetricsUserTokens.token })
-		.from(Schema.battlemetricsUserTokens)
+function resealPersonalTokens(ctx: C.Db) {
 	let resealed = 0
-	for (const row of rows) {
-		if (!SecretBox.needsReseal(row.token)) continue
+	for (const row of DB.all(ctx, allTokens({}))) {
+		const sealed = row.token.reveal()
+		if (!SecretBox.needsReseal(sealed)) continue
 		let token: string
 		try {
-			token = SecretBox.reseal(row.token)
+			token = SecretBox.reseal(sealed)
 		} catch (err) {
 			log.warn({ err, userId: row.userId }, 'Could not decrypt a personal BM token; leaving it as stored')
 			continue
 		}
-		await ctx
-			.db({ redactParams: true })
-			.update(Schema.battlemetricsUserTokens)
-			.set({ token })
-			.where(E.eq(Schema.battlemetricsUserTokens.userId, row.userId))
+		DB.run(ctx, writeToken({ userId: row.userId, token: new Secret(token) }))
 		resealed++
 	}
 	if (resealed > 0) log.info('Re-encrypted %d personal BM token(s) at rest', resealed)
@@ -239,14 +283,14 @@ const CACHE_PERSIST_INTERVAL_MS = 5 * 60 * 1000
 
 type PersistedCacheValue = Record<string, PlayerCacheEntry>
 
-async function persistCache() {
+function persistCache() {
 	const now = Date.now()
 	const toStore: PersistedCacheValue = {}
 	for (const [eosId, entry] of playerFlagsAndProfileCache.entries()) {
 		if (!isServable(entry, now)) continue
 		toStore[eosId] = entry
 	}
-	await PersistedCache.save(CACHE_PERSIST_KEY, toStore)
+	PersistedCache.save(CACHE_PERSIST_KEY, toStore)
 }
 
 // -------- polling config --------
@@ -737,7 +781,7 @@ export async function addNoteToPlayer(
 	const bmData = await fetchSinglePlayerBmData(ctx, playerIds)
 	if (!bmData) return 'not-found'
 	await addPlayerNote(ctx, actor.auth, bmData.bmPlayerId, BM.playerNote({ actor: actor.label, text }))
-	await AppEventsSys.persistAppEvent(
+	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.PlayerNoteAdded>({
 			type: 'PLAYER_NOTE_ADDED',
@@ -958,7 +1002,11 @@ export async function invalidateAndRefetchPlayer(ctx: CS.Ctx & CS.AbortSignal, e
 	if (!isEnabled()) return null
 	const updated = await Prom.raceAbort(fetchPlayer(ctx, eosId, INTERACTIVE, { fresh: true }), ctx.signal)
 	// persist immediately so the db doesn't serve stale flags on next startup
-	persistCache().catch((err) => log.warn({ err }, 'Failed to persist BM cache after flag update'))
+	try {
+		persistCache()
+	} catch (err) {
+		log.warn({ err }, 'Failed to persist BM cache after flag update')
+	}
 	return updated
 }
 
@@ -1066,11 +1114,7 @@ export const router = {
 
 	// whether the caller has a personal token saved. The token itself never leaves the server.
 	getMyToken: orpcBase.handler(async ({ context: ctx }) => {
-		const [row] = await ctx
-			.db({ redactParams: true })
-			.select({ updatedAt: Schema.battlemetricsUserTokens.updatedAt })
-			.from(Schema.battlemetricsUserTokens)
-			.where(E.eq(Schema.battlemetricsUserTokens.userId, ctx.user.discordId))
+		const row = DB.get(ctx, tokenUpdatedAt({ userId: ctx.user.discordId }))
 		return { code: 'ok' as const, updatedAt: row?.updatedAt.getTime() ?? null }
 	}),
 
@@ -1091,26 +1135,18 @@ export const router = {
 			}
 			const sealed = SecretBox.seal(input.token)
 			const updatedAt = new Date()
-			await ctx
-				.db({ redactParams: true })
-				.insert(Schema.battlemetricsUserTokens)
-				.values({ userId, token: sealed, updatedAt })
-				.onConflictDoUpdate({ target: Schema.battlemetricsUserTokens.userId, set: { token: sealed, updatedAt } })
+			DB.run(ctx, upsertToken({ userId, token: new Secret(sealed), updatedAt }))
 			// a backoff earned by the previous token says nothing about this one
 			personalRateLimiters.delete(userId)
-			await Users.recordUserAccount(ctx, userId, 'bm-token-set')
+			Users.recordUserAccount(ctx, userId, 'bm-token-set')
 			return { code: 'ok' as const, updatedAt: updatedAt.getTime() }
 		}),
 
 	removeMyToken: orpcBase.meta({ type: 'mutation' }).handler(async ({ context: ctx }) => {
 		const userId = ctx.user.discordId
-		const removed = await ctx
-			.db()
-			.delete(Schema.battlemetricsUserTokens)
-			.where(E.eq(Schema.battlemetricsUserTokens.userId, userId))
-			.returning({ userId: Schema.battlemetricsUserTokens.userId })
+		const removed = DB.all(ctx, deleteToken({ userId }))
 		personalRateLimiters.delete(userId)
-		if (removed.length > 0) await Users.recordUserAccount(ctx, userId, 'bm-token-removed')
+		if (removed.length > 0) Users.recordUserAccount(ctx, userId, 'bm-token-removed')
 		return { code: 'ok' as const }
 	}),
 
@@ -1136,7 +1172,7 @@ export const router = {
 		)
 		.handler(async ({ input, context: ctx }) => {
 			if (!isEnabled()) return { code: 'err:disabled' as const }
-			const auth = await authForUser(ctx, ctx.user.discordId)
+			const auth = authForUser(ctx, ctx.user.discordId)
 			const actor = { label: actorLabel(ctx), appActor: { type: 'slm-user' as const, userId: ctx.user.discordId }, auth }
 			const results = await Promise.all(
 				input.playerIds.map((playerId) =>
@@ -1184,7 +1220,7 @@ export const router = {
 			const toRemove = input.remove.filter((f) => current.flagIds.includes(f.id))
 			if (toAdd.length === 0 && toRemove.length === 0) return { code: 'err:no-changes' as const }
 
-			const auth = await authForUser(ctx, ctx.user.discordId)
+			const auth = authForUser(ctx, ctx.user.discordId)
 			try {
 				const addRes = await addPlayerFlags(
 					ctx,
@@ -1212,7 +1248,7 @@ export const router = {
 			])
 
 			const updated = await invalidateAndRefetchPlayer(ctx, input.playerId)
-			await persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added, removed })
+			persistFlagsUpdatedEvent(ctx, { playerId: input.playerId, added, removed })
 
 			return { code: 'ok' as const, data: updated, noteAdded: noteResults.every(Boolean), added, removed }
 		}),
@@ -1238,7 +1274,7 @@ export const router = {
 				return { code: 'err:reason-required' as const, flags: BM.resolveFlags(missing, orgFlags).map((f) => f.name) }
 			}
 
-			const auth = await authForUser(ctx, ctx.user.discordId)
+			const auth = authForUser(ctx, ctx.user.discordId)
 			let flaggedCount = 0
 			let allNotesAdded = true
 			for (const playerId of input.playerIds) {
@@ -1266,7 +1302,7 @@ export const router = {
 				if (!noteAdded) allNotesAdded = false
 
 				await invalidateAndRefetchPlayer(ctx, playerId)
-				await persistFlagsUpdatedEvent(ctx, { playerId, added, removed: [] })
+				persistFlagsUpdatedEvent(ctx, { playerId, added, removed: [] })
 				flaggedCount++
 			}
 
@@ -1315,8 +1351,8 @@ async function postFlagChangeNotes(
 	return results.every(Boolean)
 }
 
-async function persistFlagsUpdatedEvent(ctx: USR.Ctx & C.Db, e: Pick<AppEvents.PlayerFlagsUpdated, 'playerId' | 'added' | 'removed'>) {
-	await AppEventsSys.persistAppEvent(
+function persistFlagsUpdatedEvent(ctx: USR.Ctx & C.Db, e: Pick<AppEvents.PlayerFlagsUpdated, 'playerId' | 'added' | 'removed'>) {
+	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.PlayerFlagsUpdated>({
 			type: 'PLAYER_FLAGS_UPDATED',

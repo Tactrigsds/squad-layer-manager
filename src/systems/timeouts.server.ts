@@ -19,8 +19,10 @@ import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
+import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Sql from '@/server/sql'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as MatchHistory from '@/systems/match-history.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -33,20 +35,115 @@ import * as SquadServer from '@/systems/squad-server.server'
 
 const module = initModule('timeouts')
 const orpcBase = getOrpcBase(module)
+const SQL = Sql.forModule(module)
 
 export const update$ = new IsolatedSubject<void>()
 
-function activeWhere(playerIds?: SM.PlayerId[]) {
-	return E.and(
-		E.eq(Schema.timeouts.cancelled, false),
-		E.gt(Schema.timeouts.expiresAt, new Date()),
-		playerIds ? E.inArray(Schema.timeouts.playerId, playerIds) : undefined,
-	)
+function isActive(now: Sql.Parameter<Date>) {
+	return E.and(E.eq(Schema.timeouts.cancelled, SQL.lit(false)), E.gt(Schema.timeouts.expiresAt, now))
 }
 
-export async function getActiveTimeouts(ctx: C.Db, playerIds: SM.PlayerId[]): Promise<SchemaModels.Timeout[]> {
+const activeForPlayersP = SQL.params({ now: Schema.timeouts.expiresAt, ids: SQL.list(Schema.timeouts.playerId) })
+const activeForPlayers = SQL.def(
+	'activeForPlayers',
+	activeForPlayersP,
+	SQL.select()
+		.from(Schema.timeouts)
+		.where(E.and(isActive(activeForPlayersP.now), SQL.inJson(Schema.timeouts.playerId, activeForPlayersP.ids))),
+)
+
+const activeByIdP = SQL.params({ id: Schema.timeouts.id, now: Schema.timeouts.expiresAt })
+const activeById = SQL.def(
+	'activeById',
+	activeByIdP,
+	SQL.select()
+		.from(Schema.timeouts)
+		.where(E.and(E.eq(Schema.timeouts.id, activeByIdP.id), isActive(activeByIdP.now))),
+)
+
+// the players table is joined twice: once for the player under timeout, once for the admin who issued it
+const actorPlayer = alias(Schema.players, 'actorPlayer')
+const listActiveP = SQL.params({ now: Schema.timeouts.expiresAt })
+const listActive = SQL.def(
+	'listActive',
+	listActiveP,
+	SQL.select({
+		timeout: Schema.timeouts,
+		username: Schema.players.username,
+		steamId: Schema.players.steamId,
+		actorType: Schema.appEvents.actorType,
+		actorUserId: Schema.appEvents.actorUserId,
+		actorPlayerId: Schema.appEvents.actorPlayerId,
+		actorUsername: actorPlayer.username,
+	})
+		.from(Schema.timeouts)
+		.leftJoin(Schema.players, E.eq(Schema.timeouts.playerId, Schema.players.eosId))
+		.leftJoin(Schema.appEvents, E.eq(Schema.timeouts.appEventId, Schema.appEvents.id))
+		.leftJoin(actorPlayer, E.eq(Schema.appEvents.actorPlayerId, actorPlayer.eosId))
+		.where(isActive(listActiveP.now))
+		.orderBy(E.asc(Schema.timeouts.expiresAt)),
+)
+
+const ensurePlayerP = SQL.params({
+	eosId: Schema.players.eosId,
+	steamId: Schema.players.steamId,
+	username: Schema.players.username,
+	now: Schema.players.createdAt,
+})
+const ensurePlayer = SQL.def(
+	'ensurePlayer',
+	ensurePlayerP,
+	SQL.insert(Schema.players)
+		.values({
+			eosId: ensurePlayerP.eosId,
+			steamId: ensurePlayerP.steamId,
+			username: ensurePlayerP.username,
+			createdAt: ensurePlayerP.now,
+			modifiedAt: ensurePlayerP.now,
+		})
+		.onConflictDoNothing({ target: Schema.players.eosId }),
+)
+
+const insertTimeoutP = SQL.params({
+	id: Schema.timeouts.id,
+	playerId: Schema.timeouts.playerId,
+	expiresAt: Schema.timeouts.expiresAt,
+	createdAt: Schema.timeouts.createdAt,
+	appEventId: Schema.timeouts.appEventId,
+	issuedServerId: Schema.timeouts.issuedServerId,
+	reasonLabel: Schema.timeouts.reasonLabel,
+	reasonTemplate: Schema.timeouts.reasonTemplate,
+	reasonVars: Schema.timeouts.reasonVars,
+})
+const insertTimeout = SQL.def(
+	'insertTimeout',
+	insertTimeoutP,
+	SQL.insert(Schema.timeouts).values({
+		id: insertTimeoutP.id,
+		playerId: insertTimeoutP.playerId,
+		expiresAt: insertTimeoutP.expiresAt,
+		cancelled: SQL.lit(false),
+		createdAt: insertTimeoutP.createdAt,
+		appEventId: insertTimeoutP.appEventId,
+		issuedServerId: insertTimeoutP.issuedServerId,
+		reasonLabel: insertTimeoutP.reasonLabel,
+		reasonTemplate: insertTimeoutP.reasonTemplate,
+		reasonVars: insertTimeoutP.reasonVars,
+	}),
+)
+
+const cancelP = SQL.params({ id: Schema.timeouts.id })
+const cancel = SQL.def(
+	'cancel',
+	cancelP,
+	SQL.update(Schema.timeouts)
+		.set({ cancelled: SQL.lit(true) })
+		.where(E.eq(Schema.timeouts.id, cancelP.id)),
+)
+
+export function getActiveTimeouts(ctx: C.Db, playerIds: SM.PlayerId[]): SchemaModels.Timeout[] {
 	if (playerIds.length === 0) return []
-	return await ctx.db().select().from(Schema.timeouts).where(activeWhere(playerIds))
+	return DB.all(ctx, activeForPlayers({ now: new Date(), ids: playerIds }))
 }
 
 export type ActiveTimeoutRow = SchemaModels.Timeout & {
@@ -69,26 +166,8 @@ function appliedReasonFromRow(t: SchemaModels.Timeout): AMS.AppliedReason | null
 	}
 }
 
-export async function listActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]> {
-	// the players table is joined twice: once for the player under timeout, once for the admin who issued it
-	const actorPlayer = alias(Schema.players, 'actorPlayer')
-	const rows = await ctx
-		.db()
-		.select({
-			timeout: Schema.timeouts,
-			username: Schema.players.username,
-			steamId: Schema.players.steamId,
-			actorType: Schema.appEvents.actorType,
-			actorUserId: Schema.appEvents.actorUserId,
-			actorPlayerId: Schema.appEvents.actorPlayerId,
-			actorUsername: actorPlayer.username,
-		})
-		.from(Schema.timeouts)
-		.leftJoin(Schema.players, E.eq(Schema.timeouts.playerId, Schema.players.eosId))
-		.leftJoin(Schema.appEvents, E.eq(Schema.timeouts.appEventId, Schema.appEvents.id))
-		.leftJoin(actorPlayer, E.eq(Schema.appEvents.actorPlayerId, actorPlayer.eosId))
-		.where(activeWhere())
-		.orderBy(E.asc(Schema.timeouts.expiresAt))
+export function listActiveTimeouts(ctx: C.Db): ActiveTimeoutRow[] {
+	const rows = DB.all(ctx, listActive({ now: new Date() }))
 	return rows.map((row): ActiveTimeoutRow => {
 		let actor: AppEvents.Actor | null = null
 		if (row.actorType === 'slm-user' && row.actorUserId !== null) actor = { type: 'slm-user', userId: row.actorUserId }
@@ -116,7 +195,7 @@ export async function kickWithTimeout(
 	// stacking timeouts on one player is almost always a mistake (two admins reacting to the same incident);
 	// the existing one must be cancelled before a new one can be issued. checked before the app event is
 	// emitted so a rejected kick leaves no audit record.
-	const [existing] = await getActiveTimeouts(ctx, [targetId])
+	const [existing] = getActiveTimeouts(ctx, [targetId])
 	if (existing) {
 		const remaining = ZodUtils.formatDurationApprox(existing.expiresAt.getTime() - Date.now())
 		return {
@@ -144,30 +223,34 @@ export async function kickWithTimeout(
 	await SquadServerActions.emitAppEvent(ctx, appEvent)
 	// player rows are normally upserted lazily by event persistence, which may not have run yet for a
 	// fresh connect; ensure the FK target exists
-	await ctx
-		.db()
-		.insert(Schema.players)
-		.values({
-			eosId: targetId,
-			steamId: opts.target.ids.steam ? BigInt(opts.target.ids.steam) : undefined,
-			username: opts.target.ids.username ?? targetId,
-		})
-		.onConflictDoNothing({ target: Schema.players.eosId })
-	await ctx
-		.db()
-		.insert(Schema.timeouts)
-		.values({
-			id: timeoutId,
-			playerId: targetId,
-			expiresAt,
-			appEventId: appEvent.id,
-			issuedServerId: ctx.serverId,
-			reasonLabel: opts.reason?.label ?? null,
-			reasonTemplate: opts.reason?.template ?? null,
-			reasonVars: opts.reason?.vars ?? null,
-		})
-	// ahead of the kick and the admin notice, so watchers list the timeout without waiting on rcon
-	update$.next()
+	const now = new Date()
+	DB.transaction(ctx, {}, (ctx) => {
+		DB.run(
+			ctx,
+			ensurePlayer({
+				eosId: targetId,
+				steamId: opts.target.ids.steam ? BigInt(opts.target.ids.steam) : null,
+				username: opts.target.ids.username ?? targetId,
+				now,
+			}),
+		)
+		DB.run(
+			ctx,
+			insertTimeout({
+				id: timeoutId,
+				playerId: targetId,
+				expiresAt,
+				createdAt: now,
+				appEventId: appEvent.id,
+				issuedServerId: ctx.serverId,
+				reasonLabel: opts.reason?.label ?? null,
+				reasonTemplate: opts.reason?.template ?? null,
+				reasonVars: opts.reason?.vars ?? null,
+			}),
+		)
+		// ahead of the kick and the admin notice, so watchers list the timeout without waiting on rcon
+		DB.afterCommit(ctx, () => update$.next())
+	})
 	const message = ctx.tr.text(SM_Msgs.notifyKicked(opts.reason && AMS.renderAppliedReason(opts.reason)))
 	await SquadServerActions.kickPlayerAction(ctx, targetId, { type: 'event', id: appEvent.id }, message)
 	await SquadServerActions.notifyAdminsOfWebAction(ctx, appEvent)
@@ -180,13 +263,9 @@ export async function cancelTimeout(
 	ctx: C.Db,
 	opts: { timeoutId: string; actor: AppEvents.Actor; serverCtx?: C.Db & SQS.Ctx & MH.Ctx & CS.AbortSignal },
 ): Promise<{ code: 'ok' } | { code: 'err:not-found'; msg: string }> {
-	const [timeout] = await ctx
-		.db()
-		.select()
-		.from(Schema.timeouts)
-		.where(E.and(E.eq(Schema.timeouts.id, opts.timeoutId), activeWhere()))
+	const timeout = DB.get(ctx, activeById({ id: opts.timeoutId, now: new Date() }))
 	if (!timeout) return { code: 'err:not-found', msg: 'No active timeout found' }
-	await ctx.db().update(Schema.timeouts).set({ cancelled: true }).where(E.eq(Schema.timeouts.id, opts.timeoutId))
+	DB.run(ctx, cancel({ id: opts.timeoutId }))
 	update$.next()
 	const appEvent = AppEvents.create<AppEvents.TimeoutCancelled>({
 		type: 'TIMEOUT_CANCELLED',
@@ -198,7 +277,7 @@ export async function cancelTimeout(
 		timeoutId: timeout.id,
 	})
 	if (opts.serverCtx) await SquadServerActions.emitAppEvent(opts.serverCtx, appEvent)
-	else await AppEventsSys.persistAppEvent(ctx, appEvent)
+	else AppEventsSys.persistAppEvent(ctx, appEvent)
 	return { code: 'ok' }
 }
 
@@ -207,7 +286,7 @@ export async function cancelTimeout(
 // re-rendered from the stored template + vars with the REMAINING time substituted for {{duration}}
 // (empty when none, so {{#duration}} sections drop out) so the player sees how much longer they're timed out.
 export async function enforceTimeouts(ctx: C.Db & C.ManagedServer & CS.AbortSignal, playerIds: SM.PlayerId[]) {
-	const active = await getActiveTimeouts(ctx, playerIds)
+	const active = getActiveTimeouts(ctx, playerIds)
 	for (const timeout of active) {
 		const applied = appliedReasonFromRow(timeout)
 		const remainingMs = timeout.expiresAt.getTime() - Date.now()
@@ -227,22 +306,18 @@ export async function enforceTimeouts(ctx: C.Db & C.ManagedServer & CS.AbortSign
 // The join is the same for every watcher, and a permission change re-runs every affected watcher at once, so it is read
 // once per change to the timeouts and filtered per caller. Subscribed at module load, ahead of any watcher, so the
 // cache is dropped before a watcher reacts to the same change.
-let activeTimeouts: Promise<ActiveTimeoutRow[]> | null = null
+let activeTimeouts: ActiveTimeoutRow[] | null = null
 update$.subscribe(() => (activeTimeouts = null))
-function cachedActiveTimeouts(ctx: C.Db): Promise<ActiveTimeoutRow[]> {
-	if (activeTimeouts) return activeTimeouts
-	const read = listActiveTimeouts(ctx).catch((err: unknown) => {
-		if (activeTimeouts === read) activeTimeouts = null
-		throw err
-	})
-	activeTimeouts = read
-	return read
+function cachedActiveTimeouts(ctx: C.Db): ActiveTimeoutRow[] {
+	activeTimeouts ??= listActiveTimeouts(ctx)
+	return activeTimeouts
 }
 
 // A timeout names the player, the admin who issued it and why, so it is shown only to those who can see the server that
 // issued it. One whose server is gone is shown to anyone who can see any server.
 async function listVisibleActiveTimeouts(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal): Promise<ActiveTimeoutRow[]> {
-	const [rows, canAccess] = await Promise.all([cachedActiveTimeouts(ctx), Rbac.getUserAccessCheck(ctx)])
+	const canAccess = await Rbac.getUserAccessCheck(ctx)
+	const rows = cachedActiveTimeouts(ctx)
 	const now = Date.now()
 	return rows.filter(
 		(row) =>
@@ -270,11 +345,7 @@ export const router = {
 		.handler(async ({ context: ctx, input }) => {
 			// which server's grant applies is a property of the timeout, so the row is read before the check rather
 			// than taken from the request
-			const [timeout] = await ctx
-				.db()
-				.select({ issuedServerId: Schema.timeouts.issuedServerId })
-				.from(Schema.timeouts)
-				.where(E.and(E.eq(Schema.timeouts.id, input.timeoutId), activeWhere()))
+			const timeout = DB.get(ctx, activeById({ id: input.timeoutId, now: new Date() }))
 			if (!timeout) return { code: 'err:not-found' as const, msg: 'No active timeout found' }
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.anyTimeout(timeout.issuedServerId))
 			if (denyRes) return denyRes

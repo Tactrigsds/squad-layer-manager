@@ -1,17 +1,16 @@
 import DatabaseConstructor from 'better-sqlite3'
-import * as E from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { parentPort, workerData } from 'node:worker_threads'
 
 import type * as CHAT from '@/models/chat.models'
 import * as CS from '@/models/context-shared.models'
 import * as MH from '@/models/match-history.models'
 import * as Pop from '@/models/population.models'
+import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup, initModule } from '@/server/logger'
 import * as LayerData from '@/systems/layer-data.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
-import { mh, mp, pendingColumns, pendingTalliesCond } from '@/systems/match-tallies.shared'
+import { pendingMatches } from '@/systems/match-tallies.shared'
 
 // Tallying a match -- its scoreline and its population samples -- means replaying its whole feed against the roster
 // it happened to, which is the only way a kill names a team. That is tens of thousands of synchronous iterations per
@@ -45,20 +44,8 @@ export type EngineResponse = {
 	failed: number[]
 }
 
-/** The next matches to tally, newest first, so the page the history panel is showing fills in before the rest. */
-async function pendingMatches(ctx: C, req: EngineRequest) {
-	return await ctx
-		.db()
-		.select(pendingColumns)
-		.from(mh)
-		.leftJoin(mp, E.eq(mp.matchId, mh.id))
-		.where(pendingTalliesCond(req.serverId, req.skip))
-		.orderBy(E.desc(mh.ordinal))
-		.limit(req.limit)
-}
-
 export async function runEngineRequest(ctx: C, req: EngineRequest): Promise<EngineResponse> {
-	const pending = await pendingMatches(ctx, req)
+	const pending = DB.all(ctx, pendingMatches({ serverId: req.serverId, skip: req.skip, limit: req.limit }))
 	const tallies: EngineResponse['tallies'] = []
 	const failed: number[] = []
 	// One match at a time, so neither a corrupt archive blob nor a match's memory footprint is charged to the
@@ -93,10 +80,9 @@ ensureLoggerSetup()
 const driver = new DatabaseConstructor(dbPath, { readonly: true })
 driver.pragma('busy_timeout = 5000')
 driver.pragma(`mmap_size = ${256 * 1024 * 1024}`)
-const db = drizzle(driver)
 
 // bound to the same module name the main thread's half logs under, so a failed tally reads as one thing
-const ctx = { ...CS.init(), db: () => db, log: initModule('match-tallies').getLogger(), signal: new AbortController().signal }
+const ctx = { ...CS.init(), db: DB.connect(driver), log: initModule('match-tallies').getLogger(), signal: new AbortController().signal }
 type C = typeof ctx
 
 // A feed carries layer ids (NEW_GAME names the layer that started), and parsing one indexes into the layer

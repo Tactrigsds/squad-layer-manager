@@ -10,9 +10,10 @@ import type * as C from '@/server/context'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as MatchPopulation from '@/systems/match-population.server'
-import { mh, mp, pendingTalliesCond } from '@/systems/match-tallies.shared'
+import { anyPendingMatch } from '@/systems/match-tallies.shared'
 import type * as MatchTalliesWorker from '@/systems/match-tallies.worker'
 
 // The catch-up that gives every match a scoreline and population samples.
@@ -24,6 +25,7 @@ import type * as MatchTalliesWorker from '@/systems/match-tallies.worker'
 // is here because it is the thread that would suffer, and the writes are here because the app keeps one writer.
 
 const module = initModule('match-tallies')
+const SQL = Sql.forModule(module)
 let log!: CS.Logger
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db })
@@ -152,11 +154,11 @@ export async function runCatchUp(ctx: C.Db & MH.Ctx & CS.AbortSignal, opts: () =
 			try {
 				// asked here rather than left to the worker so that an app with nothing to tally -- which is every
 				// caught-up install, most of the time -- never starts the thread in the first place
-				if (await hasPendingMatches(ctx)) {
+				if (hasPendingMatches(ctx)) {
 					const res = await dispatch(ctx, { serverId: ctx.serverId, opts: opts(), limit: BATCH, skip: [...skipped] })
 					for (const matchId of res?.failed ?? []) skipped.add(matchId)
 					for (const tally of res?.tallies ?? []) {
-						if (tally.stats) await storeCombatStats(ctx, tally.matchId, tally.stats)
+						if (tally.stats) storeCombatStats(ctx, tally.matchId, tally.stats)
 						if (tally.population) await MatchPopulation.store(ctx, tally.matchId, tally.population)
 						tallied++
 					}
@@ -180,16 +182,33 @@ export async function runCatchUp(ctx: C.Db & MH.Ctx & CS.AbortSignal, opts: () =
 	}
 }
 
-async function hasPendingMatches(ctx: C.Db & CS.ServerId & CS.AbortSignal): Promise<boolean> {
-	const [row] = await ctx
-		.db()
-		.select({ id: mh.id })
-		.from(mh)
-		.leftJoin(mp, E.eq(mp.matchId, mh.id))
-		.where(pendingTalliesCond(ctx.serverId, [...skipped]))
-		.limit(1)
-	return row !== undefined
+function hasPendingMatches(ctx: C.Db & CS.ServerId): boolean {
+	return DB.get(ctx, anyPendingMatch({ serverId: ctx.serverId, skip: [...skipped] })) !== undefined
 }
+
+const combatStatsP = SQL.params({
+	id: Schema.matchHistory.id,
+	team1Kills: Schema.matchHistory.team1Kills,
+	team1Wounds: Schema.matchHistory.team1Wounds,
+	team1Deaths: Schema.matchHistory.team1Deaths,
+	team2Kills: Schema.matchHistory.team2Kills,
+	team2Wounds: Schema.matchHistory.team2Wounds,
+	team2Deaths: Schema.matchHistory.team2Deaths,
+})
+const setCombatStats = SQL.def(
+	'setCombatStats',
+	combatStatsP,
+	SQL.update(Schema.matchHistory)
+		.set({
+			team1Kills: combatStatsP.team1Kills,
+			team1Wounds: combatStatsP.team1Wounds,
+			team1Deaths: combatStatsP.team1Deaths,
+			team2Kills: combatStatsP.team2Kills,
+			team2Wounds: combatStatsP.team2Wounds,
+			team2Deaths: combatStatsP.team2Deaths,
+		})
+		.where(E.eq(Schema.matchHistory.id, combatStatsP.id)),
+)
 
 /**
  * A match's scoreline onto its row, and into the in-memory window if it is still in it.
@@ -197,12 +216,14 @@ async function hasPendingMatches(ctx: C.Db & CS.ServerId & CS.AbortSignal): Prom
  * The window is patched rather than reloaded: a reload is what asked for this work in the first place, and the
  * catch-up spends most of its life on matches too old for anything in memory to reference.
  */
-async function storeCombatStats(ctx: C.Db & MH.Ctx & CS.AbortSignal, matchId: number, stats: MH.MatchCombatStats) {
-	await DB.runTransaction(ctx, async (ctx) => {
-		await ctx.db().update(Schema.matchHistory).set(MH.combatStatsToColumns(stats)).where(E.eq(Schema.matchHistory.id, matchId))
+function storeCombatStats(ctx: C.Db & MH.Ctx, matchId: number, stats: MH.MatchCombatStats) {
+	DB.run(ctx, setCombatStats({ id: matchId, ...MH.combatStatsToColumns(stats) }))
+	DB.afterCommit(ctx, () => {
+		const state = ctx.matchHistory
+		if (!state.recentMatches.some((match) => match.historyEntryId === matchId)) return
+		state.recentMatches = state.recentMatches.map((match) =>
+			match.historyEntryId === matchId ? { ...match, combatStats: stats } : match,
+		)
+		state.dispatchUpdate()
 	})
-	const state = ctx.matchHistory
-	if (!state.recentMatches.some((match) => match.historyEntryId === matchId)) return
-	state.recentMatches = state.recentMatches.map((match) => (match.historyEntryId === matchId ? { ...match, combatStats: stats } : match))
-	state.dispatchUpdate()
 }

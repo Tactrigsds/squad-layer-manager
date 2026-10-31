@@ -35,6 +35,7 @@ import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as AdminList from '@/systems/adminlist.server'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
@@ -60,6 +61,42 @@ import * as Users from '@/systems/users.server'
 import * as Vote from '@/systems/vote.server'
 
 const module = initModule('squad-server')
+// squad-server.server.ts defines its statements under the same module
+const SQL = Sql.forModule(module.child('lifecycle'))
+
+const usernamesNoTagP = SQL.params({ eosIds: SQL.list(Schema.players.eosId) })
+const usernamesNoTag = SQL.def(
+	'usernamesNoTag',
+	usernamesNoTagP,
+	SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username, usernameNoTag: Schema.players.usernameNoTag })
+		.from(Schema.players)
+		.where(E.and(SQL.inJson(Schema.players.eosId, usernamesNoTagP.eosIds), E.isNotNull(Schema.players.usernameNoTag))),
+)
+const serverIdP = SQL.params({ serverId: Schema.matchHistory.serverId })
+const lastMatchOf = SQL.def(
+	'lastMatchOf',
+	serverIdP,
+	SQL.select({ id: Schema.matchHistory.id })
+		.from(Schema.matchHistory)
+		.where(E.eq(Schema.matchHistory.serverId, serverIdP.serverId))
+		.orderBy(E.desc(Schema.matchHistory.ordinal))
+		.limit(1),
+)
+const eventsOfP = SQL.params({ matchId: Schema.serverEvents.matchId })
+const serverEventsOf = SQL.def(
+	'serverEventsOf',
+	eventsOfP,
+	SQL.select()
+		.from(Schema.serverEvents)
+		.where(E.eq(Schema.serverEvents.matchId, eventsOfP.matchId))
+		.orderBy(E.asc(Schema.serverEvents.id)),
+)
+const appEventsOfP = SQL.params({ matchId: Schema.appEvents.matchId })
+const appEventsOf = SQL.def(
+	'appEventsOf',
+	appEventsOfP,
+	SQL.select().from(Schema.appEvents).where(E.eq(Schema.appEvents.matchId, appEventsOfP.matchId)).orderBy(E.asc(Schema.appEvents.time)),
+)
 
 const meter = Otel.metrics.getMeter('squad-server')
 
@@ -87,7 +124,7 @@ const logLagHistogram = meter.createHistogram(ATTRS.SquadLogs.LAG, {
 })
 
 export async function setup() {
-	await SquadServer.init()
+	SquadServer.init()
 	// Settings.setup() has already loaded the registry by this point (see main.ts); boot a managed server for every server that should have one
 	await Promise.all(Settings.listServerEntries().map((entry) => ensureRunning(entry.id)))
 }
@@ -116,7 +153,7 @@ async function ensureRunningLocked(serverId: string) {
 	const entry = Settings.getServerEntry(serverId)
 	if (!entry || !entry.enabled || entry.broken) return
 	const ctx = SquadServer.getBaseCtx()
-	const serverState = await SquadServer.getServerState({ ...ctx, serverId })
+	const serverState = SquadServer.getServerState({ ...ctx, serverId })
 	await setupManagedServer(ctx, serverState)
 	SquadServer.log.info(`Server ${serverId} setup complete`)
 }
@@ -231,7 +268,6 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 		serverId,
 		event$,
 		db: { ...SquadServer.getBaseCtx(), log: SquadServer.log },
-		writes: null,
 		unpublished: [],
 	}
 
@@ -256,19 +292,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			skipDestroyedOnTrainingLayers: () => serverSettings.settings.skipDestroyedOnTrainingLayers,
 			fetchUsernamesNoTag: async (players) => {
 				const ctx = SquadServer.resolveCtx(SquadServer.getBaseCtx(), serverId)
-				const rows = await ctx
-					.db()
-					.select({ eosId: Schema.players.eosId, username: Schema.players.username, usernameNoTag: Schema.players.usernameNoTag })
-					.from(Schema.players)
-					.where(
-						E.and(
-							E.inArray(
-								Schema.players.eosId,
-								players.map((p) => p.eos),
-							),
-							E.isNotNull(Schema.players.usernameNoTag),
-						),
-					)
+				const rows = DB.all(ctx, usernamesNoTag({ eosIds: players.map((p) => p.eos) }))
 				const usernames = new Map(players.map((p) => [p.eos, p.username]))
 				const res = new Map<SM.PlayerId, string>()
 				for (const row of rows) {
@@ -574,7 +598,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 					'onRconEvent',
 					{ module, taskScheduling: 'parallel', levels: { event: 'trace' } },
 					async ([_ctx, event], signal) => {
-						const ctx = CS.initDeferred(DB.addPooledDb(SquadServer.resolveCtx(CS.addSignal({ ..._ctx }, signal), serverId)))
+						const ctx = CS.initDeferred(DB.withDb(SquadServer.resolveCtx(CS.addSignal({ ..._ctx }, signal), serverId)))
 						try {
 							const opts: Promise<void>[] = []
 							if (event.type === 'CHAT_MESSAGE') {
@@ -686,7 +710,7 @@ const destroyServer = Instr.spanOp('destroyServer', { module, levels: { event: '
 // registry data (identity/enabled/default/broken) lives in settings.server.ts; this only orchestrates the live managed server around it
 export async function enableServer(serverId: string) {
 	const ctx = SquadServer.getBaseCtx()
-	const res = await Settings.setServerEnabled(ctx, serverId, true)
+	const res = Settings.setServerEnabled(ctx, serverId, true)
 	if (res.code !== 'ok') return res
 	await ensureRunning(serverId)
 	SquadServer.log.info('Server %s enabled', serverId)
@@ -695,7 +719,7 @@ export async function enableServer(serverId: string) {
 
 export async function disableServer(serverId: string) {
 	const ctx = SquadServer.getBaseCtx()
-	const res = await Settings.setServerEnabled(ctx, serverId, false)
+	const res = Settings.setServerEnabled(ctx, serverId, false)
 	if (res.code !== 'ok') return res
 
 	await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))
@@ -709,40 +733,16 @@ export async function deleteServer(serverId: string) {
 	const ctx = SquadServer.getBaseCtx()
 	await withLifecycleLock(serverId, () => destroyIfRunningLocked(serverId))
 	Sandbox.disposeInstance(serverId)
-	return await Settings.deleteServerEntry(ctx, serverId)
+	return Settings.deleteServerEntry(ctx, serverId)
 }
 
 const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: SQS.Ctx & C.Db) => {
 	const server = ctx.server
-	const [lastMatch] = await ctx
-		.db()
-		.select({ id: Schema.matchHistory.id })
-		.from(Schema.matchHistory)
-		.where(E.eq(Schema.matchHistory.serverId, ctx.serverId))
-		.orderBy(E.desc(Schema.matchHistory.ordinal))
-		.limit(1)
+	const lastMatch = DB.get(ctx, lastMatchOf({ serverId: ctx.serverId }))
+	const rows = lastMatch ? DB.all(ctx, serverEventsOf({ matchId: lastMatch.id })) : []
+	server.emittedEvents = SE.fromEventRows({ ...ctx, log: SquadServer.log }, rows)
 
-	const rowsRaw = lastMatch
-		? await ctx
-				.db()
-				.select({ event: Schema.serverEvents })
-				.from(Schema.serverEvents)
-				.where(E.eq(Schema.serverEvents.matchId, lastMatch.id))
-				.orderBy(E.asc(Schema.serverEvents.id))
-		: []
-	server.emittedEvents = SE.fromEventRows(
-		{ ...ctx, log: SquadServer.log },
-		rowsRaw.map((r) => r.event),
-	)
-
-	const appEventRows = lastMatch
-		? await ctx
-				.db()
-				.select()
-				.from(Schema.appEvents)
-				.where(E.eq(Schema.appEvents.matchId, lastMatch.id))
-				.orderBy(E.asc(Schema.appEvents.time))
-		: []
+	const appEventRows = lastMatch ? DB.all(ctx, appEventsOf({ matchId: lastMatch.id })) : []
 	// this buffer is the feed, so it has to hold what the live path would have pushed -- not every row the audit
 	// log kept. Without the isFeedVisible filter an audit-only event (a queue-driven MAP_SET) reappears as its own
 	// feed entry after a restart, duplicating the QUEUE_UPDATED it was folded into.
@@ -831,38 +831,36 @@ const recordRoll = Instr.spanOp(
 	async (ctx: C.ManagedServer & C.Db & CS.AbortSignal, newLayerId: L.LayerId, time: number) => {
 		ctx.layerQueue.deferredServerSyncs = []
 		try {
-			const { match, resyncHead } = await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-				const nextLqItem = LayerQueue.getSavedQueue(ctx)[0]
+			// The match and the queue shift each commit on their own: the shift dispatches an op, which awaits rcon. The
+			// mutexes above keep every other writer of either out until both are done.
+			const nextLqItem = LayerQueue.getSavedQueue(ctx)[0]
 
-				// A vote was running, so it picked this layer and the queue did not: SLM stood down when the vote
-				// started and never set the head as next. Attributing the match to the head would also consume it
-				// for a layer it had no part in choosing.
-				const pickedByIngameVote = ctx.layerQueue.ingameVote$.getValue() !== null
+			// A vote was running, so it picked this layer and the queue did not: SLM stood down when the vote
+			// started and never set the head as next. Attributing the match to the head would also consume it
+			// for a layer it had no part in choosing.
+			const pickedByIngameVote = ctx.layerQueue.ingameVote$.getValue() !== null
 
-				let currentMatchLqItem: LL.Item | undefined
-				if (!pickedByIngameVote && nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
-					currentMatchLqItem = nextLqItem
-				}
-				// the new match must be recorded before the queue shift: emptying the queue triggers generation,
-				// whose do-not-repeat lookback must see the layer that just started playing
-				const { match } = await MatchHistory.addNewCurrentMatch(
-					ctx,
-					MH.getNewMatchHistoryEntry({
-						layerId: newLayerId,
-						serverId: ctx.serverId,
-						startTime: new Date(time),
-						lqItem: currentMatchLqItem,
-						source: pickedByIngameVote ? { type: 'ingame-vote' } : undefined,
-					}),
-				)
-				if (currentMatchLqItem) {
-					await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
-				}
-				LayerQueue.schedulePostRollTasks(ctx, match.layerId)
-				return { match, resyncHead: !currentMatchLqItem && !pickedByIngameVote }
-			})
-			// after the transaction, not inside it: emptying the queue defers generation to the transaction's
-			// unlockTasks, which runTransaction awaits before resolving. Read any earlier and the queue is still empty.
+			let currentMatchLqItem: LL.Item | undefined
+			if (!pickedByIngameVote && nextLqItem && L.areLayersCompatible(nextLqItem.layerId, newLayerId)) {
+				currentMatchLqItem = nextLqItem
+			}
+			// the new match must be recorded before the queue shift: emptying the queue triggers generation,
+			// whose do-not-repeat lookback must see the layer that just started playing
+			const { match } = await MatchHistory.addNewCurrentMatch(
+				ctx,
+				MH.getNewMatchHistoryEntry({
+					layerId: newLayerId,
+					serverId: ctx.serverId,
+					startTime: new Date(time),
+					lqItem: currentMatchLqItem,
+					source: pickedByIngameVote ? { type: 'ingame-vote' } : undefined,
+				}),
+			)
+			if (currentMatchLqItem) {
+				await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
+			}
+			LayerQueue.schedulePostRollTasks(ctx, match.layerId)
+			const resyncHead = !currentMatchLqItem && !pickedByIngameVote
 			const queue = LayerQueue.getSavedQueue(ctx)
 			const nextLayerId = LL.getNextLayerId(queue)
 			const serverSyncs = ctx.layerQueue.deferredServerSyncs
@@ -870,10 +868,9 @@ const recordRoll = Instr.spanOp(
 			// server. The roll replaced the server's next layer with one from its own rotation, so write the head back.
 			const headItemId = queue[0]?.itemId
 			if (resyncHead && nextLayerId && headItemId) {
-				const deferredCtx = { ...ctx, tx: undefined }
 				serverSyncs.push(async () => {
-					const serverState = await SquadServer.getServerState(deferredCtx)
-					await LayerQueue.syncNextLayerToServer(deferredCtx, serverState.settings, nextLayerId, headItemId)
+					const serverState = SquadServer.getServerState(ctx)
+					await LayerQueue.syncNextLayerToServer(ctx, serverState.settings, nextLayerId, headItemId)
 				})
 			}
 			return { match, nextLayerId, serverSyncs }

@@ -12,9 +12,7 @@ import * as PendingEvents from '@/models/pending-events.models'
 import type * as SE from '@/models/server-events.models'
 import type * as SQS from '@/models/squad-server.models'
 import type * as C from '@/server/context.ts'
-import * as DB from '@/server/db'
 import * as EventWrites from '@/systems/server-event-writes.server'
-import * as SquadServer from '@/systems/squad-server.server'
 
 const meter = Otel.metrics.getMeter('squad-server')
 
@@ -35,7 +33,7 @@ export async function withdrawAttribution(ctx: SQS.Ctx & CS.AbortSignal, itemId:
 }
 
 // Runs the steps, then one processing pass over the pending-events state, all under one hold of processEventsMtx.
-// The events the pass produces are persisted as they are produced and published on event$ once their batch commits.
+// The events the pass produces are persisted as they are produced and published on event$ in batches.
 export async function collectEvents(ctx: SQS.Ctx & CS.AbortSignal, ...steps: (() => void)[]) {
 	using _lock = await Prom.acquireInBlock(ctx.server.processEventsMtx, { signal: ctx.signal })
 	const ingest = ingestByServer.get(ctx.server)!
@@ -47,27 +45,23 @@ export async function collectEvents(ctx: SQS.Ctx & CS.AbortSignal, ...steps: (()
 	}
 }
 
-// The events of one collectEvents call share a write batch, so a burst costs one COMMIT rather than one per event.
-// An event reaches event$ only once its batch has committed, so no listener sees a write that could still be lost.
+// Each event commits as it is written. Events reach event$ in batches, in the order they were written.
 export type EventIngest = {
 	serverId: string
 	event$: SQS.Ctx.Payload['event$']
 	db: C.Db & CS.Log
-	writes: DB.WriteBatch | null
 	unpublished: SE.Event[]
 }
 
 export const ingestByServer = new WeakMap<SQS.Ctx.Payload, EventIngest>()
 
-// bounds how long a batch holds the process-wide transaction lock, and how long ingest runs without yielding
+// bounds how long ingest runs without yielding
 const MAX_UNPUBLISHED_EVENTS = 50
 
 export const LOG_EVENTS_PER_SLICE = 50
 
 export async function ingestEvent(ingest: EventIngest, newEvent: SE.NewEvent): Promise<SE.Event> {
-	ingest.writes ??= await DB.openWriteBatch()
-	const writes = ingest.writes
-	const event = writes.write(() => EventWrites.insertEvent(ingest.db, ingest.serverId, newEvent))
+	const event = EventWrites.insertEvent(ingest.db, ingest.serverId, newEvent)
 	ingest.unpublished.push(event)
 	if (ingest.unpublished.length >= MAX_UNPUBLISHED_EVENTS) {
 		publishIngested(ingest)
@@ -78,17 +72,9 @@ export async function ingestEvent(ingest: EventIngest, newEvent: SE.NewEvent): P
 }
 
 function publishIngested(ingest: EventIngest) {
-	const writes = ingest.writes
 	const events = ingest.unpublished
-	if (!writes) return
-	ingest.writes = null
+	if (events.length === 0) return
 	ingest.unpublished = []
-	try {
-		writes.commit()
-	} catch (err) {
-		SquadServer.log.error(err, 'failed to commit %d server events, so they are not published', events.length)
-		return
-	}
 	for (const event of events) {
 		// the single funnel for every server event, whatever produced it
 		serverEventCounter.add(1, {
@@ -99,7 +85,7 @@ function publishIngested(ingest: EventIngest) {
 	}
 }
 
-// a hook that reaches rcon or opens a transaction of its own cannot run while a batch holds the transaction lock
+// publishes the events written so far before the hook runs, so its listeners see them first
 export function publishingFirst<Args extends unknown[], R>(ingest: EventIngest, hook: (...args: Args) => Promise<R>) {
 	return (...args: Args) => {
 		publishIngested(ingest)

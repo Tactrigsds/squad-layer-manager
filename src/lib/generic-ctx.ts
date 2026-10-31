@@ -72,8 +72,8 @@ export function storeLinkToActiveSpan<T extends Ctx>(ctx: T, type: SpanLink.Sour
 // A bucket of background promises a callee schedules for an ancestor to await (via awaitDeferred) before
 // it finishes. This keeps best-effort side work (e.g. sending an admin warn) inside the ancestor's
 // lifetime and signal, instead of leaking it as a fire-and-forget `void` promise that could reject
-// unobserved and crash the process. The array is shared by reference through ctx spreads, mirroring the
-// mutable releaseTasks/unlockTasks buckets on the server ctx.
+// unobserved and crash the process. The array is shared by reference through ctx spreads, as the mutexes'
+// releaseTasks bucket is.
 export type Deferred = Ctx & {
 	deferred: Promise<unknown>[]
 }

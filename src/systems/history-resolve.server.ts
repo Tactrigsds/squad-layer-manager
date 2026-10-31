@@ -7,6 +7,9 @@ import * as L from '@/models/layer.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
+import * as DB from '@/server/db'
+import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as HistoryQuery from '@/systems/history-query.shared'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueriesShared from '@/systems/layer-queries.shared'
@@ -16,13 +19,18 @@ import * as Rbac from '@/systems/rbac.server'
 // from rbac; match-layer nodes need the layer engine's wasm artifact, so they are evaluated here and
 // rewritten into match-id sets before the tree is shipped to the engine, which may be running in a worker
 
+const module = initModule('history-resolve')
+const SQL = Sql.forModule(module)
+
 const MAX_LAYER_MATCHES = 100_000
 
+const allServerIds = SQL.def('allServerIds', SQL.params({}), SQL.select({ id: Schema.servers.id }).from(Schema.servers), {
+	scans: ['servers'],
+})
+
 export async function visibleServerIds(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal): Promise<string[]> {
-	const [servers, canAccess] = await Promise.all([
-		ctx.db().select({ id: Schema.servers.id }).from(Schema.servers),
-		Rbac.getUserAccessCheck(ctx),
-	])
+	const servers = DB.all(ctx, allServerIds({}))
+	const canAccess = await Rbac.getUserAccessCheck(ctx)
 	return servers.flatMap(({ id }) => (canAccess(RBAC.Req.viewServer(id)) ? [id] : []))
 }
 
@@ -64,12 +72,11 @@ export async function rewriteLayerNodes(ctx: C.Db & CS.AbortSignal, root: HQ.Nod
 
 		// the filter is evaluated against the layers actually played, not against the layer universe: the
 		// played set is bounded by the match count, while the universe is combinatorial
-		const played = (
-			await ctx
-				.db()
-				.selectDistinct({ text: Schema.matchHistory.layerId })
+		const played = DB.all(
+			ctx,
+			SQL.selectDistinct({ text: Schema.matchHistory.layerId })
 				.from(Schema.matchHistory)
-				.where(E.and(E.isNotNull(Schema.matchHistory.layerMap), scope))
+				.where(E.and(E.isNotNull(Schema.matchHistory.layerMap), scope)),
 		).map(({ text }) => ({ text, id: L.readStoredLayerId(text) }))
 		const pool = await LayerQueriesShared.getLayersOutOfPool({
 			ctx: lqCtx,
@@ -86,12 +93,13 @@ export async function rewriteLayerNodes(ctx: C.Db & CS.AbortSignal, root: HQ.Nod
 		const inPool = played.filter((p) => !outOfPool.has(p.id)).map((p) => p.text)
 		if (inPool.length === 0) return { code: 'ok', node: { type: 'match-ids', neg: node.neg, matchIds: [] } }
 
-		const matches = await ctx
-			.db()
-			.select({ id: Schema.matchHistory.id })
-			.from(Schema.matchHistory)
-			.where(E.and(E.inArray(Schema.matchHistory.layerId, inPool), scope))
-			.limit(MAX_LAYER_MATCHES + 1)
+		const matches = DB.all(
+			ctx,
+			SQL.select({ id: Schema.matchHistory.id })
+				.from(Schema.matchHistory)
+				.where(E.and(E.inArray(Schema.matchHistory.layerId, inPool), scope))
+				.limit(MAX_LAYER_MATCHES + 1),
+		)
 		if (matches.length > MAX_LAYER_MATCHES) return { code: 'err:too-broad', message: 'a layer filter matched too many matches' }
 		return { code: 'ok', node: { type: 'match-ids', neg: node.neg, matchIds: matches.map((m) => m.id) } }
 	}
@@ -101,12 +109,13 @@ export async function rewriteLayerNodes(ctx: C.Db & CS.AbortSignal, root: HQ.Nod
 
 	let unrecognisedLayerMatches = 0
 	if (sawLayerNode) {
-		const [{ count } = { count: 0 }] = await ctx
-			.db()
-			.select({ count: E.count() })
-			.from(Schema.matchHistory)
-			.where(E.and(E.isNull(Schema.matchHistory.layerMap), scope))
-		unrecognisedLayerMatches = count
+		unrecognisedLayerMatches =
+			DB.get(
+				ctx,
+				SQL.select({ count: E.count() })
+					.from(Schema.matchHistory)
+					.where(E.and(E.isNull(Schema.matchHistory.layerMap), scope)),
+			)?.count ?? 0
 	}
 	return { code: 'ok', node: res.node, unrecognisedLayerMatches }
 }

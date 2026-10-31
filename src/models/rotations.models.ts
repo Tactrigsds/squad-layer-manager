@@ -228,7 +228,7 @@ export function sortValue(summary: Summary, sort: IndexSort): number | string {
 	}
 }
 
-// a row as unsuperjsonify hands it back
+// a row as the table reads it
 export function fromRow(row: SchemaModels.Rotation): Rotation {
 	return RotationSchema.parse({
 		...row,
@@ -244,7 +244,7 @@ export function ownerFromColumns(row: Pick<SchemaModels.Rotation, 'ownerUserId' 
 	return F.SYSTEM_OWNER
 }
 
-// a row for superjsonify, which encodes the json columns
+// a row to write; the table encodes its json columns
 export function toRow({ owner, createdAt, updatedAt, items, ...rest }: Rotation): SchemaModels.NewRotation {
 	return {
 		...rest,

@@ -15,6 +15,7 @@ import * as DB from '@/server/db.ts'
 import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as Users from '@/systems/users.server'
@@ -25,11 +26,71 @@ export const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 7
 export const SESSION_REFRESH_WITHIN = SESSION_MAX_AGE - 1000 * 60 * 60 * 24
 
 const module = initModule('sessions')
+const SQL = Sql.forModule(module)
 let log!: CS.Logger
 
 const buildEnv = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.httpServer })
 
 let ENV!: ReturnType<typeof buildEnv>
+
+const nowP = SQL.params({ now: Schema.sessions.expiresAt })
+const validSessions = SQL.def(
+	'validSessions',
+	nowP,
+	SQL.select({ session: Schema.sessions, user: Users.userColumns })
+		.from(Schema.sessions)
+		.where(E.gt(Schema.sessions.expiresAt, nowP.now))
+		.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
+		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId)),
+)
+const deleteExpiredSessions = SQL.def(
+	'deleteExpiredSessions',
+	nowP,
+	SQL.delete(Schema.sessions).where(E.lt(Schema.sessions.expiresAt, nowP.now)),
+)
+const sessionIdP = SQL.params({ id: Schema.sessions.id })
+const sessionWithUser = SQL.def(
+	'sessionWithUser',
+	sessionIdP,
+	SQL.select({ session: Schema.sessions, user: Users.userColumns })
+		.from(Schema.sessions)
+		.where(E.eq(Schema.sessions.id, sessionIdP.id))
+		.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
+		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId)),
+)
+const deleteSession = SQL.def('deleteSession', sessionIdP, SQL.delete(Schema.sessions).where(E.eq(Schema.sessions.id, sessionIdP.id)))
+const extendP = SQL.params({ id: Schema.sessions.id, expiresAt: Schema.sessions.expiresAt })
+const extendSession = SQL.def(
+	'extendSession',
+	extendP,
+	SQL.update(Schema.sessions).set({ expiresAt: extendP.expiresAt }).where(E.eq(Schema.sessions.id, extendP.id)),
+)
+const sessionP = SQL.params({ id: Schema.sessions.id, userId: Schema.sessions.userId, expiresAt: Schema.sessions.expiresAt })
+const insertSession = SQL.def('insertSession', sessionP, SQL.insert(Schema.sessions).values(sessionP))
+const userIdP = SQL.params({ discordId: Schema.users.discordId })
+const ensureUser = SQL.def('ensureUser', userIdP, SQL.insert(Schema.users).values(userIdP).onConflictDoNothing())
+const usernameP = SQL.params({ username: Schema.discordAccounts.username })
+const userByUsername = SQL.def(
+	'userByUsername',
+	usernameP,
+	SQL.select(Users.userColumns)
+		.from(Schema.users)
+		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+		.where(E.eq(Schema.discordAccounts.username, usernameP.username)),
+	// only the development and test login bypass looks a user up by name
+	{ scans: ['discordAccounts'] },
+)
+const lowerNameP = SQL.params({ name: SQL.value<string>() })
+const accountsByLowerName = SQL.def(
+	'accountsByLowerName',
+	lowerNameP,
+	SQL.select({ discordId: Schema.discordAccounts.discordId, username: Schema.discordAccounts.username })
+		.from(Schema.discordAccounts)
+		.where(E.eq(E.sql`lower(${Schema.discordAccounts.username})`, lowerNameP.name))
+		.orderBy(Schema.discordAccounts.discordId),
+	// only the no-auth login looks an account up by name
+	{ scans: ['discordAccounts'] },
+)
 
 // In-memory cache for sessions
 type CachedSession = {
@@ -42,17 +103,9 @@ type CachedSession = {
 const sessionCache = new Map<string, CachedSession>()
 
 // Load all valid sessions into cache on startup
-async function loadValidSessionsIntoCache(ctx: C.Db) {
+function loadValidSessionsIntoCache(ctx: C.Db) {
 	log.info('Loading valid sessions into cache...')
-	const currentTime = new Date()
-
-	const sessions = await ctx
-		.db({ redactParams: true })
-		.select({ session: Schema.sessions, user: Users.userColumns })
-		.from(Schema.sessions)
-		.where(E.gt(Schema.sessions.expiresAt, currentTime))
-		.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+	const sessions = DB.all(ctx, validSessions({ now: new Date() }))
 
 	let validCount = 0
 	for (const row of sessions) {
@@ -68,39 +121,22 @@ async function loadValidSessionsIntoCache(ctx: C.Db) {
 	log.info(`Loaded ${validCount} valid sessions into cache`)
 }
 
-async function updateSessionInCacheAndDb(ctx: C.Db, sessionId: string, updates: Partial<Pick<CachedSession, 'expiresAt'>>) {
-	await ctx.db({ redactParams: true }).update(Schema.sessions).set(updates).where(E.eq(Schema.sessions.id, sessionId))
-
-	const cached = sessionCache.get(sessionId)
-	if (cached) {
-		Object.assign(cached, updates)
-	}
-}
-
-async function removeSessionFromCacheAndDb(ctx: C.Db, sessionId: string) {
-	await ctx.db().delete(Schema.sessions).where(E.eq(Schema.sessions.id, sessionId))
-
-	sessionCache.delete(sessionId)
-}
-
-async function addSessionToCacheAndDb(ctx: C.Db, session: CachedSession) {
-	await ctx.db().insert(Schema.sessions).values({
-		id: session.id,
-		userId: session.userId,
-		expiresAt: session.expiresAt,
+function extendSessionInCacheAndDb(ctx: C.Db, sessionId: string, expiresAt: Date) {
+	DB.run(ctx, extendSession({ id: sessionId, expiresAt }))
+	DB.afterCommit(ctx, () => {
+		const cached = sessionCache.get(sessionId)
+		if (cached) cached.expiresAt = expiresAt
 	})
-
-	sessionCache.set(session.id, session)
 }
 
-async function createSessionTx(ctx: C.Db & C.Tx, session: CachedSession) {
-	await ctx.db().insert(Schema.sessions).values({
-		id: session.id,
-		userId: session.userId,
-		expiresAt: session.expiresAt,
-	})
+function removeSessionFromCacheAndDb(ctx: C.Db, sessionId: string) {
+	DB.run(ctx, deleteSession({ id: sessionId }))
+	DB.afterCommit(ctx, () => sessionCache.delete(sessionId))
+}
 
-	sessionCache.set(session.id, session)
+function addSessionToCacheAndDb(ctx: C.Db, session: CachedSession) {
+	DB.run(ctx, insertSession({ id: session.id, userId: session.userId, expiresAt: session.expiresAt }))
+	DB.afterCommit(ctx, () => sessionCache.set(session.id, session))
 }
 
 export async function setup() {
@@ -108,8 +144,8 @@ export async function setup() {
 	ENV = buildEnv()
 
 	// --------  load valid sessions into cache  --------
-	const ctx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
-	await loadValidSessionsIntoCache(ctx)
+	const ctx = DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
+	loadValidSessionsIntoCache(ctx)
 
 	const sweepSub = Rx.merge(Rx.interval(SOCKET_SWEEP_INTERVAL), Rbac.invalidation$)
 		.pipe(Instr.durableSub('close-ended-sockets', { module, root: true, taskScheduling: 'exhaust' }, () => closeEndedSockets(ctx)))
@@ -123,18 +159,14 @@ export async function setup() {
 		} catch {
 			break
 		}
-		await module.tracer.startActiveSpan('sessions:cleanup', async (span) => {
+		module.tracer.startActiveSpan('sessions:cleanup', (span) => {
 			const currentTime = new Date()
-
-			await DB.runTransaction(ctx, async (ctx) => {
-				await ctx.db().delete(Schema.sessions).where(E.lt(Schema.sessions.expiresAt, currentTime))
-
-				for (const [sessionId, session] of sessionCache.entries()) {
-					if (currentTime > session.expiresAt) {
-						sessionCache.delete(sessionId)
-					}
+			DB.run(ctx, deleteExpiredSessions({ now: currentTime }))
+			for (const [sessionId, session] of sessionCache.entries()) {
+				if (currentTime > session.expiresAt) {
+					sessionCache.delete(sessionId)
 				}
-			})
+			}
 
 			span.setStatus({ code: Otel.SpanStatusCode.OK })
 			span.end()
@@ -177,19 +209,14 @@ export const validateAndUpdate = Instr.spanOp(
 				if (!query.login) return res
 				const username = query['login']
 				log.info('bypassing with username %s', username)
-				const [user] = await ctx
-					.db()
-					.select(Users.userColumns)
-					.from(Schema.users)
-					.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-					.where(E.eq(Schema.discordAccounts.username, username))
-				log.info('resolved user: %o', user)
+				const user = DB.get(ctx, userByUsername({ username }))
 				// falling through leaves the caller on the login portal, which is where an unknown name belongs:
 				// the portal creates the user, `?login=` only ever picks an existing one
 				if (!user) {
 					log.warn('no user named %s to bypass as', username)
 					return res
 				}
+				log.info('resolved user: %o', user)
 				const loginRes = await logInUser({ ...ctx, res: reply }, { username, id: user.discordId })
 
 				return { code: 'ok' as const, ...loginRes, user: await Users.buildUser(user) }
@@ -222,7 +249,7 @@ export const validateAndUpdate = Instr.spanOp(
 
 		const currentTime = new Date()
 		if (currentTime > cachedSession.expiresAt) {
-			await removeSessionFromCacheAndDb(ctx, sessionId)
+			removeSessionFromCacheAndDb(ctx, sessionId)
 			return await errorOrBypass({ code: 'unauthorized:expired' as const })
 		}
 
@@ -236,7 +263,7 @@ export const validateAndUpdate = Instr.spanOp(
 		const res = ctx.req.headers.upgrade === undefined ? ctx.res : undefined
 		if (res && expiresAt.getTime() - currentTime.getTime() < SESSION_REFRESH_WITHIN) {
 			expiresAt = new Date(currentTime.getTime() + SESSION_MAX_AGE)
-			await updateSessionInCacheAndDb(ctx, sessionId, { expiresAt })
+			extendSessionInCacheAndDb(ctx, sessionId, expiresAt)
 			setSessionCookie({ ...ctx, res }, token)
 		}
 
@@ -256,12 +283,7 @@ export function noAuthUserId(username: string): bigint {
 // second one beside it: a derived id never matches the real snowflake a seeded account has, and `?login=` looks
 // accounts up by name and cannot choose between two of them.
 export async function logInWithoutAuth(ctx: C.Db & C.FastifyRequest & C.FastifyReply, username: string) {
-	const existing = await ctx
-		.db()
-		.select({ discordId: Schema.discordAccounts.discordId, username: Schema.discordAccounts.username })
-		.from(Schema.discordAccounts)
-		.where(E.eq(E.sql`lower(${Schema.discordAccounts.username})`, username.toLowerCase()))
-		.orderBy(Schema.discordAccounts.discordId)
+	const existing = DB.all(ctx, accountsByLowerName({ name: username.toLowerCase() }))
 
 	if (existing.length > 1) {
 		log.warn('%d accounts are named %s; signing in as the first', existing.length, username)
@@ -286,34 +308,25 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	const sessionId = sessionIdOf(token)
 	const expiresAt = new Date(Date.now() + SESSION_MAX_AGE)
 
-	// resolved before the transaction: it fetches the discord member over the network, and the tx lock is global
+	// resolved before the transaction, which may not await: it fetches the discord member over the network
 	const builtUser = await Users.buildUser({
 		discordId: discordUser.id,
 		username: discordUser.username,
 		nickname: null,
 	})
 
-	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
+	DB.transaction(ctx, {}, (ctx) => {
 		// the account carries the username and must exist first: the user row references it
-		await Users.recordDiscordAccount(ctx, discordUser.id, discordUser.username)
-		const [user] = await ctx.db().select().from(Schema.users).where(E.eq(Schema.users.discordId, discordUser.id))
-		if (!user) {
-			await ctx.db().insert(Schema.users).values({ discordId: discordUser.id })
-		}
-		// Use the transaction-aware write-through cache for session creation
-		await createSessionTx(ctx, {
-			id: sessionId,
-			userId: discordUser.id,
-			expiresAt,
-			user: builtUser,
-		})
+		Users.recordDiscordAccount(ctx, discordUser.id, discordUser.username)
+		DB.run(ctx, ensureUser({ discordId: discordUser.id }))
+		addSessionToCacheAndDb(ctx, { id: sessionId, userId: discordUser.id, expiresAt, user: builtUser })
 	})
 	setSessionCookie(ctx, token)
 	return { sessionId, expiresAt, res: ctx.res }
 }
 
 export const logout = Instr.spanOp('logout', { module }, async (ctx: { sessionId: string } & C.FastifyReply & C.Db) => {
-	await removeSessionFromCacheAndDb(ctx, ctx.sessionId)
+	removeSessionFromCacheAndDb(ctx, ctx.sessionId)
 	await WsSessionSys.forceDisconnect({ authSessionId: ctx.sessionId })
 	Instr.setSpanStatus(Otel.SpanStatusCode.OK)
 	// not awaited: clearInvalidSession returns the FastifyReply (for chaining), and a reply is a thenable that only
@@ -348,35 +361,17 @@ export const getUser = Instr.spanOp(
 
 		// Fallback to database (cache miss - this shouldn't happen often)
 		log.warn({ sessionId: ctx.sessionId }, 'Session cache miss in getUser, falling back to database')
-		const q = ctx
-			.db({ redactParams: true })
-			.select({ user: Users.userColumns })
-			.from(Schema.sessions)
-			.where(E.eq(Schema.sessions.id, ctx.sessionId))
-			.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
-			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-
-		const [row] = await q
-
-		if (row?.user) {
-			const session = await ctx
-				.db({ redactParams: true })
-				.select()
-				.from(Schema.sessions)
-				.where(E.eq(Schema.sessions.id, ctx.sessionId))
-				.then((rows) => rows[0])
-
-			if (session) {
-				sessionCache.set(ctx.sessionId, {
-					id: session.id,
-					userId: session.userId,
-					expiresAt: session.expiresAt,
-					user: row.user,
-				})
-			}
+		const row = DB.get(ctx, sessionWithUser({ id: ctx.sessionId }))
+		if (row) {
+			sessionCache.set(ctx.sessionId, {
+				id: row.session.id,
+				userId: row.session.userId,
+				expiresAt: row.session.expiresAt,
+				user: row.user,
+			})
 		}
 
-		return row!.user!
+		return row!.user
 	},
 )
 
@@ -396,4 +391,4 @@ export function clearCache() {
 	sessionCache.clear()
 }
 
-export { addSessionToCacheAndDb as createSession, createSessionTx, sessionCache }
+export { addSessionToCacheAndDb as createSession, sessionCache }

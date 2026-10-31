@@ -31,7 +31,7 @@ import * as Users from '@/systems/users.server'
 // persists an SLM app (audit) event and streams it into this server's activity feed. Persist happens before
 // the push (and before any server event that links to it via appEventId is later saved), satisfying the FK.
 export async function emitAppEvent(ctx: SQS.Ctx & C.Db & CS.AbortSignal, appEvent: AppEvents.AppEvent) {
-	await AppEventsSys.persistAppEvent(ctx, appEvent)
+	AppEventsSys.persistAppEvent(ctx, appEvent)
 	ctx.server.emittedAppEvents.push(appEvent)
 	ctx.server.appEvent$.emit(appEvent)
 }

@@ -44,6 +44,7 @@ export type PluginRow = typeof Schema.plugins.$inferSelect
 export type NewPluginRow = typeof Schema.plugins.$inferInsert
 export type PlayerEventIndexEntry = typeof Schema.playerEventIndex.$inferSelect
 export type NewPlayerEventIndexEntry = typeof Schema.playerEventIndex.$inferInsert
+export type ServerEventIndexEntry = typeof Schema.serverEventIndex.$inferSelect
 export type NewServerEventIndexEntry = typeof Schema.serverEventIndex.$inferInsert
 export type DamageSource = typeof Schema.damageSources.$inferSelect
 export type NewDamageSource = typeof Schema.damageSources.$inferInsert

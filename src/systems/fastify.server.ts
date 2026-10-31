@@ -206,7 +206,7 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 			return reply.status(401).send('Failed to get user info from Discord')
 		}
 		// before the authorization check: a steam account on an admin list can be what authorizes the user
-		if (steamIds) await Users.syncDiscordConnectionLinks(getPatchedCtx(req), discordUser, steamIds)
+		if (steamIds) Users.syncDiscordConnectionLinks(getPatchedCtx(req), discordUser, steamIds)
 		const ctx = { ...getPatchedCtx(req), user: { discordId: discordUser.id } }
 		const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('site:authorized'))
 		if (denyRes) {
@@ -610,7 +610,7 @@ function monkeyPatchContextAndLogs(request: FastifyRequest) {
 	// aborts if the client disconnects prematurely (see the onRequestAbort hook) or the process shuts down
 	const abort = new AbortController()
 	const signal = Prom.anySignal(CleanupSys.shutdownSignal, abort.signal)!
-	const ctx: C.AttachedFastify = DB.addPooledDb({ ...CS.init(), route: route ?? undefined, signal })
+	const ctx: C.AttachedFastify = DB.withDb({ ...CS.init(), route: route ?? undefined, signal })
 	// @ts-expect-error monkey patching. we don't include the full request context to avoid circular references
 	request.ctx = ctx
 	// @ts-expect-error monkey patching

@@ -6,9 +6,9 @@ import * as Schema from '$root/drizzle/schema'
 import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as Arr from '@/lib/array-utils'
 import type * as Cleanup from '@/lib/cleanup'
-import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import { addReleaseTask } from '@/lib/nodejs-reentrant-mutexes'
+import * as Obj from '@/lib/object-utils'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import type { Parts } from '@/lib/types'
@@ -28,6 +28,7 @@ import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Sql from '@/server/sql'
 import * as AdminList from '@/systems/adminlist.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
 import * as MatchPopulation from '@/systems/match-population.server'
@@ -40,6 +41,119 @@ import * as Users from '@/systems/users.server'
 const module = initModule('match-history')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
+const SQL = Sql.forModule(module)
+
+const recentMatchesP = SQL.params({
+	startAtOrdinal: Schema.matchHistory.ordinal,
+	serverId: Schema.matchHistory.serverId,
+	limit: SQL.count(),
+})
+const recentMatchesWithUsers = SQL.def(
+	'recentMatchesWithUsers',
+	recentMatchesP,
+	(() => {
+		const recent = SQL.select()
+			.from(Schema.matchHistory)
+			.where(
+				E.and(
+					E.gte(Schema.matchHistory.ordinal, recentMatchesP.startAtOrdinal),
+					E.eq(Schema.matchHistory.serverId, recentMatchesP.serverId),
+				),
+			)
+			.orderBy(E.desc(Schema.matchHistory.ordinal))
+			.limit(recentMatchesP.limit)
+			.as('recent_matches')
+		return SQL.select()
+			.from(recent)
+			.leftJoin(Schema.users, E.eq(recent.setByUserId, Schema.users.discordId))
+			.leftJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
+	})(),
+	{ scans: ['recent_matches'] },
+)
+
+const serverIdP = SQL.params({ serverId: Schema.matchHistory.serverId })
+const latestMatch = SQL.def(
+	'latestMatch',
+	serverIdP,
+	SQL.select()
+		.from(Schema.matchHistory)
+		.where(E.eq(Schema.matchHistory.serverId, serverIdP.serverId))
+		.orderBy(E.desc(Schema.matchHistory.ordinal))
+		.limit(1),
+)
+
+const matchByOrdinalP = SQL.params({ serverId: Schema.matchHistory.serverId, ordinal: Schema.matchHistory.ordinal })
+const matchByOrdinal = SQL.def(
+	'matchByOrdinal',
+	matchByOrdinalP,
+	SQL.select()
+		.from(Schema.matchHistory)
+		.where(
+			E.and(E.eq(Schema.matchHistory.serverId, matchByOrdinalP.serverId), E.eq(Schema.matchHistory.ordinal, matchByOrdinalP.ordinal)),
+		),
+)
+
+const matchColumns = Obj.omit(E.getTableColumns(Schema.matchHistory), ['id'])
+const insertMatchP = SQL.params(matchColumns)
+const insertMatch = SQL.def('insertMatch', insertMatchP, SQL.insert(Schema.matchHistory).values(insertMatchP))
+
+// every column the entry leaves out is null, as an insert that omits it would store
+function matchRow(entry: Omit<SchemaModels.NewMatchHistory, 'id'>): Sql.ValuesOf<typeof insertMatchP> {
+	const row: Record<string, unknown> = {}
+	for (const key of Object.keys(matchColumns)) row[key] = entry[key as keyof typeof entry] ?? null
+	row.createdAt ??= new Date()
+	return row as Sql.ValuesOf<typeof insertMatchP>
+}
+
+const finalizeMatchP = SQL.params({
+	id: Schema.matchHistory.id,
+	endTime: Schema.matchHistory.endTime,
+	outcome: Schema.matchHistory.outcome,
+	team1Tickets: Schema.matchHistory.team1Tickets,
+	team2Tickets: Schema.matchHistory.team2Tickets,
+})
+const finalizeMatch = SQL.def(
+	'finalizeMatch',
+	finalizeMatchP,
+	(withTickets: boolean) =>
+		SQL.update(Schema.matchHistory)
+			.set({
+				endTime: finalizeMatchP.endTime,
+				outcome: finalizeMatchP.outcome,
+				...(withTickets ? { team1Tickets: finalizeMatchP.team1Tickets, team2Tickets: finalizeMatchP.team2Tickets } : {}),
+			})
+			.where(E.eq(Schema.matchHistory.id, finalizeMatchP.id)),
+	{ domains: [[true, false]] },
+)
+
+// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a connection: the
+// player is present (backfilled from the teams poll) even if we never saw their join log.
+const lastConnectionEventP = SQL.params({ playerId: Schema.playerEventIndex.playerId, serverId: Schema.playerEventIndex.serverId })
+const lastConnectionEvent = SQL.def(
+	'lastConnectionEvent',
+	lastConnectionEventP,
+	SQL.select({ type: Schema.playerEventIndex.type, time: Schema.playerEventIndex.time })
+		.from(Schema.playerEventIndex)
+		.where(
+			E.and(
+				E.eq(Schema.playerEventIndex.playerId, lastConnectionEventP.playerId),
+				E.eq(Schema.playerEventIndex.serverId, lastConnectionEventP.serverId),
+				E.sql`${Schema.playerEventIndex.type} in (${SQL.lit('PLAYER_CONNECTED')}, ${SQL.lit('PLAYER_RECONCILED')}, ${SQL.lit('PLAYER_DISCONNECTED')})`,
+			),
+		)
+		.orderBy(E.desc(Schema.playerEventIndex.time))
+		.limit(1),
+)
+
+const steamIdOfP = SQL.params({ eosId: Schema.players.eosId })
+const steamIdOf = SQL.def(
+	'steamIdOf',
+	steamIdOfP,
+	SQL.select({ steamId: Schema.players.steamId }).from(Schema.players).where(E.eq(Schema.players.eosId, steamIdOfP.eosId)),
+)
+
+const squadByIdP = SQL.params({ id: Schema.squads.id })
+const squadById = SQL.def('squadById', squadByIdP, SQL.select().from(Schema.squads).where(E.eq(Schema.squads.id, squadByIdP.id)))
 
 export function setup() {
 	log = module.getLogger()
@@ -82,60 +196,37 @@ export function getPublicMatchHistoryState(ctx: MH.Ctx): MH.PublicMatchHistorySt
 	}
 }
 
-export const loadState = Instr.spanOp(
-	'loadState',
-	{ module },
-	async (ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal, opts?: { startAtOrdinal?: number }) => {
-		const state = ctx.matchHistory
-		const startAtOrdinal = opts?.startAtOrdinal ?? 0
-		const recentMatchesCte = ctx
-			.db()
-			.$with('recent_matches')
-			.as(
-				ctx
-					.db()
-					.select()
-					.from(Schema.matchHistory)
-					.where(E.and(E.gte(Schema.matchHistory.ordinal, startAtOrdinal), E.eq(Schema.matchHistory.serverId, ctx.serverId)))
-					.orderBy(E.desc(Schema.matchHistory.ordinal))
-					.limit(MH.MAX_RECENT_MATCHES),
-			)
+// The window's state changes once the read commits, so a rolled-back write never shows in it.
+export const loadState = Instr.spanOpSync('loadState', { module }, (ctx: C.Db & MH.Ctx, opts?: { startAtOrdinal?: number }) => {
+	const startAtOrdinal = opts?.startAtOrdinal ?? 0
+	const rows = DB.all(ctx, recentMatchesWithUsers({ startAtOrdinal, serverId: ctx.serverId, limit: MH.MAX_RECENT_MATCHES }))
+	log.info('found %d match history rows', rows.length)
 
-		const rows = await ctx
-			.db()
-			.with(recentMatchesCte)
-			.select()
-			.from(recentMatchesCte)
-			.leftJoin(Schema.users, E.eq(recentMatchesCte.setByUserId, Schema.users.discordId))
-			.leftJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
-
-		log.info('found %d match history rows', rows.length)
-
-		rows.reverse()
-		const currentMatchId = rows[rows.length - 1]?.recent_matches.id
-		state.recentMatches = state.recentMatches
-			.filter((match) => match.ordinal < startAtOrdinal)
-			.map((m) => ({
-				...m,
-				isCurrentMatch: m.historyEntryId === currentMatchId,
-			}))
-		const userRows = new Map<bigint, Users.DbUser>()
-		for (const row of rows) {
-			const isCurrentMatch = row.recent_matches.id === currentMatchId!
-			const details = MH.matchHistoryEntryToMatchDetails(unsuperjsonify(Schema.matchHistory, row.recent_matches), isCurrentMatch)
-			state.recentMatches.push(details)
-
-			if (row.users && row.discordAccounts) {
-				userRows.set(row.users.discordId, { ...row.users, username: row.discordAccounts.username })
-			}
+	rows.reverse()
+	const currentMatchId = rows[rows.length - 1]?.recent_matches.id
+	const userRows = new Map<bigint, Users.DbUser>()
+	const loaded: MH.MatchDetails[] = []
+	for (const row of rows) {
+		loaded.push(MH.matchHistoryEntryToMatchDetails(row.recent_matches, row.recent_matches.id === currentMatchId))
+		if (row.users && row.discordAccounts) {
+			userRows.set(row.users.discordId, { ...row.users, username: row.discordAccounts.username })
 		}
+	}
 
-		// buildUsers reaches the Discord REST API, so enriching here would hold the transaction lock across a network
-		// round trip. recentMatches reference users by setByUserId and parts.users is display-only, so it fills in after
-		// commit. loadState's own release scope runs before a caller's COMMIT, so inside a transaction it goes on
-		// unlockTasks, unawaited because runTransaction awaits those while the caller still holds matchHistory.mtx.
+	DB.afterCommit(ctx, () => {
+		const state = ctx.matchHistory
+		let recentMatches = state.recentMatches
+			.filter((match) => match.ordinal < startAtOrdinal)
+			.map((m) => ({ ...m, isCurrentMatch: m.historyEntryId === currentMatchId }))
+		recentMatches.push(...loaded)
+		if (recentMatches.length > MH.MAX_RECENT_MATCHES) recentMatches = recentMatches.slice(recentMatches.length - MH.MAX_RECENT_MATCHES)
+		state.recentMatches = recentMatches
+
+		// buildUsers reaches the Discord REST API, so it runs once matchHistory.mtx is released rather than while a
+		// caller holds it. recentMatches reference users by setByUserId and parts.users is display-only, so it fills
+		// in late. Release tasks run unawaited, so this one catches its own errors.
 		if (userRows.size > 0) {
-			const enrichUsers = async () => {
+			addReleaseTask(async () => {
 				try {
 					const users = await Users.buildUsers([...userRows.values()])
 					for (const user of users) Arr.upsertOn(state.parts.users, user, 'discordId')
@@ -143,16 +234,10 @@ export const loadState = Instr.spanOp(
 				} catch (err) {
 					log.error(err, 'enriching match history users failed')
 				}
-			}
-			if (ctx.tx) ctx.tx.unlockTasks.push(() => void enrichUsers())
-			else addReleaseTask(enrichUsers)
+			})
 		}
-
-		if (state.recentMatches.length > MH.MAX_RECENT_MATCHES) {
-			state.recentMatches = state.recentMatches.slice(state.recentMatches.length - MH.MAX_RECENT_MATCHES, state.recentMatches.length)
-		}
-	},
-)
+	})
+})
 
 // Fills the cache with the newest finished matches. Only at boot: a roll would otherwise re-read the whole of the
 // match that just ended under its transaction, for a reader who may never open it, and getMatchEvents fills the
@@ -178,7 +263,7 @@ export const initState = Instr.spanOp(
 	'initState',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx] },
 	async (ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal) => {
-		await loadState(ctx)
+		loadState(ctx)
 		addReleaseTask(ctx.matchHistory.dispatchUpdate)
 		addReleaseTask(() =>
 			primeEventsCache(ctx).catch((err) => {
@@ -256,22 +341,11 @@ export const getMatchById = Instr.spanOp(
 	},
 )
 
-const loadCurrentMatch = Instr.spanOp(
-	'loadCurrentMatch',
-	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
-	async (ctx: C.Db & MH.Ctx & CS.AbortSignal, _opts?: { forUpdate?: boolean }) => {
-		const query = ctx
-			.db()
-			.select()
-			.from(Schema.matchHistory)
-			.where(E.eq(Schema.matchHistory.serverId, ctx.serverId))
-			.orderBy(E.desc(Schema.matchHistory.ordinal))
-			.limit(1)
-		const [match] = await query
-		if (!match) return null
-		return MH.matchHistoryEntryToMatchDetails(match, true)
-	},
-)
+function readCurrentMatch(ctx: C.Db & MH.Ctx) {
+	const match = DB.get(ctx, latestMatch({ serverId: ctx.serverId }))
+	if (!match) return null
+	return MH.matchHistoryEntryToMatchDetails(match, true)
+}
 
 export const matchHistoryRouter = {
 	watchMatchHistoryState: orpcBase
@@ -311,11 +385,7 @@ export const matchHistoryRouter = {
 
 		let match = ctx.matchHistory.recentMatches.find((m) => ctx.serverId === m.serverId && m.ordinal === ordinal)
 		if (!match) {
-			const [matchRaw] = await ctx
-				.db()
-				.select()
-				.from(Schema.matchHistory)
-				.where(E.and(E.eq(Schema.matchHistory.serverId, ctx.serverId), E.eq(Schema.matchHistory.ordinal, ordinal)))
+			const matchRaw = DB.get(ctx, matchByOrdinal({ serverId: ctx.serverId, ordinal }))
 			if (!matchRaw) throw new Error(`Match with ordinal ${ordinal} not found`)
 			match = MH.matchHistoryEntryToMatchDetails(matchRaw, false)
 		}
@@ -324,7 +394,7 @@ export const matchHistoryRouter = {
 		// suppression patterns, the same folding, the same revival of events whose players are gone. Wire-encoded
 		// because enrichment embeds a player object per event, which is most of what a busy match costs to send.
 		const enriched = await MatchEventsCache.getEnrichedEventsForMatches(ctx, Settings.GLOBAL_SETTINGS.chat, match.historyEntryId)
-		const events = await MatchEventsCache.reviveNoops(ctx, enriched, { keepSuppressed: false })
+		const events = MatchEventsCache.reviveNoops(ctx, enriched, { keepSuppressed: false })
 
 		return { events: CHAT.Wire.encode(events) }
 	}),
@@ -342,42 +412,24 @@ export const matchHistoryRouter = {
 			const ctx = ctxRes.ctx
 			const playerId = input.playerId
 
-			// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a
-			// connection: the player is present (backfilled from the teams poll) even if we never saw their join log.
-			// Issued alongside the other two reads rather than before them: none of the three needs another's answer.
-			const [connectionRows, playerRows, adminLists, usernames] = await Promise.all([
-				ctx
-					.db()
-					.select({ type: Schema.playerEventIndex.type, time: Schema.playerEventIndex.time })
-					.from(Schema.playerEventIndex)
-					.where(
-						E.and(
-							E.eq(Schema.playerEventIndex.playerId, playerId),
-							E.eq(Schema.playerEventIndex.serverId, input.serverId),
-							E.inArray(Schema.playerEventIndex.type, ['PLAYER_CONNECTED', 'PLAYER_RECONCILED', 'PLAYER_DISCONNECTED']),
-						),
-					)
-					.orderBy(E.desc(Schema.playerEventIndex.time))
-					.limit(1),
-				// an admin list can key a player by either id, so their steam id is worth the lookup even though the
-				// window asks by eos
-				ctx.db().select({ steamId: Schema.players.steamId }).from(Schema.players).where(E.eq(Schema.players.eosId, playerId)),
-				AdminList.getListsForServerId(ctx, input.serverId),
-				PlayerUsernames.getPeriods(ctx, playerId),
-			])
+			const lastConnection = DB.get(ctx, lastConnectionEvent({ playerId, serverId: input.serverId }))
+			// an admin list can key a player by either id, so their steam id is worth the lookup even though the
+			// window asks by eos
+			const player = DB.get(ctx, steamIdOf({ eosId: playerId }))
+			const usernames = PlayerUsernames.getPeriods(ctx, playerId)
+			const adminLists = await AdminList.getListsForServerId(ctx, input.serverId)
 
-			const ids: SM.PlayerIds.IdQuery<'eos'> = { eos: playerId, steam: playerRows[0]?.steamId?.toString() }
+			const ids: SM.PlayerIds.IdQuery<'eos'> = { eos: playerId, steam: player?.steamId?.toString() }
 			const standing = AdminList.playerStanding(adminLists, ids)
 			// Only meaningful against a server: which groups mark an admin is a property of the lists that server
 			// recognises, so the frameless window has no answer and shows no badge.
 			const isAdmin = SM.AdminList.isAdminInAny(adminLists, ids as SM.PlayerIds.IdQuery<'steam'>)
 
-			const lastConnectionEvent = connectionRows[0]
 			const connectionStatus: { status: 'online'; connectedSince: number } | { status: 'offline'; lastSeen: number | null } =
-				lastConnectionEvent?.type === 'PLAYER_CONNECTED' || lastConnectionEvent?.type === 'PLAYER_RECONCILED'
-					? { status: 'online', connectedSince: lastConnectionEvent.time.getTime() }
-					: lastConnectionEvent?.type === 'PLAYER_DISCONNECTED'
-						? { status: 'offline', lastSeen: lastConnectionEvent.time.getTime() }
+				lastConnection?.type === 'PLAYER_CONNECTED' || lastConnection?.type === 'PLAYER_RECONCILED'
+					? { status: 'online', connectedSince: lastConnection.time.getTime() }
+					: lastConnection?.type === 'PLAYER_DISCONNECTED'
+						? { status: 'offline', lastSeen: lastConnection.time.getTime() }
 						: { status: 'offline', lastSeen: null }
 
 			return { connectionStatus, isAdmin, adminGroups: standing.groups, adminListUrls: standing.listUrls, usernames }
@@ -409,7 +461,7 @@ export const matchHistoryRouter = {
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 
-			const [squadRow] = await ctx.db().select().from(Schema.squads).where(E.eq(Schema.squads.id, input.uniqueSquadId))
+			const squadRow = DB.get(ctx, squadById({ id: input.uniqueSquadId }))
 			if (!squadRow) throw new Error(`Squad ${input.uniqueSquadId} not found`)
 			if (squadRow.matchId === null) return { squad: squadRow, events: [] }
 
@@ -429,29 +481,24 @@ export const addNewCurrentMatch = Instr.spanOp(
 	'addNewCurrentMatch',
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => [ctx.matchHistory.mtx] },
 	async (ctx: C.Db & MH.Ctx & MEC.Ctx & SQS.Ctx & CS.AbortSignal, entry: Omit<SchemaModels.NewMatchHistory, 'ordinal' | 'serverId'>) => {
-		await DB.runTransaction(ctx, async (ctx) => {
-			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
+		DB.transaction(ctx, {}, (ctx) => {
+			const currentMatch = readCurrentMatch(ctx)
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			await ctx
-				.db()
-				.insert(Schema.matchHistory)
-				.values(
-					superjsonify(Schema.matchHistory, {
-						...entry,
-						...MH.layerParts(L.readStoredLayerId(entry.layerId)),
-						ordinal,
-						serverId: ctx.serverId,
-					}),
-				)
+			DB.run(
+				ctx,
+				insertMatch(matchRow({ ...entry, ...MH.layerParts(L.readStoredLayerId(entry.layerId)), ordinal, serverId: ctx.serverId })),
+			)
 
 			// events are persisted as they're emitted, so the in-memory caches are just dropped; they only ever
 			// hold the current match
-			ctx.server.emittedEvents = []
-			ctx.server.emittedAppEvents = []
+			DB.afterCommit(ctx, () => {
+				ctx.server.emittedEvents = []
+				ctx.server.emittedAppEvents = []
+			})
 
-			await loadState(ctx, { startAtOrdinal: ordinal })
-			addReleaseTask(ctx.matchHistory.dispatchUpdate)
+			loadState(ctx, { startAtOrdinal: ordinal })
 		})
+		addReleaseTask(ctx.matchHistory.dispatchUpdate)
 
 		return { code: 'ok' as const, match: await requireCurrentMatch(ctx) }
 	},
@@ -468,27 +515,26 @@ export const finalizeCurrentMatch = Instr.spanOp(
 		}),
 	},
 	async (ctx: C.Db & MH.Ctx & MEC.Ctx & CS.AbortSignal, outcome: MH.MatchOutcome, time: Date) => {
-		const res = await DB.runTransaction(ctx, async (ctx) => {
-			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
+		const res = DB.transaction(ctx, {}, (ctx) => {
+			const currentMatch = readCurrentMatch(ctx)
 			if (!currentMatch) return { code: 'err:no-match-found' as const, message: 'No match found' }
 			if (currentMatch.status !== 'in-progress') {
 				log.warn('unable to update current history entry: not in-progress')
 				return { code: 'err:match-not-in-progress' as const, message: 'Match not in progress' }
 			}
 
-			const update = {
-				endTime: time,
-				outcome: outcome.type === 'unknown' ? null : outcome.type,
-				team1Tickets: outcome.type === 'team1' || outcome.type === 'team2' ? outcome.team1Tickets : undefined,
-				team2Tickets: outcome.type === 'team1' || outcome.type === 'team2' ? outcome.team2Tickets : undefined,
-			}
-
-			await ctx
-				.db()
-				.update(Schema.matchHistory)
-				.set(superjsonify(Schema.matchHistory, update))
-				.where(E.eq(Schema.matchHistory.id, currentMatch.historyEntryId))
-			await loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
+			const withTickets = outcome.type === 'team1' || outcome.type === 'team2'
+			DB.run(
+				ctx,
+				finalizeMatch(withTickets)({
+					id: currentMatch.historyEntryId,
+					endTime: time,
+					outcome: outcome.type === 'unknown' ? null : outcome.type,
+					team1Tickets: withTickets ? outcome.team1Tickets : undefined,
+					team2Tickets: withTickets ? outcome.team2Tickets : undefined,
+				}),
+			)
+			loadState(ctx, { startAtOrdinal: currentMatch.ordinal })
 
 			return { code: 'ok' as const, matchId: currentMatch.historyEntryId }
 		})
@@ -508,8 +554,8 @@ export const syncWithCurrentLayer = Instr.spanOp(
 	{ module, levels: { event: 'info' }, mutexes: (ctx) => ctx.matchHistory.mtx },
 	async (ctx: C.Db & MH.Ctx & MEC.Ctx & SQS.Ctx & CS.AbortSignal, _currentLayerOnServer: L.UnvalidatedLayer | L.LayerId) => {
 		const currentLayerOnServer = L.toLayer(_currentLayerOnServer)
-		return await DB.runTransaction(ctx, async (ctx) => {
-			const currentMatch = await loadCurrentMatch(ctx, { forUpdate: true })
+		const { pushedNewMatch } = DB.transaction(ctx, {}, (ctx) => {
+			const currentMatch = readCurrentMatch(ctx)
 			if (currentMatch && L.areLayersCompatible(currentMatch.layerId, currentLayerOnServer)) {
 				log.info(
 					'Current layer %s, is compatible with previously recorded layer %s (%s)',
@@ -517,36 +563,28 @@ export const syncWithCurrentLayer = Instr.spanOp(
 					currentMatch.layerId,
 					currentMatch.historyEntryId,
 				)
-				await loadState(ctx)
-				addReleaseTask(ctx.matchHistory.dispatchUpdate)
-				return { pushedNewMatch: false, currentMatch }
-			} else {
-				log.info(
-					'Current layer %s, is not compatible with previously recorded layer %s (%s)',
-					currentLayerOnServer.id,
-					currentMatch?.layerId,
-					currentMatch?.historyEntryId ?? 'unknown',
-				)
+				loadState(ctx)
+				return { code: 'ok' as const, pushedNewMatch: false }
 			}
+			log.info(
+				'Current layer %s, is not compatible with previously recorded layer %s (%s)',
+				currentLayerOnServer.id,
+				currentMatch?.layerId,
+				currentMatch?.historyEntryId ?? 'unknown',
+			)
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
-			await ctx
-				.db()
-				.insert(Schema.matchHistory)
-				.values(
-					superjsonify(Schema.matchHistory, {
-						serverId: ctx.serverId,
-						layerId: L.toLayerText(currentLayerOnServer.id),
-						ordinal,
-						setByType: 'unknown',
-					}),
-				)
-			await loadState(ctx)
-			addReleaseTask(ctx.matchHistory.dispatchUpdate)
-			{
-				const currentMatch = await requireCurrentMatch(ctx)
-				log.info('loaded new current match %s, %d', currentMatch.layerId, currentMatch.historyEntryId)
-				return { pushedNewMatch: true, currentMatch }
-			}
+			DB.run(
+				ctx,
+				insertMatch(
+					matchRow({ serverId: ctx.serverId, layerId: L.toLayerText(currentLayerOnServer.id), ordinal, setByType: 'unknown' }),
+				),
+			)
+			loadState(ctx)
+			return { code: 'ok' as const, pushedNewMatch: true }
 		})
+		addReleaseTask(ctx.matchHistory.dispatchUpdate)
+		const currentMatch = await requireCurrentMatch(ctx)
+		if (pushedNewMatch) log.info('loaded new current match %s, %d', currentMatch.layerId, currentMatch.historyEntryId)
+		return { pushedNewMatch, currentMatch }
 	},
 )

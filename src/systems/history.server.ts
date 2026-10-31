@@ -23,9 +23,11 @@ import * as MH from '@/models/match-history.models'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context'
+import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Sql from '@/server/sql'
 import * as AdminList from '@/systems/adminlist.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as HistoryQuery from '@/systems/history-query.shared'
@@ -44,6 +46,7 @@ import * as Settings from '@/systems/settings.server'
 const module = initModule('history')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
+const SQL = Sql.forModule(module)
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db })
 let ENV!: ReturnType<typeof envBuilder>
@@ -185,6 +188,123 @@ export const DEFAULT_RENDER: RenderOpts = RenderSchema.parse({})
 // a name picker only has to show enough to pick from; a needle matching thousands is a needle to keep typing
 const PLAYER_SEARCH_LIMIT = 25
 
+const userIdsP = SQL.params({ ids: SQL.list(Schema.users.discordId) })
+const userNamesByIds = SQL.def(
+	'userNamesByIds',
+	userIdsP,
+	SQL.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
+		.from(Schema.users)
+		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+		.where(SQL.inJson(Schema.users.discordId, userIdsP.ids)),
+)
+
+const steamIdsP = SQL.params({ ids: SQL.list(Schema.players.steamId) })
+const playerNamesBySteamIds = SQL.def(
+	'playerNamesBySteamIds',
+	steamIdsP,
+	SQL.select({ steamId: Schema.players.steamId, username: Schema.players.username })
+		.from(Schema.players)
+		.where(SQL.inJson(Schema.players.steamId, steamIdsP.ids)),
+)
+
+const playerP = SQL.params({ eosId: Schema.players.eosId })
+const playerById = SQL.def(
+	'playerById',
+	playerP,
+	SQL.select({ username: Schema.players.username, steamId: Schema.players.steamId })
+		.from(Schema.players)
+		.where(E.eq(Schema.players.eosId, playerP.eosId)),
+)
+
+const eosIdsP = SQL.params({ ids: SQL.list(Schema.players.eosId) })
+const playerSearchResults = SQL.def(
+	'playerSearchResults',
+	eosIdsP,
+	SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username })
+		.from(Schema.players)
+		.where(SQL.inJson(Schema.players.eosId, eosIdsP.ids))
+		.limit(PLAYER_SEARCH_LIMIT),
+)
+
+const allUserNames = SQL.def(
+	'allUserNames',
+	SQL.params({}),
+	SQL.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
+		.from(Schema.users)
+		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId)),
+	{ scans: ['users', 'discordAccounts'] },
+)
+
+const playerLabelsP = SQL.params({ steamIds: SQL.list(Schema.players.steamId), hexIds: SQL.list(Schema.players.eosId) })
+const playersByIdRefs = SQL.def(
+	'playersByIdRefs',
+	playerLabelsP,
+	SQL.select({
+		eosId: Schema.players.eosId,
+		steamId: Schema.players.steamId,
+		epicId: Schema.players.epicId,
+		username: Schema.players.username,
+	})
+		.from(Schema.players)
+		.where(
+			E.or(
+				SQL.inJson(Schema.players.steamId, playerLabelsP.steamIds),
+				SQL.inJson(Schema.players.eosId, playerLabelsP.hexIds),
+				SQL.inJson(Schema.players.epicId, playerLabelsP.hexIds),
+			),
+		),
+)
+
+const ownerP = SQL.params({ ownerId: Schema.savedQueries.ownerId })
+const savedQueriesVisibleTo = SQL.def(
+	'savedQueriesVisibleTo',
+	ownerP,
+	SQL.select({ row: Schema.savedQueries, ownerName: Schema.discordAccounts.username })
+		.from(Schema.savedQueries)
+		.leftJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.savedQueries.ownerId))
+		.where(E.or(E.eq(Schema.savedQueries.ownerId, ownerP.ownerId), E.eq(Schema.savedQueries.visibility, SQL.lit('shared'))))
+		.orderBy(E.desc(Schema.savedQueries.updatedAt)),
+	{ scans: ['savedQueries'] },
+)
+
+const savedIdP = SQL.params({ id: Schema.savedQueries.id })
+const savedQueryById = SQL.def(
+	'savedQueryById',
+	savedIdP,
+	SQL.select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, savedIdP.id)),
+)
+const deleteSavedQuery = SQL.def(
+	'deleteSavedQuery',
+	savedIdP,
+	SQL.delete(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, savedIdP.id)),
+)
+
+const updateSavedP = SQL.params({
+	id: Schema.savedQueries.id,
+	name: Schema.savedQueries.name,
+	visibility: Schema.savedQueries.visibility,
+	query: Schema.savedQueries.query,
+	updatedAt: Schema.savedQueries.updatedAt,
+})
+const updateSavedQuery = SQL.def(
+	'updateSavedQuery',
+	updateSavedP,
+	SQL.update(Schema.savedQueries)
+		.set({ name: updateSavedP.name, visibility: updateSavedP.visibility, query: updateSavedP.query, updatedAt: updateSavedP.updatedAt })
+		.where(E.eq(Schema.savedQueries.id, updateSavedP.id)),
+)
+
+const insertSavedP = SQL.params({
+	id: Schema.savedQueries.id,
+	name: Schema.savedQueries.name,
+	ownerId: Schema.savedQueries.ownerId,
+	visibility: Schema.savedQueries.visibility,
+	query: Schema.savedQueries.query,
+	createdAt: Schema.savedQueries.createdAt,
+	updatedAt: Schema.savedQueries.updatedAt,
+})
+const insertSavedQuery = SQL.def('insertSavedQuery', insertSavedP, SQL.insert(Schema.savedQueries).values(insertSavedP))
+
 // what running a query needs: the db, and the user whose server visibility bounds it
 type QueryCtx = C.Db & USR.Ctx.Id & CS.AbortSignal
 
@@ -227,7 +347,7 @@ async function matchesPage(ctx: QueryCtx, resolved: Resolved, query: HQ.Query, p
 	return {
 		code: 'ok' as const,
 		matches,
-		setByNames: await setByNames(ctx, matches),
+		setByNames: setByNames(ctx, matches),
 		// keyed by match id, since a row toMatchDetails drops has no details to hang a count on
 		eventCounts: res.events,
 		total: res.total,
@@ -244,7 +364,7 @@ function matchRows(res: Extract<Awaited<ReturnType<typeof matchesPage>>, { code:
 }
 
 // The names behind each match's layer source, for its "set by" cell. One query per kind of id over the whole page.
-async function setByNames(ctx: C.Db, matches: MH.MatchDetails[]): Promise<MatchSummary.SetByNames> {
+function setByNames(ctx: C.Db, matches: MH.MatchDetails[]): MatchSummary.SetByNames {
 	const userIds = new Set<bigint>()
 	const steamIds = new Set<bigint>()
 	const pluginIds = new Set<string>()
@@ -258,23 +378,8 @@ async function setByNames(ctx: C.Db, matches: MH.MatchDetails[]): Promise<MatchS
 			}
 		}
 	}
-	const [users, players] = await Promise.all([
-		userIds.size > 0
-			? ctx
-					.db()
-					.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
-					.from(Schema.users)
-					.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-					.where(E.inArray(Schema.users.discordId, [...userIds]))
-			: [],
-		steamIds.size > 0
-			? ctx
-					.db()
-					.select({ steamId: Schema.players.steamId, username: Schema.players.username })
-					.from(Schema.players)
-					.where(E.inArray(Schema.players.steamId, [...steamIds]))
-			: [],
-	])
+	const users = userIds.size > 0 ? DB.all(ctx, userNamesByIds({ ids: [...userIds] })) : []
+	const players = steamIds.size > 0 ? DB.all(ctx, playerNamesBySteamIds({ ids: [...steamIds] })) : []
 	const pluginNames = new Map(PluginsSys.listRuntimeInfo().map((p) => [p.id, p.name]))
 	return {
 		users: Object.fromEntries(users.map((u) => [u.discordId.toString(), u.nickname || u.username])),
@@ -338,7 +443,7 @@ export const router = {
 					})
 					if (res.code !== 'ok') return res
 					if (res.kind !== 'events') throw new Error('engine returned a mismatched response kind')
-					const page = await assembleEventPage(ctx, input.query, res, input.render, input.format)
+					const page = assembleEventPage(ctx, input.query, res, input.render, input.format)
 					return {
 						code: 'ok' as const,
 						type: 'events' as const,
@@ -400,16 +505,10 @@ export const router = {
 	// the admin-list groups they hold are true of the person; whether those groups make them an admin is a property of
 	// the lists a *server* recognises, so there is deliberately no isAdmin here and the window shows no badge.
 	playerInfo: orpcBase.input(z.object({ playerId: z.string() })).handler(async ({ input, context: ctx }) => {
-		const [[row], adminLists, usernames] = await Promise.all([
-			ctx
-				.db()
-				.select({ username: Schema.players.username, steamId: Schema.players.steamId })
-				.from(Schema.players)
-				.where(E.eq(Schema.players.eosId, input.playerId)),
-			AdminList.getAllLists(ctx),
-			PlayerUsernames.getPeriods(ctx, input.playerId),
-		])
+		const row = DB.get(ctx, playerById({ eosId: input.playerId }))
 		if (!row) return { code: 'err:not-found' as const }
+		const usernames = PlayerUsernames.getPeriods(ctx, input.playerId)
+		const adminLists = await AdminList.getAllLists(ctx)
 		const ids: SM.PlayerIds.IdQuery<'eos'> = { eos: input.playerId, steam: row.steamId?.toString() }
 		const standing = AdminList.playerStanding(adminLists, ids)
 		return {
@@ -424,37 +523,28 @@ export const router = {
 
 	// what the player field's combo-box lists as you type: a pasted steam, eos or epic id finds its player, and
 	// anything else is a name substring, which the trigram index makes an index lookup (resolveNamedPlayerIds)
-	searchPlayers: orpcBase.input(z.object({ needle: z.string() })).handler(async ({ input, context: ctx }) => {
+	searchPlayers: orpcBase.input(z.object({ needle: z.string() })).handler(({ input, context: ctx }) => {
 		const needle = input.needle.trim()
 		const eosIds = HQ.isPlayerIdRef(needle)
-			? await HistoryQuery.resolvePlayerRefs(ctx, [needle])
-			: await HistoryQuery.resolveNamedPlayerIds(ctx, needle)
+			? HistoryQuery.resolvePlayerRefs(ctx, [needle])
+			: HistoryQuery.resolveNamedPlayerIds(ctx, needle)
 		if (eosIds.length === 0) return { code: 'ok' as const, players: [] }
-		const rows = await ctx
-			.db()
-			.select({ eosId: Schema.players.eosId, username: Schema.players.username })
-			.from(Schema.players)
-			.where(E.inArray(Schema.players.eosId, eosIds))
-			.limit(PLAYER_SEARCH_LIMIT)
+		const rows = DB.all(ctx, playerSearchResults({ ids: eosIds }))
 		return { code: 'ok' as const, players: rows }
 	}),
 
 	// Every SLM user, for the user field to search and to label its selection from. Listed rather than
 	// searched: an install has hundreds of users where it has hundreds of thousands of players, so the whole
 	// table is cheaper than a round trip per keystroke plus another to name what is already selected.
-	listUsers: orpcBase.handler(async ({ context: ctx }) => {
-		const rows = await ctx
-			.db()
-			.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
-			.from(Schema.users)
-			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+	listUsers: orpcBase.handler(({ context: ctx }) => {
+		const rows = DB.all(ctx, allUserNames({}))
 		return { code: 'ok' as const, users: rows.map((r) => ({ userId: r.discordId.toString(), name: r.nickname || r.username })) }
 	}),
 
 	// names for players already chosen, which the search-by-needle path cannot supply: a query arriving by
 	// url or as a saved row carries ids nobody typed a needle for. Each id-shaped ref comes back with the eos id it
 	// resolves to, since a ref may be a steam or epic id.
-	playerLabels: orpcBase.input(z.object({ playerIds: z.array(z.string()) })).handler(async ({ input, context: ctx }) => {
+	playerLabels: orpcBase.input(z.object({ playerIds: z.array(z.string()) })).handler(({ input, context: ctx }) => {
 		const steam64s: bigint[] = []
 		const hexIds: string[] = []
 		for (const ref of input.playerIds) {
@@ -462,19 +552,7 @@ export const router = {
 			else if (HQ.EOS_ID_RE.test(ref)) hexIds.push(ref.toLowerCase())
 		}
 		if (steam64s.length === 0 && hexIds.length === 0) return { code: 'ok' as const, players: [] }
-		const conds: E.SQL[] = []
-		if (steam64s.length > 0) conds.push(E.inArray(Schema.players.steamId, steam64s))
-		if (hexIds.length > 0) conds.push(E.inArray(Schema.players.eosId, hexIds), E.inArray(Schema.players.epicId, hexIds))
-		const rows = await ctx
-			.db()
-			.select({
-				eosId: Schema.players.eosId,
-				steamId: Schema.players.steamId,
-				epicId: Schema.players.epicId,
-				username: Schema.players.username,
-			})
-			.from(Schema.players)
-			.where(E.or(...conds))
+		const rows = DB.all(ctx, playersByIdRefs({ steamIds: steam64s, hexIds }))
 		const byRef = new Map<string, { eosId: string; username: string }>()
 		for (const r of rows) {
 			const player = { eosId: r.eosId, username: r.username }
@@ -492,14 +570,8 @@ export const router = {
 
 	// -------- saved queries --------
 
-	listSaved: orpcBase.handler(async ({ context: ctx }) => {
-		const rows = await ctx
-			.db()
-			.select({ row: Schema.savedQueries, ownerName: Schema.discordAccounts.username })
-			.from(Schema.savedQueries)
-			.leftJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.savedQueries.ownerId))
-			.where(E.or(E.eq(Schema.savedQueries.ownerId, ctx.user.discordId), E.eq(Schema.savedQueries.visibility, 'shared')))
-			.orderBy(E.desc(Schema.savedQueries.updatedAt))
+	listSaved: orpcBase.handler(({ context: ctx }) => {
+		const rows = DB.all(ctx, savedQueriesVisibleTo({ ownerId: ctx.user.discordId }))
 		const out: (HQ.SavedQuery & { ownerName: string | null })[] = []
 		for (const { row, ownerName } of rows) {
 			const query = HQ.QuerySchema.safeParse(row.query)
@@ -523,37 +595,48 @@ export const router = {
 	save: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ id: HQ.SAVED_QUERY_ID.optional() }).extend(HQ.SavedQueryUpdateSchema.shape))
-		.handler(async ({ input, context: ctx }) => {
+		.handler(({ input, context: ctx }) => {
 			if (input.id) {
-				const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
+				const existing = DB.get(ctx, savedQueryById({ id: input.id }))
 				if (!existing) return { code: 'err:not-found' as const }
 				if (existing.ownerId !== ctx.user.discordId) return { code: 'err:not-owner' as const }
-				await ctx
-					.db()
-					.update(Schema.savedQueries)
-					.set({ name: input.name, visibility: input.visibility, query: input.query, updatedAt: new Date() })
-					.where(E.eq(Schema.savedQueries.id, input.id))
+				DB.run(
+					ctx,
+					updateSavedQuery({
+						id: input.id,
+						name: input.name,
+						visibility: input.visibility,
+						query: input.query,
+						updatedAt: new Date(),
+					}),
+				)
 				return { code: 'ok' as const, id: input.id }
 			}
 			const id = createId(12)
-			await ctx.db().insert(Schema.savedQueries).values({
-				id,
-				name: input.name,
-				ownerId: ctx.user.discordId,
-				visibility: input.visibility,
-				query: input.query,
-			})
+			const now = new Date()
+			DB.run(
+				ctx,
+				insertSavedQuery({
+					id,
+					name: input.name,
+					ownerId: ctx.user.discordId,
+					visibility: input.visibility,
+					query: input.query,
+					createdAt: now,
+					updatedAt: now,
+				}),
+			)
 			return { code: 'ok' as const, id }
 		}),
 
 	deleteSaved: orpcBase
 		.meta({ type: 'mutation' })
 		.input(z.object({ id: HQ.SAVED_QUERY_ID }))
-		.handler(async ({ input, context: ctx }) => {
-			const [existing] = await ctx.db().select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
+		.handler(({ input, context: ctx }) => {
+			const existing = DB.get(ctx, savedQueryById({ id: input.id }))
 			if (!existing) return { code: 'err:not-found' as const }
 			if (existing.ownerId !== ctx.user.discordId) return { code: 'err:not-owner' as const }
-			await ctx.db().delete(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, input.id))
+			DB.run(ctx, deleteSavedQuery({ id: input.id }))
 			return { code: 'ok' as const }
 		}),
 }
@@ -571,18 +654,12 @@ function toMatchDetails(row: (typeof Schema.matchHistory)['$inferSelect']): MH.M
 // out as rendered html rather than event data: the same builders the live feed uses run here against a shadow
 // dom, the client inserts the strings and holds them behind content-visibility, and interactivity is all
 // attributes resolved against the client's scope (see feed/render-context.ts).
-async function assembleEventPage(
-	ctx: QueryCtx,
-	query: HQ.Query,
-	page: HistoryWorker.EventPage,
-	render: RenderOpts,
-	format: 'html' | 'wire',
-) {
+function assembleEventPage(ctx: QueryCtx, query: HQ.Query, page: HistoryWorker.EventPage, render: RenderOpts, format: 'html' | 'wire') {
 	const matches = page.matches.flatMap((row) => toMatchDetails(row) ?? [])
 	if (format === 'wire') return { rowsHtml: [] as string[], events: page.events, matches }
 	const events = page.events ? CHAT.Wire.decode(page.events) : []
 	const timeZone = resultZone(query, render, () => eventServerIds(events, matches))
-	const rows = renderEventRows(events, matches, render, await actorLabels(ctx, events), timeZone, HQ.focusItemId(query))
+	const rows = renderEventRows(events, matches, render, actorLabels(ctx, events), timeZone, HQ.focusItemId(query))
 	return { rowsHtml: rows, events: null, matches }
 }
 
@@ -615,7 +692,7 @@ function* eventServerIds(events: CHAT.EventEnriched[], matches: Iterable<MH.Matc
 
 // display names for the actors the page's app events name. Resolved here rather than by the rows, which are inert
 // templates: the same lookup the client does through its stores (see use-actor-labels.ts).
-async function actorLabels(ctx: C.Db, events: CHAT.EventEnriched[]) {
+function actorLabels(ctx: C.Db, events: CHAT.EventEnriched[]) {
 	const userIds = new Set<USR.UserId>()
 	for (const event of events) {
 		if (event.type !== 'APP_EVENT') continue
@@ -623,15 +700,7 @@ async function actorLabels(ctx: C.Db, events: CHAT.EventEnriched[]) {
 	}
 	// nickname over the discord username, and no discord fetch: a row is not worth a round trip per actor, and
 	// this is the fallback every lookup lands on anyway when discord is disabled (see selectBestDisplayName)
-	const users =
-		userIds.size > 0
-			? await ctx
-					.db()
-					.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
-					.from(Schema.users)
-					.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-					.where(E.inArray(Schema.users.discordId, [...userIds]))
-			: []
+	const users = userIds.size > 0 ? DB.all(ctx, userNamesByIds({ ids: [...userIds] })) : []
 	const names = new Map(users.map((u) => [u.discordId, u.nickname || u.username]))
 	const pluginNames = new Map(PluginsSys.listRuntimeInfo().map((p) => [p.id, p.name]))
 	return {
@@ -740,8 +809,8 @@ async function eventsPage(ctx: QueryCtx, resolved: Resolved, order: HistoryWorke
 	}
 }
 
-async function eventsAsText(ctx: QueryCtx, events: CHAT.EventEnriched[], matches: MH.MatchDetails[], render: RenderOpts, timeZone: string) {
-	const rctx = resultsRenderCtx(matches, render, await actorLabels(ctx, events))
+function eventsAsText(ctx: QueryCtx, events: CHAT.EventEnriched[], matches: MH.MatchDetails[], render: RenderOpts, timeZone: string) {
+	const rctx = resultsRenderCtx(matches, render, actorLabels(ctx, events))
 	return withResultsAmbient(render, timeZone, () => RowText.eventsText(rctx, events, { timeZone, withMatchIds: true }))
 }
 
@@ -775,7 +844,7 @@ export async function selectionText(ctx: QueryCtx, query: HQ.Query, selection: R
 				if (event.time > to) to = event.time
 			}
 			const timeZone = resultZone(query, render, () => eventServerIds(selected, matches.values()))
-			const text = await eventsAsText(ctx, selected, [...matches.values()], render, timeZone)
+			const text = eventsAsText(ctx, selected, [...matches.values()], render, timeZone)
 			return { code: 'ok' as const, text, count: selected.length, from, to, timeZone }
 		}
 		if (!res.nextCursor) break
@@ -808,7 +877,7 @@ export async function searchRaw(ctx: QueryCtx, search: HQ.Search, contentType: '
 			if (res.code !== 'ok') return res
 			const next: HQ.SearchExtras | undefined = res.nextCursor ? { cursor: res.nextCursor } : undefined
 			const timeZone = resultZone(query, render, () => eventServerIds(res.events, res.matches))
-			return { code: 'ok' as const, body: await eventsAsText(ctx, res.events, res.matches, render, timeZone), next }
+			return { code: 'ok' as const, body: eventsAsText(ctx, res.events, res.matches, render, timeZone), next }
 		}
 		case 'players': {
 			const res = await playersPage(ctx, resolved, query, page - 1)

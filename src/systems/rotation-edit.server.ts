@@ -88,7 +88,7 @@ function attach(session: Session) {
 }
 
 async function provision(ctx: C.Db, rotationId: ROT.RotationId): Promise<Session | null> {
-	const rotation = await Rotation.getRotation(ctx, rotationId)
+	const rotation = Rotation.getRotation(ctx, rotationId)
 	if (!rotation) return null
 	const payload: Payload = {
 		rotationId,
@@ -156,7 +156,7 @@ const dispatchOp = Instr.spanOp(
 		const rotationId = ctx.rotationEdit.rotationId
 		for (const se of applied.sideEffects) {
 			if (se.code === 'request-list-save') {
-				const res = await Rotation.updateRotation(ctx, rotationId, { items: se.list }, { type: 'slm-user', userId: ctx.user.discordId })
+				const res = Rotation.updateRotation(ctx, rotationId, { items: se.list }, { type: 'slm-user', userId: ctx.user.discordId })
 				applyAndBroadcast(ctx.rotationEdit, [{ op: 'save-completed', opId: SLL.createOpId() }])
 				if (res.code !== 'ok') {
 					log.error('rotation %s draft failed to save: %s', rotationId, res.code)
@@ -182,7 +182,7 @@ export async function updateOutsideDraft(
 ) {
 	const { items, ...meta } = patch
 	const session = items ? sessions.get(rotationId) : undefined
-	if (!items || !session) return await Rotation.updateRotation(ctx, rotationId, patch, actor)
+	if (!items || !session) return Rotation.updateRotation(ctx, rotationId, patch, actor)
 	const payload = session.payload
 	return await payload.dispatchMtx.runExclusive(async () => {
 		const state = payload.session.state
@@ -201,7 +201,7 @@ export async function updateOutsideDraft(
 		])
 		if (applied.rejected) return { code: 'err:rejected' as const, reason: (applied.error.data as SLL.Rejection).code }
 		const save = applied.sideEffects.find((se) => se.code === 'request-list-save')
-		const res = await Rotation.updateRotation(ctx, rotationId, save ? { ...meta, items: save.list } : meta, actor)
+		const res = Rotation.updateRotation(ctx, rotationId, save ? { ...meta, items: save.list } : meta, actor)
 		if (save) applyAndBroadcast(payload, [{ op: 'save-completed', opId: SLL.createOpId() }])
 		UserPresence.dispatchEndAllRotationEditing(rotationId)
 		return res

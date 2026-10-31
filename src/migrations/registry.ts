@@ -94,6 +94,7 @@ import * as m0139 from './0139_player_usernames'
 import * as m0140 from './0140_queue_updated_vote_layer_ids'
 import * as m0141 from './0141_death_damage_source'
 import * as m0142 from './0142_app_event_item_dimension'
+import * as m0143 from './0143_rbac_inference_indexes'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -175,4 +176,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0140_queue_updated_vote_layer_ids', up: m0140.up },
 	{ name: '0141_death_damage_source', up: m0141.up },
 	{ name: '0142_app_event_item_dimension', up: m0142.up },
+	{ name: '0143_rbac_inference_indexes', up: m0143.up },
 ]
