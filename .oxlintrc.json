@@ -93,6 +93,7 @@
 		"sql/no-async-statement": "error",
 		"sql/no-dropped-statement": "error",
 		"sql/no-module-builder": "error",
+		"sql/statements-in-q": "error",
 		"sql/one-for-module": "error",
 		"sql/no-reveal-in-statement": "error",
 		"sql/no-dynamic-raw": "error",
@@ -187,7 +188,8 @@
 				"sql/no-drizzle-instance": "off",
 				"sql/no-async-statement": "off",
 				"sql/no-dropped-statement": "off",
-				"sql/no-module-builder": "off"
+				"sql/no-module-builder": "off",
+				"sql/statements-in-q": "off"
 			}
 		},
 		{

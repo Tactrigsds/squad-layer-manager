@@ -181,7 +181,12 @@ export function rconTransportFor(serverId: string): RconTransport {
 
 const module = initModule('server-agent')
 const SQL = Sql.forModule(module)
-const serverIds = SQL.def('serverIds', SQL.params({}), SQL.select({ id: Schema.servers.id }).from(Schema.servers), { scans: ['servers'] })
+
+namespace Q {
+	export const serverIds = SQL.def('serverIds', SQL.params({}), SQL.select({ id: Schema.servers.id }).from(Schema.servers), {
+		scans: ['servers'],
+	})
+}
 
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
@@ -190,7 +195,7 @@ export async function setup() {
 	ENV = envBuilder()
 	const log = baseLogger
 	const dbCtx = DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
-	const ids = DB.all(dbCtx, serverIds({})).map((r) => r.id)
+	const ids = DB.all(dbCtx, Q.serverIds({})).map((r) => r.id)
 	const usingAgent: string[] = []
 	for (const id of ids) {
 		try {

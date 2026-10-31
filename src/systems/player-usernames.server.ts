@@ -10,17 +10,19 @@ import * as Sql from '@/server/sql'
 const module = initModule('player-usernames')
 const SQL = Sql.forModule(module)
 
-const periodsP = SQL.params({ playerId: Schema.playerUsernames.playerId })
-const usernamesOf = SQL.def(
-	'usernamesOf',
-	periodsP,
-	SQL.select({ username: Schema.playerUsernames.username, time: Schema.playerUsernames.time })
-		.from(Schema.playerUsernames)
-		.where(E.eq(Schema.playerUsernames.playerId, periodsP.playerId))
-		.orderBy(E.desc(Schema.playerUsernames.time))
-		.limit(PUN.MAX_PERIODS),
-)
+namespace Q {
+	const periodsP = SQL.params({ playerId: Schema.playerUsernames.playerId })
+	export const usernamesOf = SQL.def(
+		'usernamesOf',
+		periodsP,
+		SQL.select({ username: Schema.playerUsernames.username, time: Schema.playerUsernames.time })
+			.from(Schema.playerUsernames)
+			.where(E.eq(Schema.playerUsernames.playerId, periodsP.playerId))
+			.orderBy(E.desc(Schema.playerUsernames.time))
+			.limit(PUN.MAX_PERIODS),
+	)
+}
 
 export function getPeriods(ctx: C.Db, playerId: string): PUN.UsernamePeriod[] {
-	return PUN.toPeriods(DB.all(ctx, usernamesOf({ playerId })))
+	return PUN.toPeriods(DB.all(ctx, Q.usernamesOf({ playerId })))
 }

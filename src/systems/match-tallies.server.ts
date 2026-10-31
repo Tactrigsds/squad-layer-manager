@@ -13,7 +13,7 @@ import { initModule } from '@/server/logger'
 import * as Sql from '@/server/sql'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as MatchPopulation from '@/systems/match-population.server'
-import { anyPendingMatch } from '@/systems/match-tallies.shared'
+import * as MatchTalliesShared from '@/systems/match-tallies.shared'
 import type * as MatchTalliesWorker from '@/systems/match-tallies.worker'
 
 // The catch-up that gives every match a scoreline and population samples.
@@ -183,32 +183,34 @@ export async function runCatchUp(ctx: C.Db & MH.Ctx & CS.AbortSignal, opts: () =
 }
 
 function hasPendingMatches(ctx: C.Db & CS.ServerId): boolean {
-	return DB.get(ctx, anyPendingMatch({ serverId: ctx.serverId, skip: [...skipped] })) !== undefined
+	return DB.get(ctx, MatchTalliesShared.Q.anyPendingMatch({ serverId: ctx.serverId, skip: [...skipped] })) !== undefined
 }
 
-const combatStatsP = SQL.params({
-	id: Schema.matchHistory.id,
-	team1Kills: Schema.matchHistory.team1Kills,
-	team1Wounds: Schema.matchHistory.team1Wounds,
-	team1Deaths: Schema.matchHistory.team1Deaths,
-	team2Kills: Schema.matchHistory.team2Kills,
-	team2Wounds: Schema.matchHistory.team2Wounds,
-	team2Deaths: Schema.matchHistory.team2Deaths,
-})
-const setCombatStats = SQL.def(
-	'setCombatStats',
-	combatStatsP,
-	SQL.update(Schema.matchHistory)
-		.set({
-			team1Kills: combatStatsP.team1Kills,
-			team1Wounds: combatStatsP.team1Wounds,
-			team1Deaths: combatStatsP.team1Deaths,
-			team2Kills: combatStatsP.team2Kills,
-			team2Wounds: combatStatsP.team2Wounds,
-			team2Deaths: combatStatsP.team2Deaths,
-		})
-		.where(E.eq(Schema.matchHistory.id, combatStatsP.id)),
-)
+namespace Q {
+	const combatStatsP = SQL.params({
+		id: Schema.matchHistory.id,
+		team1Kills: Schema.matchHistory.team1Kills,
+		team1Wounds: Schema.matchHistory.team1Wounds,
+		team1Deaths: Schema.matchHistory.team1Deaths,
+		team2Kills: Schema.matchHistory.team2Kills,
+		team2Wounds: Schema.matchHistory.team2Wounds,
+		team2Deaths: Schema.matchHistory.team2Deaths,
+	})
+	export const setCombatStats = SQL.def(
+		'setCombatStats',
+		combatStatsP,
+		SQL.update(Schema.matchHistory)
+			.set({
+				team1Kills: combatStatsP.team1Kills,
+				team1Wounds: combatStatsP.team1Wounds,
+				team1Deaths: combatStatsP.team1Deaths,
+				team2Kills: combatStatsP.team2Kills,
+				team2Wounds: combatStatsP.team2Wounds,
+				team2Deaths: combatStatsP.team2Deaths,
+			})
+			.where(E.eq(Schema.matchHistory.id, combatStatsP.id)),
+	)
+}
 
 /**
  * A match's scoreline onto its row, and into the in-memory window if it is still in it.
@@ -217,7 +219,7 @@ const setCombatStats = SQL.def(
  * catch-up spends most of its life on matches too old for anything in memory to reference.
  */
 function storeCombatStats(ctx: C.Db & MH.Ctx, matchId: number, stats: MH.MatchCombatStats) {
-	DB.run(ctx, setCombatStats({ id: matchId, ...MH.combatStatsToColumns(stats) }))
+	DB.run(ctx, Q.setCombatStats({ id: matchId, ...MH.combatStatsToColumns(stats) }))
 	DB.afterCommit(ctx, () => {
 		const state = ctx.matchHistory
 		if (!state.recentMatches.some((match) => match.historyEntryId === matchId)) return

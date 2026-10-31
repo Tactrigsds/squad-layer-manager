@@ -128,88 +128,82 @@ export type ResolvedArtifacts = {
 // thousands of players, so a LIKE over both name columns is already an insignificant scan.
 const DISCORD_ID_RE = /^\d{17,20}$/
 
-const needleP = SQL.params({ needle: SQL.value<string>() })
-const usersNamed = SQL.def(
-	'usersNamed',
-	needleP,
-	SQL.select({ discordId: Schema.users.discordId })
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-		.where(
-			E.or(
-				sql`${Schema.users.nickname} LIKE ${needleP.needle} ESCAPE '\\'`,
-				sql`${Schema.discordAccounts.username} LIKE ${needleP.needle} ESCAPE '\\'`,
-			),
-		)
-		.limit(MAX_NAME_MATCHES),
-	{ scans: ['users', 'discordAccounts'] },
-)
+export namespace Q {
+	const needleP = SQL.params({ needle: SQL.value<string>() })
+	export const usersNamed = SQL.def(
+		'usersNamed',
+		needleP,
+		SQL.select({ discordId: Schema.users.discordId })
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+			.where(
+				E.or(
+					sql`${Schema.users.nickname} LIKE ${needleP.needle} ESCAPE '\\'`,
+					sql`${Schema.discordAccounts.username} LIKE ${needleP.needle} ESCAPE '\\'`,
+				),
+			)
+			.limit(MAX_NAME_MATCHES),
+		{ scans: ['users', 'discordAccounts'] },
+	)
+	const playerIdRefsP = SQL.params({ steamIds: SQL.list(Schema.players.steamId), epicIds: SQL.list(Schema.players.epicId) })
+	export const playersByIdRefs = SQL.def(
+		'playersByIdRefs',
+		playerIdRefsP,
+		SQL.select({ eosId: Schema.players.eosId })
+			.from(Schema.players)
+			.where(E.or(SQL.inJson(Schema.players.steamId, playerIdRefsP.steamIds), SQL.inJson(Schema.players.epicId, playerIdRefsP.epicIds))),
+	)
+	const phraseP = SQL.params({ phrase: SQL.value<string>() })
+	export const playersByNameTrigram = SQL.def(
+		'playersByNameTrigram',
+		phraseP,
+		SQL.selectDistinct({ eosId: us.eosId })
+			.from(us)
+			.where(sql`${us} MATCH ${phraseP.phrase}`)
+			.limit(MAX_NAME_MATCHES),
+	)
+	export const playersByNameScan = SQL.def(
+		'playersByNameScan',
+		needleP,
+		SQL.selectDistinct({ eosId: Schema.playerUsernames.playerId })
+			.from(Schema.playerUsernames)
+			.where(sql`${Schema.playerUsernames.username} LIKE ${needleP.needle} ESCAPE '\\'`)
+			.limit(MAX_NAME_MATCHES),
+		{ scans: ['playerUsernames'] },
+	)
+	const eosIdsP = SQL.params({ ids: SQL.list(Schema.players.eosId) })
+	export const steamIdsOfPlayers = SQL.def(
+		'steamIdsOfPlayers',
+		eosIdsP,
+		SQL.select({ steamId: Schema.players.steamId }).from(Schema.players).where(SQL.inJson(Schema.players.eosId, eosIdsP.ids)),
+	)
+	const namesP = SQL.params({ names: SQL.list(Schema.damageSources.name) })
+	export const damageSourcesNamed = SQL.def(
+		'damageSourcesNamed',
+		namesP,
+		SQL.select({ id: Schema.damageSources.id }).from(Schema.damageSources).where(SQL.inJson(Schema.damageSources.name, namesP.names)),
+	)
+	// -------- the engine's fixed-shape reads (history-query.worker.ts) --------
 
-const playerIdRefsP = SQL.params({ steamIds: SQL.list(Schema.players.steamId), epicIds: SQL.list(Schema.players.epicId) })
-const playersByIdRefs = SQL.def(
-	'playersByIdRefs',
-	playerIdRefsP,
-	SQL.select({ eosId: Schema.players.eosId })
-		.from(Schema.players)
-		.where(E.or(SQL.inJson(Schema.players.steamId, playerIdRefsP.steamIds), SQL.inJson(Schema.players.epicId, playerIdRefsP.epicIds))),
-)
-
-const phraseP = SQL.params({ phrase: SQL.value<string>() })
-const playersByNameTrigram = SQL.def(
-	'playersByNameTrigram',
-	phraseP,
-	SQL.selectDistinct({ eosId: us.eosId })
-		.from(us)
-		.where(sql`${us} MATCH ${phraseP.phrase}`)
-		.limit(MAX_NAME_MATCHES),
-)
-
-const playersByNameScan = SQL.def(
-	'playersByNameScan',
-	needleP,
-	SQL.selectDistinct({ eosId: Schema.playerUsernames.playerId })
-		.from(Schema.playerUsernames)
-		.where(sql`${Schema.playerUsernames.username} LIKE ${needleP.needle} ESCAPE '\\'`)
-		.limit(MAX_NAME_MATCHES),
-	{ scans: ['playerUsernames'] },
-)
-
-const eosIdsP = SQL.params({ ids: SQL.list(Schema.players.eosId) })
-const steamIdsOfPlayers = SQL.def(
-	'steamIdsOfPlayers',
-	eosIdsP,
-	SQL.select({ steamId: Schema.players.steamId }).from(Schema.players).where(SQL.inJson(Schema.players.eosId, eosIdsP.ids)),
-)
-
-const namesP = SQL.params({ names: SQL.list(Schema.damageSources.name) })
-const damageSourcesNamed = SQL.def(
-	'damageSourcesNamed',
-	namesP,
-	SQL.select({ id: Schema.damageSources.id }).from(Schema.damageSources).where(SQL.inJson(Schema.damageSources.name, namesP.names)),
-)
-
-// -------- the engine's fixed-shape reads (history-query.worker.ts) --------
-
-export const playerNamesByEosIds = SQL.def(
-	'playerNamesByEosIds',
-	eosIdsP,
-	SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
-		.from(Schema.players)
-		.where(SQL.inJson(Schema.players.eosId, eosIdsP.ids)),
-)
-
-const matchIdsP = SQL.params({ ids: SQL.list(mh.id) })
-export const matchesByIds = SQL.def('matchesByIds', matchIdsP, SQL.select().from(mh).where(SQL.inJson(mh.id, matchIdsP.ids)))
-
-const serverIdsP = SQL.params({ ids: SQL.list(mh.serverId) })
-export const newestOrdinalByServer = SQL.def(
-	'newestOrdinalByServer',
-	serverIdsP,
-	SQL.select({ serverId: mh.serverId, ordinal: sql<number>`max(${mh.ordinal})` })
-		.from(mh)
-		.where(SQL.inJson(mh.serverId, serverIdsP.ids))
-		.groupBy(mh.serverId),
-)
+	export const playerNamesByEosIds = SQL.def(
+		'playerNamesByEosIds',
+		eosIdsP,
+		SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
+			.from(Schema.players)
+			.where(SQL.inJson(Schema.players.eosId, eosIdsP.ids)),
+	)
+	const matchIdsP = SQL.params({ ids: SQL.list(mh.id) })
+	export const matchesByIds = SQL.def('matchesByIds', matchIdsP, SQL.select().from(mh).where(SQL.inJson(mh.id, matchIdsP.ids)))
+	const serverIdsP = SQL.params({ ids: SQL.list(mh.serverId) })
+	export const newestOrdinalByServer = SQL.def(
+		'newestOrdinalByServer',
+		serverIdsP,
+		SQL.select({ serverId: mh.serverId, ordinal: sql<number>`max(${mh.ordinal})` })
+			.from(mh)
+			.where(SQL.inJson(mh.serverId, serverIdsP.ids))
+			.groupBy(mh.serverId),
+	)
+}
 
 export function resolveUserRefs(ctx: C.Db, refs: string[]): string[] {
 	const userIds: string[] = []
@@ -225,7 +219,7 @@ export function resolveNamedUserIds(ctx: C.Db, name: string): string[] {
 	if (trimmed === '') return []
 	// the nickname is the display name when set, so it is searched alongside the discord username the account
 	// carries; either matching is a hit, since the searcher does not know which the user goes by here
-	const rows = DB.all(ctx, usersNamed({ needle: likeContains(trimmed) }))
+	const rows = DB.all(ctx, Q.usersNamed({ needle: likeContains(trimmed) }))
 	return rows.map((r) => r.discordId.toString())
 }
 
@@ -242,7 +236,7 @@ export function resolvePlayerRefs(ctx: C.Db, refs: string[]): string[] {
 	}
 	for (const id of hexIds) eosIds.add(id)
 	if (steam64s.length > 0 || hexIds.length > 0) {
-		for (const r of DB.all(ctx, playersByIdRefs({ steamIds: steam64s, epicIds: hexIds }))) eosIds.add(r.eosId)
+		for (const r of DB.all(ctx, Q.playersByIdRefs({ steamIds: steam64s, epicIds: hexIds }))) eosIds.add(r.eosId)
 	}
 	return [...eosIds]
 }
@@ -253,9 +247,9 @@ export function resolveNamedPlayerIds(ctx: C.Db, name: string): string[] {
 	// Matches previous names as well as current ones. The trigram index answers substring matches of three or
 	// more code points (see migration 0139); a shorter needle falls back to scanning every recorded name.
 	if (Str.codePointLength(trimmed) >= 3) {
-		return DB.all(ctx, playersByNameTrigram({ phrase: ftsPhrase(trimmed) })).map((r) => r.eosId)
+		return DB.all(ctx, Q.playersByNameTrigram({ phrase: ftsPhrase(trimmed) })).map((r) => r.eosId)
 	}
-	return DB.all(ctx, playersByNameScan({ needle: likeContains(trimmed) })).map((r) => r.eosId)
+	return DB.all(ctx, Q.playersByNameScan({ needle: likeContains(trimmed) })).map((r) => r.eosId)
 }
 
 // A steam64 ref is kept as-is, so a requester who never joined a server we record can still be found. Anything
@@ -269,7 +263,7 @@ function resolvePlayerSteamIds(ctx: C.Db, refs: string[]): string[] {
 	}
 	const eosIds = other.length > 0 ? resolvePlayerRefs(ctx, other) : []
 	if (eosIds.length > 0) {
-		for (const r of DB.all(ctx, steamIdsOfPlayers({ ids: eosIds }))) if (r.steamId !== null) steamIds.add(r.steamId.toString())
+		for (const r of DB.all(ctx, Q.steamIdsOfPlayers({ ids: eosIds }))) if (r.steamId !== null) steamIds.add(r.steamId.toString())
 	}
 	return [...steamIds]
 }
@@ -478,7 +472,7 @@ export function resolveArtifacts(
 				const classes = VEH.classesByVehicle(VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents))
 				names = names.flatMap((vehicle) => classes.get(vehicle) ?? [])
 			}
-			const rows = names.length > 0 ? DB.all(ctx, damageSourcesNamed({ names })) : []
+			const rows = names.length > 0 ? DB.all(ctx, Q.damageSourcesNamed({ names })) : []
 			artifacts.damageSourceIds.set(
 				node,
 				rows.map((r) => r.id),

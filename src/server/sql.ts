@@ -1,14 +1,14 @@
 /**
  * Statements as values. A statement is built without a connection, and runs only through an executor in db.ts
- * (`DB.all`, `DB.get`, `DB.run`), which takes the ctx that names the connection. See docs/developers/architecture.md,
- * "Statements".
+ * (`DB.all`, `DB.get`, `DB.run`), which takes the ctx that names the connection. See docs/developers/database.md.
  *
  * A file calls `forModule` once, with its own module, and builds its statements from what that returns:
  *
  * - `select`, `insert`, `update`, `delete`: drizzle's builders, bound to a session that refuses to run. A statement
  *   built per call renders and prepares on every call, through the connection's text cache.
  * - `def(name, params, stmt)`: a statement with a fixed shape, rendered and checked once at definition, and prepared
- *   once per connection. Calling it with its values gives what an executor runs.
+ *   once per connection. Calling it with its values gives what an executor runs. A module keeps its definitions and
+ *   their parameters in `namespace Q`.
  * - `params`, `value`, `column`, `secret`, `unlogged`, `list`, `count`, `lit`, `inJson`: the parameters and literals a definition
  *   binds.
  *

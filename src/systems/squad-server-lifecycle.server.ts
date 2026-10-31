@@ -64,39 +64,41 @@ const module = initModule('squad-server')
 // squad-server.server.ts defines its statements under the same module
 const SQL = Sql.forModule(module.child('lifecycle'))
 
-const usernamesNoTagP = SQL.params({ eosIds: SQL.list(Schema.players.eosId) })
-const usernamesNoTag = SQL.def(
-	'usernamesNoTag',
-	usernamesNoTagP,
-	SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username, usernameNoTag: Schema.players.usernameNoTag })
-		.from(Schema.players)
-		.where(E.and(SQL.inJson(Schema.players.eosId, usernamesNoTagP.eosIds), E.isNotNull(Schema.players.usernameNoTag))),
-)
-const serverIdP = SQL.params({ serverId: Schema.matchHistory.serverId })
-const lastMatchOf = SQL.def(
-	'lastMatchOf',
-	serverIdP,
-	SQL.select({ id: Schema.matchHistory.id })
-		.from(Schema.matchHistory)
-		.where(E.eq(Schema.matchHistory.serverId, serverIdP.serverId))
-		.orderBy(E.desc(Schema.matchHistory.ordinal))
-		.limit(1),
-)
-const eventsOfP = SQL.params({ matchId: Schema.serverEvents.matchId })
-const serverEventsOf = SQL.def(
-	'serverEventsOf',
-	eventsOfP,
-	SQL.select()
-		.from(Schema.serverEvents)
-		.where(E.eq(Schema.serverEvents.matchId, eventsOfP.matchId))
-		.orderBy(E.asc(Schema.serverEvents.id)),
-)
-const appEventsOfP = SQL.params({ matchId: Schema.appEvents.matchId })
-const appEventsOf = SQL.def(
-	'appEventsOf',
-	appEventsOfP,
-	SQL.select().from(Schema.appEvents).where(E.eq(Schema.appEvents.matchId, appEventsOfP.matchId)).orderBy(E.asc(Schema.appEvents.time)),
-)
+namespace Q {
+	const usernamesNoTagP = SQL.params({ eosIds: SQL.list(Schema.players.eosId) })
+	export const usernamesNoTag = SQL.def(
+		'usernamesNoTag',
+		usernamesNoTagP,
+		SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username, usernameNoTag: Schema.players.usernameNoTag })
+			.from(Schema.players)
+			.where(E.and(SQL.inJson(Schema.players.eosId, usernamesNoTagP.eosIds), E.isNotNull(Schema.players.usernameNoTag))),
+	)
+	const serverIdP = SQL.params({ serverId: Schema.matchHistory.serverId })
+	export const lastMatchOf = SQL.def(
+		'lastMatchOf',
+		serverIdP,
+		SQL.select({ id: Schema.matchHistory.id })
+			.from(Schema.matchHistory)
+			.where(E.eq(Schema.matchHistory.serverId, serverIdP.serverId))
+			.orderBy(E.desc(Schema.matchHistory.ordinal))
+			.limit(1),
+	)
+	const eventsOfP = SQL.params({ matchId: Schema.serverEvents.matchId })
+	export const serverEventsOf = SQL.def(
+		'serverEventsOf',
+		eventsOfP,
+		SQL.select()
+			.from(Schema.serverEvents)
+			.where(E.eq(Schema.serverEvents.matchId, eventsOfP.matchId))
+			.orderBy(E.asc(Schema.serverEvents.id)),
+	)
+	const appEventsOfP = SQL.params({ matchId: Schema.appEvents.matchId })
+	export const appEventsOf = SQL.def(
+		'appEventsOf',
+		appEventsOfP,
+		SQL.select().from(Schema.appEvents).where(E.eq(Schema.appEvents.matchId, appEventsOfP.matchId)).orderBy(E.asc(Schema.appEvents.time)),
+	)
+}
 
 const meter = Otel.metrics.getMeter('squad-server')
 
@@ -292,7 +294,7 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 			skipDestroyedOnTrainingLayers: () => serverSettings.settings.skipDestroyedOnTrainingLayers,
 			fetchUsernamesNoTag: async (players) => {
 				const ctx = SquadServer.resolveCtx(SquadServer.getBaseCtx(), serverId)
-				const rows = DB.all(ctx, usernamesNoTag({ eosIds: players.map((p) => p.eos) }))
+				const rows = DB.all(ctx, Q.usernamesNoTag({ eosIds: players.map((p) => p.eos) }))
 				const usernames = new Map(players.map((p) => [p.eos, p.username]))
 				const res = new Map<SM.PlayerId, string>()
 				for (const row of rows) {
@@ -738,11 +740,11 @@ export async function deleteServer(serverId: string) {
 
 const loadSavedEvents = Instr.spanOp('loadSavedEvents', { module }, async (ctx: SQS.Ctx & C.Db) => {
 	const server = ctx.server
-	const lastMatch = DB.get(ctx, lastMatchOf({ serverId: ctx.serverId }))
-	const rows = lastMatch ? DB.all(ctx, serverEventsOf({ matchId: lastMatch.id })) : []
+	const lastMatch = DB.get(ctx, Q.lastMatchOf({ serverId: ctx.serverId }))
+	const rows = lastMatch ? DB.all(ctx, Q.serverEventsOf({ matchId: lastMatch.id })) : []
 	server.emittedEvents = SE.fromEventRows({ ...ctx, log: SquadServer.log }, rows)
 
-	const appEventRows = lastMatch ? DB.all(ctx, appEventsOf({ matchId: lastMatch.id })) : []
+	const appEventRows = lastMatch ? DB.all(ctx, Q.appEventsOf({ matchId: lastMatch.id })) : []
 	// this buffer is the feed, so it has to hold what the live path would have pushed -- not every row the audit
 	// log kept. Without the isFeedVisible filter an audit-only event (a queue-driven MAP_SET) reappears as its own
 	// feed entry after a restart, duplicating the QUEUE_UPDATED it was folded into.

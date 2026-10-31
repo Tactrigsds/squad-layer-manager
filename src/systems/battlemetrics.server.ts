@@ -37,48 +37,51 @@ const SQL = Sql.forModule(module)
 const orpcBase = getOrpcBase(module)
 
 const Tokens = Schema.battlemetricsUserTokens
-const tokenUserP = SQL.params({ userId: Tokens.userId })
-const tokenOfUser = SQL.def(
-	'tokenOfUser',
-	tokenUserP,
-	SQL.select({ token: Tokens.token }).from(Tokens).where(E.eq(Tokens.userId, tokenUserP.userId)),
-)
-const tokenUpdatedAt = SQL.def(
-	'tokenUpdatedAt',
-	tokenUserP,
-	SQL.select({ updatedAt: Tokens.updatedAt }).from(Tokens).where(E.eq(Tokens.userId, tokenUserP.userId)),
-)
-const deleteToken = SQL.def(
-	'deleteToken',
-	tokenUserP,
-	SQL.delete(Tokens).where(E.eq(Tokens.userId, tokenUserP.userId)).returning({ userId: Tokens.userId }),
-)
-const steamIdP = SQL.params({ steamId: Schema.linkedSteamAccounts.steam64Id })
-const tokenOfSteamId = SQL.def(
-	'tokenOfSteamId',
-	steamIdP,
-	SQL.select({ userId: Tokens.userId, token: Tokens.token })
-		.from(Schema.linkedSteamAccounts)
-		.innerJoin(Tokens, E.eq(Tokens.userId, Schema.linkedSteamAccounts.discordId))
-		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steamId)),
-)
-const allTokens = SQL.def('allTokens', SQL.params({}), SQL.select({ userId: Tokens.userId, token: Tokens.token }).from(Tokens), {
-	scans: ['battlemetricsUserTokens'],
-})
-const tokenP = SQL.params({ userId: Tokens.userId, token: SQL.secret(Tokens.token, z.string()), updatedAt: Tokens.updatedAt })
-const resealP = SQL.params({ userId: Tokens.userId, token: SQL.secret(Tokens.token, z.string()) })
-const writeToken = SQL.def(
-	'writeToken',
-	resealP,
-	SQL.update(Tokens).set({ token: resealP.token }).where(E.eq(Tokens.userId, resealP.userId)),
-)
-const upsertToken = SQL.def(
-	'upsertToken',
-	tokenP,
-	SQL.insert(Tokens)
-		.values({ userId: tokenP.userId, token: tokenP.token, updatedAt: tokenP.updatedAt })
-		.onConflictDoUpdate({ target: Tokens.userId, set: { token: tokenP.token, updatedAt: tokenP.updatedAt } }),
-)
+
+namespace Q {
+	const tokenUserP = SQL.params({ userId: Tokens.userId })
+	export const tokenOfUser = SQL.def(
+		'tokenOfUser',
+		tokenUserP,
+		SQL.select({ token: Tokens.token }).from(Tokens).where(E.eq(Tokens.userId, tokenUserP.userId)),
+	)
+	export const tokenUpdatedAt = SQL.def(
+		'tokenUpdatedAt',
+		tokenUserP,
+		SQL.select({ updatedAt: Tokens.updatedAt }).from(Tokens).where(E.eq(Tokens.userId, tokenUserP.userId)),
+	)
+	export const deleteToken = SQL.def(
+		'deleteToken',
+		tokenUserP,
+		SQL.delete(Tokens).where(E.eq(Tokens.userId, tokenUserP.userId)).returning({ userId: Tokens.userId }),
+	)
+	const steamIdP = SQL.params({ steamId: Schema.linkedSteamAccounts.steam64Id })
+	export const tokenOfSteamId = SQL.def(
+		'tokenOfSteamId',
+		steamIdP,
+		SQL.select({ userId: Tokens.userId, token: Tokens.token })
+			.from(Schema.linkedSteamAccounts)
+			.innerJoin(Tokens, E.eq(Tokens.userId, Schema.linkedSteamAccounts.discordId))
+			.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steamId)),
+	)
+	export const allTokens = SQL.def('allTokens', SQL.params({}), SQL.select({ userId: Tokens.userId, token: Tokens.token }).from(Tokens), {
+		scans: ['battlemetricsUserTokens'],
+	})
+	const tokenP = SQL.params({ userId: Tokens.userId, token: SQL.secret(Tokens.token, z.string()), updatedAt: Tokens.updatedAt })
+	const resealP = SQL.params({ userId: Tokens.userId, token: SQL.secret(Tokens.token, z.string()) })
+	export const writeToken = SQL.def(
+		'writeToken',
+		resealP,
+		SQL.update(Tokens).set({ token: resealP.token }).where(E.eq(Tokens.userId, resealP.userId)),
+	)
+	export const upsertToken = SQL.def(
+		'upsertToken',
+		tokenP,
+		SQL.insert(Tokens)
+			.values({ userId: tokenP.userId, token: tokenP.token, updatedAt: tokenP.updatedAt })
+			.onConflictDoUpdate({ target: Tokens.userId, set: { token: tokenP.token, updatedAt: tokenP.updatedAt } }),
+	)
+}
 
 let ENV!: ReturnType<typeof getEnv>
 let log!: ReturnType<typeof module.getLogger>
@@ -178,7 +181,7 @@ function openToken(userId: bigint, sealed: Secret<string>): string | undefined {
 }
 
 export function authForUser(ctx: C.Db, userId: bigint): Auth {
-	const row = DB.get(ctx, tokenOfUser({ userId }))
+	const row = DB.get(ctx, Q.tokenOfUser({ userId }))
 	const token = row && openToken(userId, row.token)
 	return token ? { kind: 'personal', userId, token } : ORG_AUTH
 }
@@ -186,7 +189,7 @@ export function authForUser(ctx: C.Db, userId: bigint): Auth {
 // the token of the SLM user who linked this steam account, for a command sent from in game
 export function authForSteamId(ctx: C.Db, steamId: string | undefined): Auth {
 	if (!steamId) return ORG_AUTH
-	const row = DB.get(ctx, tokenOfSteamId({ steamId: BigInt(steamId) }))
+	const row = DB.get(ctx, Q.tokenOfSteamId({ steamId: BigInt(steamId) }))
 	const token = row && openToken(row.userId, row.token)
 	return token ? { kind: 'personal', userId: row.userId, token } : ORG_AUTH
 }
@@ -194,7 +197,7 @@ export function authForSteamId(ctx: C.Db, steamId: string | undefined): Auth {
 // brings each stored token up to the current key and envelope version (see secret-box.server.ts)
 function resealPersonalTokens(ctx: C.Db) {
 	let resealed = 0
-	for (const row of DB.all(ctx, allTokens({}))) {
+	for (const row of DB.all(ctx, Q.allTokens({}))) {
 		const sealed = row.token.reveal()
 		if (!SecretBox.needsReseal(sealed)) continue
 		let token: string
@@ -204,7 +207,7 @@ function resealPersonalTokens(ctx: C.Db) {
 			log.warn({ err, userId: row.userId }, 'Could not decrypt a personal BM token; leaving it as stored')
 			continue
 		}
-		DB.run(ctx, writeToken({ userId: row.userId, token: new Secret(token) }))
+		DB.run(ctx, Q.writeToken({ userId: row.userId, token: new Secret(token) }))
 		resealed++
 	}
 	if (resealed > 0) log.info('Re-encrypted %d personal BM token(s) at rest', resealed)
@@ -1114,7 +1117,7 @@ export const router = {
 
 	// whether the caller has a personal token saved. The token itself never leaves the server.
 	getMyToken: orpcBase.handler(async ({ context: ctx }) => {
-		const row = DB.get(ctx, tokenUpdatedAt({ userId: ctx.user.discordId }))
+		const row = DB.get(ctx, Q.tokenUpdatedAt({ userId: ctx.user.discordId }))
 		return { code: 'ok' as const, updatedAt: row?.updatedAt.getTime() ?? null }
 	}),
 
@@ -1135,7 +1138,7 @@ export const router = {
 			}
 			const sealed = SecretBox.seal(input.token)
 			const updatedAt = new Date()
-			DB.run(ctx, upsertToken({ userId, token: new Secret(sealed), updatedAt }))
+			DB.run(ctx, Q.upsertToken({ userId, token: new Secret(sealed), updatedAt }))
 			// a backoff earned by the previous token says nothing about this one
 			personalRateLimiters.delete(userId)
 			Users.recordUserAccount(ctx, userId, 'bm-token-set')
@@ -1144,7 +1147,7 @@ export const router = {
 
 	removeMyToken: orpcBase.meta({ type: 'mutation' }).handler(async ({ context: ctx }) => {
 		const userId = ctx.user.discordId
-		const removed = DB.all(ctx, deleteToken({ userId }))
+		const removed = DB.all(ctx, Q.deleteToken({ userId }))
 		personalRateLimiters.delete(userId)
 		if (removed.length > 0) Users.recordUserAccount(ctx, userId, 'bm-token-removed')
 		return { code: 'ok' as const }

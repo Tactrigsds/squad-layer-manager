@@ -10,7 +10,7 @@ import * as Env from '@/server/env'
 import { ensureLoggerSetup, initModule } from '@/server/logger'
 import * as LayerData from '@/systems/layer-data.server'
 import * as MatchEventsCache from '@/systems/match-events-cache.server'
-import { pendingMatches } from '@/systems/match-tallies.shared'
+import * as MatchTalliesShared from '@/systems/match-tallies.shared'
 
 // Tallying a match -- its scoreline and its population samples -- means replaying its whole feed against the roster
 // it happened to, which is the only way a kill names a team. That is tens of thousands of synchronous iterations per
@@ -45,7 +45,7 @@ export type EngineResponse = {
 }
 
 export async function runEngineRequest(ctx: C, req: EngineRequest): Promise<EngineResponse> {
-	const pending = DB.all(ctx, pendingMatches({ serverId: req.serverId, skip: req.skip, limit: req.limit }))
+	const pending = DB.all(ctx, MatchTalliesShared.Q.pendingMatches({ serverId: req.serverId, skip: req.skip, limit: req.limit }))
 	const tallies: EngineResponse['tallies'] = []
 	const failed: number[] = []
 	// One match at a time, so neither a corrupt archive blob nor a match's memory footprint is charged to the

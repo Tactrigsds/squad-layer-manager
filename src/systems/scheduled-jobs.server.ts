@@ -55,351 +55,342 @@ const stateIn = (states: State[]) =>
 		E.sql`, `,
 	)})`
 
-const lastRecurringP = SQL.params({ pluginId: T.pluginId })
-// sqlite takes a bare column next to max() from the row holding the max, so finishedAt is that run's
-const lastRecurringOfEach = SQL.def(
-	'lastRecurringOfEach',
-	lastRecurringP,
-	(byPlugin: boolean) =>
-		SQL.select({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, dueAt: E.max(T.dueAt), finishedAt: T.finishedAt })
-			.from(T)
-			.where(E.and(E.eq(T.kind, SQL.lit('recurring')), byPlugin ? E.eq(T.pluginId, lastRecurringP.pluginId) : undefined))
-			.groupBy(T.pluginId, T.serverId, T.jobId),
-	{ domains: [[true, false]] },
-)
-
-const openRuns = SQL.def('openRuns', SQL.params({}), SQL.select().from(T).where(stateIn(OPEN_STATES)))
-
-const deletePendingP = SQL.params({ id: T.id, dueAt: T.dueAt })
-const deletePendingRun = SQL.def(
-	'deletePendingRun',
-	deletePendingP,
-	SQL.delete(T).where(E.and(E.eq(T.id, deletePendingP.id), E.eq(T.state, SQL.lit('pending')), E.eq(T.dueAt, deletePendingP.dueAt))),
-)
-
-const idInStateP = SQL.params({ id: T.id, state: T.state })
-const blockOnServerNotLoaded = SQL.def(
-	'blockOnServerNotLoaded',
-	idInStateP,
-	SQL.update(T)
-		.set({ state: SQL.lit('blocked'), blockedReason: SQL.lit(SERVER_NOT_LOADED), nextAttemptAt: SQL.lit(null) })
-		.where(E.and(E.eq(T.id, idInStateP.id), E.eq(T.state, idInStateP.state))),
-)
-
-const claimRecurringP = SQL.params({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, key: T.key, dueAt: T.dueAt })
-const insertRecurringRun = SQL.def(
-	'insertRecurringRun',
-	claimRecurringP,
-	SQL.insert(T)
-		.values({
-			pluginId: claimRecurringP.pluginId,
-			serverId: claimRecurringP.serverId,
-			jobId: claimRecurringP.jobId,
-			key: claimRecurringP.key,
-			kind: SQL.lit('recurring'),
-			dueAt: claimRecurringP.dueAt,
-			state: SQL.lit('pending'),
-		})
-		.onConflictDoNothing()
-		.returning(),
-)
-
-const supersedeP = SQL.params({
-	pluginId: T.pluginId,
-	serverId: T.serverId,
-	jobId: T.jobId,
-	dueAt: T.dueAt,
-	finishedAt: T.finishedAt,
-	error: T.error,
-})
-const skipEarlierOccurrences = SQL.def(
-	'skipEarlierOccurrences',
-	supersedeP,
-	SQL.update(T)
-		.set({ state: SQL.lit('skipped'), finishedAt: supersedeP.finishedAt, nextAttemptAt: SQL.lit(null), error: supersedeP.error })
-		.where(
-			E.and(
-				E.eq(T.pluginId, supersedeP.pluginId),
-				E.eq(T.serverId, supersedeP.serverId),
-				E.eq(T.jobId, supersedeP.jobId),
-				E.eq(T.kind, SQL.lit('recurring')),
-				stateIn(OPEN_STATES),
-				E.lt(T.dueAt, supersedeP.dueAt),
-			),
-		)
-		.returning({ id: T.id }),
-)
-
-const pruneP = SQL.params({ before: T.finishedAt })
-const pruneFinishedRuns = SQL.def(
-	'pruneFinishedRuns',
-	pruneP,
-	(() => {
-		const latestFinished = SQL.select({ id: T.id, finishedAt: E.max(T.finishedAt) })
-			.from(T)
-			.where(E.isNotNull(T.finishedAt))
-			.groupBy(T.pluginId, T.serverId, T.jobId)
-			.as('latestFinished')
-		const latestRecurring = SQL.select({ id: T.id, dueAt: E.max(T.dueAt) })
-			.from(T)
-			.where(E.eq(T.kind, SQL.lit('recurring')))
-			.groupBy(T.pluginId, T.serverId, T.jobId)
-			.as('latestRecurring')
-		return SQL.delete(T).where(
-			E.and(
-				stateIn(['succeeded', 'failed', 'skipped', 'cancelled']),
-				E.lt(T.finishedAt, pruneP.before),
-				E.notInArray(T.id, SQL.select({ id: latestFinished.id }).from(latestFinished)),
-				E.notInArray(T.id, SQL.select({ id: latestRecurring.id }).from(latestRecurring)),
-			),
-		)
-	})(),
-	{ scans: ['scheduledJobRuns', 'latestFinished', 'latestRecurring'] },
-)
-
-const claimRunP = SQL.params({
-	id: T.id,
-	expectedState: T.state,
-	dueAt: T.dueAt,
-	payload: T.payload,
-	attempt: T.attempt,
-	startedAt: T.startedAt,
-	manual: T.manual,
-})
-const claimRun = SQL.def(
-	'claimRun',
-	claimRunP,
-	(hasPayload: boolean) =>
-		SQL.update(T)
-			.set({
-				state: SQL.lit('running'),
-				attempt: claimRunP.attempt,
-				startedAt: claimRunP.startedAt,
-				manual: claimRunP.manual,
-				blockedReason: SQL.lit(null),
-				cancelRequested: SQL.lit(false),
-			})
-			.where(
-				E.and(
-					E.eq(T.id, claimRunP.id),
-					E.eq(T.state, claimRunP.expectedState),
-					E.eq(T.dueAt, claimRunP.dueAt),
-					hasPayload ? E.eq(T.payload, claimRunP.payload) : E.isNull(T.payload),
-				),
-			),
-	{ domains: [[true, false]] },
-)
-
 const isRunning = (id: Sql.Parameter<number>) => E.and(E.eq(T.id, id), E.eq(T.state, SQL.lit('running')))
-
-const finishRunP = SQL.params({ id: T.id, finishedAt: T.finishedAt })
-const cancelRunning = SQL.def(
-	'cancelRunning',
-	finishRunP,
-	SQL.update(T)
-		.set({ state: SQL.lit('cancelled'), finishedAt: finishRunP.finishedAt, nextAttemptAt: SQL.lit(null), error: SQL.lit(null) })
-		.where(isRunning(finishRunP.id)),
-)
-const succeedRunning = SQL.def(
-	'succeedRunning',
-	finishRunP,
-	SQL.update(T)
-		.set({ state: SQL.lit('succeeded'), finishedAt: finishRunP.finishedAt, error: SQL.lit(null), nextAttemptAt: SQL.lit(null) })
-		.where(isRunning(finishRunP.id)),
-)
-
-const retryP = SQL.params({ id: T.id, nextAttemptAt: T.nextAttemptAt, error: T.error })
-const retryRunning = SQL.def(
-	'retryRunning',
-	retryP,
-	SQL.update(T)
-		.set({ state: SQL.lit('retrying'), nextAttemptAt: retryP.nextAttemptAt, error: retryP.error })
-		.where(isRunning(retryP.id)),
-)
-
-const failP = SQL.params({ id: T.id, finishedAt: T.finishedAt, error: T.error })
-const failRun = SQL.def(
-	'failRun',
-	failP,
-	SQL.update(T)
-		.set({ state: SQL.lit('failed'), finishedAt: failP.finishedAt, error: failP.error, nextAttemptAt: SQL.lit(null) })
-		.where(E.and(E.eq(T.id, failP.id), stateIn([...OPEN_STATES, 'running']))),
-)
-
-const skipP = SQL.params({ id: T.id, attempt: T.attempt, finishedAt: T.finishedAt, error: T.error })
-const skipRunning = SQL.def(
-	'skipRunning',
-	skipP,
-	SQL.update(T)
-		.set({ state: SQL.lit('skipped'), attempt: skipP.attempt, finishedAt: skipP.finishedAt, error: skipP.error })
-		.where(isRunning(skipP.id)),
-)
-
-const restoreP = SQL.params({
-	id: T.id,
-	state: T.state,
-	attempt: T.attempt,
-	startedAt: T.startedAt,
-	manual: T.manual,
-	nextAttemptAt: T.nextAttemptAt,
-	blockedReason: T.blockedReason,
-})
-const restoreRunning = SQL.def(
-	'restoreRunning',
-	restoreP,
-	SQL.update(T)
-		.set({
-			state: restoreP.state,
-			attempt: restoreP.attempt,
-			startedAt: restoreP.startedAt,
-			manual: restoreP.manual,
-			nextAttemptAt: restoreP.nextAttemptAt,
-			blockedReason: restoreP.blockedReason,
-		})
-		.where(isRunning(restoreP.id)),
-)
-
-const blockP = SQL.params({ id: T.id, attempt: T.attempt, blockedReason: T.blockedReason, nextAttemptAt: T.nextAttemptAt })
-const blockRunning = SQL.def(
-	'blockRunning',
-	blockP,
-	SQL.update(T)
-		.set({ state: SQL.lit('blocked'), attempt: blockP.attempt, blockedReason: blockP.blockedReason, nextAttemptAt: blockP.nextAttemptAt })
-		.where(isRunning(blockP.id)),
-)
-
-const unblockP = SQL.params({ id: T.id, nextAttemptAt: T.nextAttemptAt })
-const unblockRun = SQL.def(
-	'unblockRun',
-	unblockP,
-	SQL.update(T)
-		.set({ nextAttemptAt: unblockP.nextAttemptAt })
-		.where(E.and(E.eq(T.id, unblockP.id), E.eq(T.state, SQL.lit('blocked')), E.isNull(T.nextAttemptAt))),
-)
-
-const onceP = SQL.params({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, key: T.key, dueAt: T.dueAt, payload: T.payload })
-const onceRow = {
-	pluginId: onceP.pluginId,
-	serverId: onceP.serverId,
-	jobId: onceP.jobId,
-	key: onceP.key,
-	kind: SQL.lit('once'),
-	dueAt: onceP.dueAt,
-	payload: onceP.payload,
-	state: SQL.lit('pending'),
-	attempt: SQL.lit(0),
-	nextAttemptAt: SQL.lit(null),
-	manual: SQL.lit(false),
-	startedAt: SQL.lit(null),
-	finishedAt: SQL.lit(null),
-	error: SQL.lit(null),
-	blockedReason: SQL.lit(null),
-	cancelRequested: SQL.lit(false),
-}
-const upsertOnceRun = SQL.def(
-	'upsertOnceRun',
-	onceP,
-	SQL.insert(T)
-		.values(onceRow)
-		.onConflictDoUpdate({ target: [T.pluginId, T.serverId, T.jobId, T.key], set: onceRow, setWhere: E.ne(T.state, SQL.lit('running')) })
-		.returning({ id: T.id }),
-)
-
-const runKeyP = SQL.params({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, key: T.key })
-const runKeyMatches = E.and(
-	E.eq(T.pluginId, runKeyP.pluginId),
-	E.eq(T.serverId, runKeyP.serverId),
-	E.eq(T.jobId, runKeyP.jobId),
-	E.eq(T.key, runKeyP.key),
-)
-const runByKey = SQL.def('runByKey', runKeyP, SQL.select().from(T).where(runKeyMatches))
-const openOnceRunByKey = SQL.def(
-	'openOnceRunByKey',
-	runKeyP,
-	SQL.select()
-		.from(T)
-		.where(E.and(runKeyMatches, E.eq(T.kind, SQL.lit('once')), stateIn(OPEN_STATES))),
-)
-
-const idP = SQL.params({ id: T.id })
-const requestCancel = SQL.def(
-	'requestCancel',
-	idP,
-	SQL.update(T)
-		.set({ cancelRequested: SQL.lit(true) })
-		.where(isRunning(idP.id)),
-)
 
 const isOpenInState = (id: Sql.Parameter<number>, state: Sql.Parameter<Row['state']>) =>
 	E.and(E.eq(T.id, id), E.eq(T.state, state), stateIn(OPEN_STATES))
-const deleteOpenRun = SQL.def('deleteOpenRun', idInStateP, SQL.delete(T).where(isOpenInState(idInStateP.id, idInStateP.state)))
-const cancelOpenP = SQL.params({ id: T.id, state: T.state, finishedAt: T.finishedAt })
-const cancelOpenRun = SQL.def(
-	'cancelOpenRun',
-	cancelOpenP,
-	SQL.update(T)
-		.set({ state: SQL.lit('cancelled'), finishedAt: cancelOpenP.finishedAt, nextAttemptAt: SQL.lit(null) })
-		.where(isOpenInState(cancelOpenP.id, cancelOpenP.state)),
-)
 
-const manualRunP = SQL.params({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, key: T.key, dueAt: T.dueAt })
-const insertManualRun = SQL.def(
-	'insertManualRun',
-	manualRunP,
-	SQL.insert(T)
-		.values({
-			pluginId: manualRunP.pluginId,
-			serverId: manualRunP.serverId,
-			jobId: manualRunP.jobId,
-			key: manualRunP.key,
-			kind: SQL.lit('manual'),
-			dueAt: manualRunP.dueAt,
-			state: SQL.lit('pending'),
-		})
-		.returning(),
-)
-
-const pluginP = SQL.params({ pluginId: T.pluginId })
-// sqlite takes the bare columns next to max() from the row holding the max, so each row is that target's latest
-const latestFinishedOfPlugin = SQL.def(
-	'latestFinishedOfPlugin',
-	pluginP,
-	SQL.select({ ...E.getTableColumns(T), latestFinishedAt: E.max(T.finishedAt) })
-		.from(T)
-		.where(E.and(E.eq(T.pluginId, pluginP.pluginId), E.isNotNull(T.finishedAt)))
-		.groupBy(T.serverId, T.jobId),
-)
-const openRunsOfPlugin = SQL.def(
-	'openRunsOfPlugin',
-	pluginP,
-	SQL.select()
-		.from(T)
-		.where(E.and(E.eq(T.pluginId, pluginP.pluginId), stateIn([...OPEN_STATES, 'running'])))
-		.orderBy(E.asc(T.dueAt)),
-)
-const deletePluginRuns = SQL.def('deletePluginRuns', pluginP, SQL.delete(T).where(E.eq(T.pluginId, pluginP.pluginId)))
-
-const stoppedAtP = SQL.params({ at: T.finishedAt })
-const closeCancellingRuns = SQL.def(
-	'closeCancellingRuns',
-	stoppedAtP,
-	SQL.update(T)
-		.set({
-			state: SQL.lit('cancelled'),
-			finishedAt: stoppedAtP.at,
-			nextAttemptAt: SQL.lit(null),
-			error: SQL.lit('SLM stopped while it was being cancelled'),
-		})
-		.where(E.and(E.eq(T.state, SQL.lit('running')), E.eq(T.cancelRequested, SQL.lit(true)))),
-)
-const retryAtP = SQL.params({ at: T.nextAttemptAt })
-const retryInterruptedRuns = SQL.def(
-	'retryInterruptedRuns',
-	retryAtP,
-	SQL.update(T)
-		.set({ state: SQL.lit('retrying'), nextAttemptAt: retryAtP.at, error: SQL.lit('SLM stopped while it was running') })
-		.where(E.eq(T.state, SQL.lit('running'))),
-)
+namespace Q {
+	const lastRecurringP = SQL.params({ pluginId: T.pluginId })
+	// sqlite takes a bare column next to max() from the row holding the max, so finishedAt is that run's
+	export const lastRecurringOfEach = SQL.def(
+		'lastRecurringOfEach',
+		lastRecurringP,
+		(byPlugin: boolean) =>
+			SQL.select({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, dueAt: E.max(T.dueAt), finishedAt: T.finishedAt })
+				.from(T)
+				.where(E.and(E.eq(T.kind, SQL.lit('recurring')), byPlugin ? E.eq(T.pluginId, lastRecurringP.pluginId) : undefined))
+				.groupBy(T.pluginId, T.serverId, T.jobId),
+		{ domains: [[true, false]] },
+	)
+	export const openRuns = SQL.def('openRuns', SQL.params({}), SQL.select().from(T).where(stateIn(OPEN_STATES)))
+	const deletePendingP = SQL.params({ id: T.id, dueAt: T.dueAt })
+	export const deletePendingRun = SQL.def(
+		'deletePendingRun',
+		deletePendingP,
+		SQL.delete(T).where(E.and(E.eq(T.id, deletePendingP.id), E.eq(T.state, SQL.lit('pending')), E.eq(T.dueAt, deletePendingP.dueAt))),
+	)
+	const idInStateP = SQL.params({ id: T.id, state: T.state })
+	export const blockOnServerNotLoaded = SQL.def(
+		'blockOnServerNotLoaded',
+		idInStateP,
+		SQL.update(T)
+			.set({ state: SQL.lit('blocked'), blockedReason: SQL.lit(SERVER_NOT_LOADED), nextAttemptAt: SQL.lit(null) })
+			.where(E.and(E.eq(T.id, idInStateP.id), E.eq(T.state, idInStateP.state))),
+	)
+	const claimRecurringP = SQL.params({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, key: T.key, dueAt: T.dueAt })
+	export const insertRecurringRun = SQL.def(
+		'insertRecurringRun',
+		claimRecurringP,
+		SQL.insert(T)
+			.values({
+				pluginId: claimRecurringP.pluginId,
+				serverId: claimRecurringP.serverId,
+				jobId: claimRecurringP.jobId,
+				key: claimRecurringP.key,
+				kind: SQL.lit('recurring'),
+				dueAt: claimRecurringP.dueAt,
+				state: SQL.lit('pending'),
+			})
+			.onConflictDoNothing()
+			.returning(),
+	)
+	const supersedeP = SQL.params({
+		pluginId: T.pluginId,
+		serverId: T.serverId,
+		jobId: T.jobId,
+		dueAt: T.dueAt,
+		finishedAt: T.finishedAt,
+		error: T.error,
+	})
+	export const skipEarlierOccurrences = SQL.def(
+		'skipEarlierOccurrences',
+		supersedeP,
+		SQL.update(T)
+			.set({ state: SQL.lit('skipped'), finishedAt: supersedeP.finishedAt, nextAttemptAt: SQL.lit(null), error: supersedeP.error })
+			.where(
+				E.and(
+					E.eq(T.pluginId, supersedeP.pluginId),
+					E.eq(T.serverId, supersedeP.serverId),
+					E.eq(T.jobId, supersedeP.jobId),
+					E.eq(T.kind, SQL.lit('recurring')),
+					stateIn(OPEN_STATES),
+					E.lt(T.dueAt, supersedeP.dueAt),
+				),
+			)
+			.returning({ id: T.id }),
+	)
+	const pruneP = SQL.params({ before: T.finishedAt })
+	export const pruneFinishedRuns = SQL.def(
+		'pruneFinishedRuns',
+		pruneP,
+		(() => {
+			const latestFinished = SQL.select({ id: T.id, finishedAt: E.max(T.finishedAt) })
+				.from(T)
+				.where(E.isNotNull(T.finishedAt))
+				.groupBy(T.pluginId, T.serverId, T.jobId)
+				.as('latestFinished')
+			const latestRecurring = SQL.select({ id: T.id, dueAt: E.max(T.dueAt) })
+				.from(T)
+				.where(E.eq(T.kind, SQL.lit('recurring')))
+				.groupBy(T.pluginId, T.serverId, T.jobId)
+				.as('latestRecurring')
+			return SQL.delete(T).where(
+				E.and(
+					stateIn(['succeeded', 'failed', 'skipped', 'cancelled']),
+					E.lt(T.finishedAt, pruneP.before),
+					E.notInArray(T.id, SQL.select({ id: latestFinished.id }).from(latestFinished)),
+					E.notInArray(T.id, SQL.select({ id: latestRecurring.id }).from(latestRecurring)),
+				),
+			)
+		})(),
+		{ scans: ['scheduledJobRuns', 'latestFinished', 'latestRecurring'] },
+	)
+	const claimRunP = SQL.params({
+		id: T.id,
+		expectedState: T.state,
+		dueAt: T.dueAt,
+		payload: T.payload,
+		attempt: T.attempt,
+		startedAt: T.startedAt,
+		manual: T.manual,
+	})
+	export const claimRun = SQL.def(
+		'claimRun',
+		claimRunP,
+		(hasPayload: boolean) =>
+			SQL.update(T)
+				.set({
+					state: SQL.lit('running'),
+					attempt: claimRunP.attempt,
+					startedAt: claimRunP.startedAt,
+					manual: claimRunP.manual,
+					blockedReason: SQL.lit(null),
+					cancelRequested: SQL.lit(false),
+				})
+				.where(
+					E.and(
+						E.eq(T.id, claimRunP.id),
+						E.eq(T.state, claimRunP.expectedState),
+						E.eq(T.dueAt, claimRunP.dueAt),
+						hasPayload ? E.eq(T.payload, claimRunP.payload) : E.isNull(T.payload),
+					),
+				),
+		{ domains: [[true, false]] },
+	)
+	const finishRunP = SQL.params({ id: T.id, finishedAt: T.finishedAt })
+	export const cancelRunning = SQL.def(
+		'cancelRunning',
+		finishRunP,
+		SQL.update(T)
+			.set({ state: SQL.lit('cancelled'), finishedAt: finishRunP.finishedAt, nextAttemptAt: SQL.lit(null), error: SQL.lit(null) })
+			.where(isRunning(finishRunP.id)),
+	)
+	export const succeedRunning = SQL.def(
+		'succeedRunning',
+		finishRunP,
+		SQL.update(T)
+			.set({ state: SQL.lit('succeeded'), finishedAt: finishRunP.finishedAt, error: SQL.lit(null), nextAttemptAt: SQL.lit(null) })
+			.where(isRunning(finishRunP.id)),
+	)
+	const retryP = SQL.params({ id: T.id, nextAttemptAt: T.nextAttemptAt, error: T.error })
+	export const retryRunning = SQL.def(
+		'retryRunning',
+		retryP,
+		SQL.update(T)
+			.set({ state: SQL.lit('retrying'), nextAttemptAt: retryP.nextAttemptAt, error: retryP.error })
+			.where(isRunning(retryP.id)),
+	)
+	const failP = SQL.params({ id: T.id, finishedAt: T.finishedAt, error: T.error })
+	export const failRun = SQL.def(
+		'failRun',
+		failP,
+		SQL.update(T)
+			.set({ state: SQL.lit('failed'), finishedAt: failP.finishedAt, error: failP.error, nextAttemptAt: SQL.lit(null) })
+			.where(E.and(E.eq(T.id, failP.id), stateIn([...OPEN_STATES, 'running']))),
+	)
+	const skipP = SQL.params({ id: T.id, attempt: T.attempt, finishedAt: T.finishedAt, error: T.error })
+	export const skipRunning = SQL.def(
+		'skipRunning',
+		skipP,
+		SQL.update(T)
+			.set({ state: SQL.lit('skipped'), attempt: skipP.attempt, finishedAt: skipP.finishedAt, error: skipP.error })
+			.where(isRunning(skipP.id)),
+	)
+	const restoreP = SQL.params({
+		id: T.id,
+		state: T.state,
+		attempt: T.attempt,
+		startedAt: T.startedAt,
+		manual: T.manual,
+		nextAttemptAt: T.nextAttemptAt,
+		blockedReason: T.blockedReason,
+	})
+	export const restoreRunning = SQL.def(
+		'restoreRunning',
+		restoreP,
+		SQL.update(T)
+			.set({
+				state: restoreP.state,
+				attempt: restoreP.attempt,
+				startedAt: restoreP.startedAt,
+				manual: restoreP.manual,
+				nextAttemptAt: restoreP.nextAttemptAt,
+				blockedReason: restoreP.blockedReason,
+			})
+			.where(isRunning(restoreP.id)),
+	)
+	const blockP = SQL.params({ id: T.id, attempt: T.attempt, blockedReason: T.blockedReason, nextAttemptAt: T.nextAttemptAt })
+	export const blockRunning = SQL.def(
+		'blockRunning',
+		blockP,
+		SQL.update(T)
+			.set({
+				state: SQL.lit('blocked'),
+				attempt: blockP.attempt,
+				blockedReason: blockP.blockedReason,
+				nextAttemptAt: blockP.nextAttemptAt,
+			})
+			.where(isRunning(blockP.id)),
+	)
+	const unblockP = SQL.params({ id: T.id, nextAttemptAt: T.nextAttemptAt })
+	export const unblockRun = SQL.def(
+		'unblockRun',
+		unblockP,
+		SQL.update(T)
+			.set({ nextAttemptAt: unblockP.nextAttemptAt })
+			.where(E.and(E.eq(T.id, unblockP.id), E.eq(T.state, SQL.lit('blocked')), E.isNull(T.nextAttemptAt))),
+	)
+	const onceP = SQL.params({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, key: T.key, dueAt: T.dueAt, payload: T.payload })
+	const onceRow = {
+		pluginId: onceP.pluginId,
+		serverId: onceP.serverId,
+		jobId: onceP.jobId,
+		key: onceP.key,
+		kind: SQL.lit('once'),
+		dueAt: onceP.dueAt,
+		payload: onceP.payload,
+		state: SQL.lit('pending'),
+		attempt: SQL.lit(0),
+		nextAttemptAt: SQL.lit(null),
+		manual: SQL.lit(false),
+		startedAt: SQL.lit(null),
+		finishedAt: SQL.lit(null),
+		error: SQL.lit(null),
+		blockedReason: SQL.lit(null),
+		cancelRequested: SQL.lit(false),
+	}
+	export const upsertOnceRun = SQL.def(
+		'upsertOnceRun',
+		onceP,
+		SQL.insert(T)
+			.values(onceRow)
+			.onConflictDoUpdate({
+				target: [T.pluginId, T.serverId, T.jobId, T.key],
+				set: onceRow,
+				setWhere: E.ne(T.state, SQL.lit('running')),
+			})
+			.returning({ id: T.id }),
+	)
+	const runKeyP = SQL.params({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, key: T.key })
+	const runKeyMatches = E.and(
+		E.eq(T.pluginId, runKeyP.pluginId),
+		E.eq(T.serverId, runKeyP.serverId),
+		E.eq(T.jobId, runKeyP.jobId),
+		E.eq(T.key, runKeyP.key),
+	)
+	export const runByKey = SQL.def('runByKey', runKeyP, SQL.select().from(T).where(runKeyMatches))
+	export const openOnceRunByKey = SQL.def(
+		'openOnceRunByKey',
+		runKeyP,
+		SQL.select()
+			.from(T)
+			.where(E.and(runKeyMatches, E.eq(T.kind, SQL.lit('once')), stateIn(OPEN_STATES))),
+	)
+	const idP = SQL.params({ id: T.id })
+	export const requestCancel = SQL.def(
+		'requestCancel',
+		idP,
+		SQL.update(T)
+			.set({ cancelRequested: SQL.lit(true) })
+			.where(isRunning(idP.id)),
+	)
+	export const deleteOpenRun = SQL.def('deleteOpenRun', idInStateP, SQL.delete(T).where(isOpenInState(idInStateP.id, idInStateP.state)))
+	const cancelOpenP = SQL.params({ id: T.id, state: T.state, finishedAt: T.finishedAt })
+	export const cancelOpenRun = SQL.def(
+		'cancelOpenRun',
+		cancelOpenP,
+		SQL.update(T)
+			.set({ state: SQL.lit('cancelled'), finishedAt: cancelOpenP.finishedAt, nextAttemptAt: SQL.lit(null) })
+			.where(isOpenInState(cancelOpenP.id, cancelOpenP.state)),
+	)
+	const manualRunP = SQL.params({ pluginId: T.pluginId, serverId: T.serverId, jobId: T.jobId, key: T.key, dueAt: T.dueAt })
+	export const insertManualRun = SQL.def(
+		'insertManualRun',
+		manualRunP,
+		SQL.insert(T)
+			.values({
+				pluginId: manualRunP.pluginId,
+				serverId: manualRunP.serverId,
+				jobId: manualRunP.jobId,
+				key: manualRunP.key,
+				kind: SQL.lit('manual'),
+				dueAt: manualRunP.dueAt,
+				state: SQL.lit('pending'),
+			})
+			.returning(),
+	)
+	const pluginP = SQL.params({ pluginId: T.pluginId })
+	// sqlite takes the bare columns next to max() from the row holding the max, so each row is that target's latest
+	export const latestFinishedOfPlugin = SQL.def(
+		'latestFinishedOfPlugin',
+		pluginP,
+		SQL.select({ ...E.getTableColumns(T), latestFinishedAt: E.max(T.finishedAt) })
+			.from(T)
+			.where(E.and(E.eq(T.pluginId, pluginP.pluginId), E.isNotNull(T.finishedAt)))
+			.groupBy(T.serverId, T.jobId),
+	)
+	export const openRunsOfPlugin = SQL.def(
+		'openRunsOfPlugin',
+		pluginP,
+		SQL.select()
+			.from(T)
+			.where(E.and(E.eq(T.pluginId, pluginP.pluginId), stateIn([...OPEN_STATES, 'running'])))
+			.orderBy(E.asc(T.dueAt)),
+	)
+	export const deletePluginRuns = SQL.def('deletePluginRuns', pluginP, SQL.delete(T).where(E.eq(T.pluginId, pluginP.pluginId)))
+	const stoppedAtP = SQL.params({ at: T.finishedAt })
+	export const closeCancellingRuns = SQL.def(
+		'closeCancellingRuns',
+		stoppedAtP,
+		SQL.update(T)
+			.set({
+				state: SQL.lit('cancelled'),
+				finishedAt: stoppedAtP.at,
+				nextAttemptAt: SQL.lit(null),
+				error: SQL.lit('SLM stopped while it was being cancelled'),
+			})
+			.where(E.and(E.eq(T.state, SQL.lit('running')), E.eq(T.cancelRequested, SQL.lit(true)))),
+	)
+	const retryAtP = SQL.params({ at: T.nextAttemptAt })
+	export const retryInterruptedRuns = SQL.def(
+		'retryInterruptedRuns',
+		retryAtP,
+		SQL.update(T)
+			.set({ state: SQL.lit('retrying'), nextAttemptAt: retryAtP.at, error: SQL.lit('SLM stopped while it was running') })
+			.where(E.eq(T.state, SQL.lit('running'))),
+	)
+}
 
 // finished runs older than this are deleted, except the latest of each job and target, which the settings page shows
 // and a recurring job's next occurrence is worked out from
@@ -556,7 +547,7 @@ type LastRecurring = { dueAt: number; finishedAt: number | null }
 
 // the latest recurring run of each job and target: its due time, and when it finished
 function lastRecurringRuns(ctx: C.Db, pluginId?: string): Map<string, LastRecurring> {
-	const rows = DB.all(ctx, lastRecurringOfEach(pluginId !== undefined)({ pluginId }))
+	const rows = DB.all(ctx, Q.lastRecurringOfEach(pluginId !== undefined)({ pluginId }))
 	return new Map(
 		rows.map((r) => [
 			flightKey(r.pluginId, r.serverId, r.jobId),
@@ -605,7 +596,7 @@ async function tick(now: number): Promise<number> {
 		}
 	}
 
-	const open = DB.all(ctx, openRuns({}))
+	const open = DB.all(ctx, Q.openRuns({}))
 	for (const row of open) {
 		const host = hosts.get(row.pluginId)
 		const job = host?.jobs.get(row.jobId)
@@ -623,7 +614,7 @@ async function tick(now: number): Promise<number> {
 			if (row.state === 'pending') {
 				// came due while SLM was not running, and is now too late to run: dropped without a record
 				stopWait(row.id)
-				DB.run(ctx, deletePendingRun({ id: row.id, dueAt: row.dueAt }))
+				DB.run(ctx, Q.deletePendingRun({ id: row.id, dueAt: row.dueAt }))
 			} else if (row.state === 'blocked') {
 				await fail(host, row, row.attempt, null, `its catch-up window ended while it waited: ${row.blockedReason ?? 'blocked'}`)
 			} else {
@@ -644,7 +635,7 @@ async function tick(now: number): Promise<number> {
 		if (!runCtx) {
 			// loading the server wakes the timer
 			if (row.state !== 'blocked' || row.blockedReason !== SERVER_NOT_LOADED || row.nextAttemptAt !== null) {
-				DB.run(ctx, blockOnServerNotLoaded({ id: row.id, state: row.state }))
+				DB.run(ctx, Q.blockOnServerNotLoaded({ id: row.id, state: row.state }))
 			}
 			next = Math.min(next, windowEnd + 1)
 			continue
@@ -659,7 +650,7 @@ async function tick(now: number): Promise<number> {
 function claimRecurring(ctx: C.Db, pluginId: string, serverId: string | null, jobId: string, dueAt: number): Row | null {
 	const row = DB.get(
 		ctx,
-		insertRecurringRun({ pluginId, serverId: toServerId(serverId), jobId, key: SJOB.recurringKey(dueAt), dueAt: new Date(dueAt) }),
+		Q.insertRecurringRun({ pluginId, serverId: toServerId(serverId), jobId, key: SJOB.recurringKey(dueAt), dueAt: new Date(dueAt) }),
 	)
 	return row ?? null
 }
@@ -669,7 +660,7 @@ function claimRecurring(ctx: C.Db, pluginId: string, serverId: string | null, jo
 function supersede(ctx: C.Db, row: Row, now: number) {
 	const closed = DB.all(
 		ctx,
-		skipEarlierOccurrences({
+		Q.skipEarlierOccurrences({
 			pluginId: row.pluginId,
 			serverId: row.serverId,
 			jobId: row.jobId,
@@ -682,7 +673,7 @@ function supersede(ctx: C.Db, row: Row, now: number) {
 }
 
 function prune(ctx: C.Db, now: number) {
-	DB.run(ctx, pruneFinishedRuns({ before: new Date(now - PRUNE_AFTER_MS) }))
+	DB.run(ctx, Q.pruneFinishedRuns({ before: new Date(now - PRUNE_AFTER_MS) }))
 }
 
 // -------- running --------
@@ -742,7 +733,7 @@ async function executeClaimed(host: Host, job: AnyJob, row: Row, manual: Manual 
 	const startedAt = Date.now()
 	const claimed = DB.run(
 		ctx,
-		claimRun(row.payload !== null)({
+		Q.claimRun(row.payload !== null)({
 			id: row.id,
 			expectedState: row.state,
 			dueAt: row.dueAt,
@@ -811,7 +802,7 @@ async function executeClaimed(host: Host, job: AnyJob, row: Row, manual: Manual 
 	// cancelled only when the run stopped by throwing the abort; a run that finished some other way is recorded as it
 	// finished
 	if (entry.cancelledBy && threwAbort) {
-		const res = DB.run(ctx, cancelRunning({ id: row.id, finishedAt: new Date(now) }))
+		const res = DB.run(ctx, Q.cancelRunning({ id: row.id, finishedAt: new Date(now) }))
 		if (res.changes > 0) await record(runCtx, host, row, attempt, entry.cancelledBy.by, { code: 'cancelled' })
 		return { code: 'cancelled' }
 	}
@@ -837,13 +828,13 @@ async function executeClaimed(host: Host, job: AnyJob, row: Row, manual: Manual 
 		retryable = false
 	}
 	if (error === null) {
-		const done = DB.run(ctx, succeedRunning({ id: row.id, finishedAt: new Date(now) }))
+		const done = DB.run(ctx, Q.succeedRunning({ id: row.id, finishedAt: new Date(now) }))
 		if (done.changes > 0 && (manual || job.logSuccess)) await record(runCtx, host, row, attempt, manual, { code: 'succeeded' })
 		return { code: 'succeeded' }
 	}
 	const retryAt = now + SJOB.retryDelayMs(attempt)
 	if (!manual && retryable && retryAt <= row.dueAt.getTime() + SJOB.catchUpMs(job)) {
-		DB.run(ctx, retryRunning({ id: row.id, nextAttemptAt: new Date(retryAt), error }))
+		DB.run(ctx, Q.retryRunning({ id: row.id, nextAttemptAt: new Date(retryAt), error }))
 		return { code: 'retrying' }
 	}
 	await fail(host, row, attempt, manual, error)
@@ -853,7 +844,7 @@ async function executeClaimed(host: Host, job: AnyJob, row: Row, manual: Manual 
 // Closes a run that is open or running, and records the failure; a run something else closed first is left alone.
 async function fail(host: Host, row: Row, attempt: number, manual: Manual | null, reason: string) {
 	stopWait(row.id)
-	const res = DB.run(db(), failRun({ id: row.id, finishedAt: new Date(), error: reason }))
+	const res = DB.run(db(), Q.failRun({ id: row.id, finishedAt: new Date(), error: reason }))
 	if (res.changes > 0) await record(host.ctxFor(fromServerId(row.serverId)), host, row, attempt, manual, { code: 'failed', error: reason })
 }
 
@@ -942,13 +933,13 @@ function readUnblock(unblock: unknown): ReadUnblock | null {
 function block(row: Row, manual: Manual | null, runCtx: RunCtx, reason: string, unblock: ReadUnblock, now: number): Outcome {
 	const ctx = db()
 	if (row.kind === 'manual') {
-		DB.run(ctx, skipRunning({ id: row.id, attempt: row.attempt, finishedAt: new Date(now), error: `blocked: ${reason}` }))
+		DB.run(ctx, Q.skipRunning({ id: row.id, attempt: row.attempt, finishedAt: new Date(now), error: `blocked: ${reason}` }))
 		return { code: 'blocked', reason }
 	}
 	if (manual) {
 		DB.run(
 			ctx,
-			restoreRunning({
+			Q.restoreRunning({
 				id: row.id,
 				state: row.state,
 				attempt: row.attempt,
@@ -961,7 +952,7 @@ function block(row: Row, manual: Manual | null, runCtx: RunCtx, reason: string, 
 		return { code: 'blocked', reason }
 	}
 	const rerunAt = unblock.kind === 'after' ? new Date(now + Math.max(unblock.ms, SJOB.MIN_BLOCKED_RERUN_MS)) : null
-	const res = DB.run(ctx, blockRunning({ id: row.id, attempt: row.attempt, blockedReason: reason, nextAttemptAt: rerunAt }))
+	const res = DB.run(ctx, Q.blockRunning({ id: row.id, attempt: row.attempt, blockedReason: reason, nextAttemptAt: rerunAt }))
 	if (res.changes > 0 && unblock.kind === 'signal') waitFor(row, unblock.source, runCtx.signal, now)
 	return { code: 'blocked', reason }
 }
@@ -1024,7 +1015,7 @@ function listen(source: WaitSource, fire: () => void): () => void {
 
 function unblocked(rowId: number, blockedAt: number) {
 	try {
-		DB.run(db(), unblockRun({ id: rowId, nextAttemptAt: new Date(Math.max(Date.now(), blockedAt + SJOB.MIN_BLOCKED_RERUN_MS)) }))
+		DB.run(db(), Q.unblockRun({ id: rowId, nextAttemptAt: new Date(Math.max(Date.now(), blockedAt + SJOB.MIN_BLOCKED_RERUN_MS)) }))
 	} catch (err) {
 		log.error(err, 'recording that a blocked run can go again failed')
 	}
@@ -1084,7 +1075,7 @@ export function scheduleOnce(
 	}
 	const stored = DB.get(
 		db(),
-		upsertOnceRun({ pluginId, serverId: toServerId(serverId), jobId, key: runKey, dueAt: new Date(at), payload: encoded }),
+		Q.upsertOnceRun({ pluginId, serverId: toServerId(serverId), jobId, key: runKey, dueAt: new Date(at), payload: encoded }),
 	)
 	if (!stored) return { code: 'err:busy', message: `the run under "${runKey}" is running; schedule it again once it has finished` }
 	stopWait(stored.id)
@@ -1101,22 +1092,22 @@ export type CancelResult = { code: 'ok'; stopping: boolean } | { code: 'err:not-
  */
 export function cancel(pluginId: string, serverId: string | null, jobId: string, key: string, by: Manual | null): CancelResult {
 	const ctx = db()
-	const row = DB.get(ctx, runByKey({ pluginId, serverId: toServerId(serverId), jobId, key }))
+	const row = DB.get(ctx, Q.runByKey({ pluginId, serverId: toServerId(serverId), jobId, key }))
 	if (!row) return { code: 'err:not-found' }
 	if (row.state === 'running') {
 		const entry = running.get(row.id)
 		if (!entry) return { code: 'err:not-found' }
 		if (!entry.cancelledBy) {
 			entry.cancelledBy = { by }
-			DB.run(ctx, requestCancel({ id: row.id }))
+			DB.run(ctx, Q.requestCancel({ id: row.id }))
 			entry.controller.abort(new DOMException('the run was cancelled', 'AbortError'))
 		}
 		return { code: 'ok', stopping: true }
 	}
 	const closed =
 		row.kind === 'once'
-			? DB.run(ctx, deleteOpenRun({ id: row.id, state: row.state }))
-			: DB.run(ctx, cancelOpenRun({ id: row.id, state: row.state, finishedAt: new Date() }))
+			? DB.run(ctx, Q.deleteOpenRun({ id: row.id, state: row.state }))
+			: DB.run(ctx, Q.cancelOpenRun({ id: row.id, state: row.state, finishedAt: new Date() }))
 	if (closed.changes === 0) return { code: 'err:not-found' }
 	stopWait(row.id)
 	wake()
@@ -1147,12 +1138,12 @@ export async function runNow(pluginId: string, serverId: string | null, jobId: s
 		const ctx = db()
 		let row: Row | undefined
 		if (key !== null) {
-			row = DB.get(ctx, openOnceRunByKey({ pluginId, serverId: toServerId(serverId), jobId, key }))
+			row = DB.get(ctx, Q.openOnceRunByKey({ pluginId, serverId: toServerId(serverId), jobId, key }))
 		} else {
 			const now = Date.now()
 			row = DB.get(
 				ctx,
-				insertManualRun({ pluginId, serverId: toServerId(serverId), jobId, key: SJOB.manualKey(now), dueAt: new Date(now) }),
+				Q.insertManualRun({ pluginId, serverId: toServerId(serverId), jobId, key: SJOB.manualKey(now), dueAt: new Date(now) }),
 			)
 		}
 		if (!row) return { code: 'err:not-found' as const, message: 'no such pending run' }
@@ -1175,8 +1166,8 @@ export function listJobs(pluginId: string): SJOB.JobView[] {
 	if (!host) return []
 	const ctx = db()
 	const now = Date.now()
-	const latestFinished = DB.all(ctx, latestFinishedOfPlugin({ pluginId }))
-	const open = DB.all(ctx, openRunsOfPlugin({ pluginId }))
+	const latestFinished = DB.all(ctx, Q.latestFinishedOfPlugin({ pluginId }))
+	const open = DB.all(ctx, Q.openRunsOfPlugin({ pluginId }))
 	const last = lastRecurringRuns(ctx, pluginId)
 	return [...host.jobs.values()].map((job): SJOB.JobView => ({
 		id: job.id,
@@ -1220,7 +1211,7 @@ export function listJobs(pluginId: string): SJOB.JobView[] {
 // a plugin's data is being deleted
 export function purge(ctx: C.Db, pluginId: string) {
 	stopWaits(pluginId)
-	DB.run(ctx, deletePluginRuns({ pluginId }))
+	DB.run(ctx, Q.deletePluginRuns({ pluginId }))
 }
 
 // -------- boot --------
@@ -1232,8 +1223,8 @@ export function setup() {
 	// threw its abort.
 	const ctx = db()
 	const now = new Date()
-	DB.run(ctx, closeCancellingRuns({ at: now }))
-	DB.run(ctx, retryInterruptedRuns({ at: now }))
+	DB.run(ctx, Q.closeCancellingRuns({ at: now }))
+	DB.run(ctx, Q.retryInterruptedRuns({ at: now }))
 	CleanupSys.register(() => {
 		stopped = true
 		if (timer) clearTimeout(timer)

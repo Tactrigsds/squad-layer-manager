@@ -254,54 +254,55 @@ const module = initModule('rbac')
 const orpcBase = getOrpcBase(module)
 const SQL = Sql.forModule(module)
 
-const eosIdP = SQL.params({ eosId: Schema.players.eosId })
-const steamIdByEosId = SQL.def(
-	'steamIdByEosId',
-	eosIdP,
-	SQL.select({ steamId: Schema.players.steamId }).from(Schema.players).where(E.eq(Schema.players.eosId, eosIdP.eosId)),
-)
-
-const ownerP = SQL.params({ userId: Schema.filters.ownerUserId })
-const ownedFilters = SQL.def(
-	'ownedFilters',
-	ownerP,
-	SQL.select({ filterId: Schema.filters.id }).from(Schema.filters).where(E.eq(Schema.filters.ownerUserId, ownerP.userId)),
-)
-const ownedRotations = SQL.def(
-	'ownedRotations',
-	ownerP,
-	SQL.select({ rotationId: Schema.rotations.id }).from(Schema.rotations).where(E.eq(Schema.rotations.ownerUserId, ownerP.userId)),
-)
-const contributorP = SQL.params({ userId: Schema.filterUserContributors.userId })
-const userContributedFilters = SQL.def(
-	'userContributedFilters',
-	contributorP,
-	SQL.select({ filterId: Schema.filterUserContributors.filterId })
-		.from(Schema.filterUserContributors)
-		.where(E.eq(Schema.filterUserContributors.userId, contributorP.userId)),
-)
-const userContributedRotations = SQL.def(
-	'userContributedRotations',
-	contributorP,
-	SQL.select({ rotationId: Schema.rotationUserContributors.rotationId })
-		.from(Schema.rotationUserContributors)
-		.where(E.eq(Schema.rotationUserContributors.userId, contributorP.userId)),
-)
-const roleIdsP = SQL.params({ roleIds: SQL.list(Schema.filterRoleContributors.roleId) })
-const roleContributedFilters = SQL.def(
-	'roleContributedFilters',
-	roleIdsP,
-	SQL.select({ filterId: Schema.filterRoleContributors.filterId })
-		.from(Schema.filterRoleContributors)
-		.where(SQL.inJson(Schema.filterRoleContributors.roleId, roleIdsP.roleIds)),
-)
-const roleContributedRotations = SQL.def(
-	'roleContributedRotations',
-	roleIdsP,
-	SQL.select({ rotationId: Schema.rotationRoleContributors.rotationId })
-		.from(Schema.rotationRoleContributors)
-		.where(SQL.inJson(Schema.rotationRoleContributors.roleId, roleIdsP.roleIds)),
-)
+namespace Q {
+	const eosIdP = SQL.params({ eosId: Schema.players.eosId })
+	export const steamIdByEosId = SQL.def(
+		'steamIdByEosId',
+		eosIdP,
+		SQL.select({ steamId: Schema.players.steamId }).from(Schema.players).where(E.eq(Schema.players.eosId, eosIdP.eosId)),
+	)
+	const ownerP = SQL.params({ userId: Schema.filters.ownerUserId })
+	export const ownedFilters = SQL.def(
+		'ownedFilters',
+		ownerP,
+		SQL.select({ filterId: Schema.filters.id }).from(Schema.filters).where(E.eq(Schema.filters.ownerUserId, ownerP.userId)),
+	)
+	export const ownedRotations = SQL.def(
+		'ownedRotations',
+		ownerP,
+		SQL.select({ rotationId: Schema.rotations.id }).from(Schema.rotations).where(E.eq(Schema.rotations.ownerUserId, ownerP.userId)),
+	)
+	const contributorP = SQL.params({ userId: Schema.filterUserContributors.userId })
+	export const userContributedFilters = SQL.def(
+		'userContributedFilters',
+		contributorP,
+		SQL.select({ filterId: Schema.filterUserContributors.filterId })
+			.from(Schema.filterUserContributors)
+			.where(E.eq(Schema.filterUserContributors.userId, contributorP.userId)),
+	)
+	export const userContributedRotations = SQL.def(
+		'userContributedRotations',
+		contributorP,
+		SQL.select({ rotationId: Schema.rotationUserContributors.rotationId })
+			.from(Schema.rotationUserContributors)
+			.where(E.eq(Schema.rotationUserContributors.userId, contributorP.userId)),
+	)
+	const roleIdsP = SQL.params({ roleIds: SQL.list(Schema.filterRoleContributors.roleId) })
+	export const roleContributedFilters = SQL.def(
+		'roleContributedFilters',
+		roleIdsP,
+		SQL.select({ filterId: Schema.filterRoleContributors.filterId })
+			.from(Schema.filterRoleContributors)
+			.where(SQL.inJson(Schema.filterRoleContributors.roleId, roleIdsP.roleIds)),
+	)
+	export const roleContributedRotations = SQL.def(
+		'roleContributedRotations',
+		roleIdsP,
+		SQL.select({ rotationId: Schema.rotationRoleContributors.rotationId })
+			.from(Schema.rotationRoleContributors)
+			.where(SQL.inJson(Schema.rotationRoleContributors.roleId, roleIdsP.roleIds)),
+	)
+}
 
 export const getRbacForDiscordUser = Instr.spanOp(
 	'getRbacForDiscordUser',
@@ -340,7 +341,7 @@ export const getRbacForPlayer = Instr.spanOp(
 		if (cached) return await cached
 		let steamId: bigint | undefined
 		if (ids.steam === undefined) {
-			const row = DB.get(ctx, steamIdByEosId({ eosId: ids.eos }))
+			const row = DB.get(ctx, Q.steamIdByEosId({ eosId: ids.eos }))
 			if (row && row.steamId) steamId = row.steamId
 		} else {
 			steamId = BigInt(ids.steam)
@@ -646,25 +647,25 @@ async function resolveSuperUserPerms(userId: bigint) {
 function resolveInferredRoleAssignments(ctx: C.Db, baseRoles: RBAC.Role[], discordUserId?: bigint): RBAC.Role[] {
 	const roles: RBAC.Role[] = []
 	if (discordUserId) {
-		for (const { filterId } of DB.all(ctx, ownedFilters({ userId: discordUserId }))) {
+		for (const { filterId } of DB.all(ctx, Q.ownedFilters({ userId: discordUserId }))) {
 			RBAC.Role.push(roles, { type: 'filter-owner', filterId })
 		}
-		for (const { filterId } of DB.all(ctx, userContributedFilters({ userId: discordUserId }))) {
+		for (const { filterId } of DB.all(ctx, Q.userContributedFilters({ userId: discordUserId }))) {
 			RBAC.Role.push(roles, { type: 'filter-user-contributor', filterId })
 		}
-		for (const { rotationId } of DB.all(ctx, ownedRotations({ userId: discordUserId }))) {
+		for (const { rotationId } of DB.all(ctx, Q.ownedRotations({ userId: discordUserId }))) {
 			RBAC.Role.push(roles, { type: 'rotation-owner', rotationId })
 		}
-		for (const { rotationId } of DB.all(ctx, userContributedRotations({ userId: discordUserId }))) {
+		for (const { rotationId } of DB.all(ctx, Q.userContributedRotations({ userId: discordUserId }))) {
 			RBAC.Role.push(roles, { type: 'rotation-user-contributor', rotationId })
 		}
 	}
 	if (baseRoles.length > 0) {
 		const roleIds = baseRoles.map((r) => r.type)
-		for (const { filterId } of DB.all(ctx, roleContributedFilters({ roleIds }))) {
+		for (const { filterId } of DB.all(ctx, Q.roleContributedFilters({ roleIds }))) {
 			RBAC.Role.push(roles, { type: 'filter-role-contributor', filterId })
 		}
-		for (const { rotationId } of DB.all(ctx, roleContributedRotations({ roleIds }))) {
+		for (const { rotationId } of DB.all(ctx, Q.roleContributedRotations({ roleIds }))) {
 			RBAC.Role.push(roles, { type: 'rotation-role-contributor', rotationId })
 		}
 	}

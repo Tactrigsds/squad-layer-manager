@@ -61,19 +61,21 @@ export function setup() {
 // and so users.server does not have to know this cache exists.
 export const linksChanged$ = new Rx.Subject<void>()
 
-const allLinks = SQL.def(
-	'allLinks',
-	SQL.params({}),
-	SQL.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id, discordId: Schema.linkedSteamAccounts.discordId }).from(
-		Schema.linkedSteamAccounts,
-	),
-	{ scans: ['linkedSteamAccounts'] },
-)
+namespace Q {
+	export const allLinks = SQL.def(
+		'allLinks',
+		SQL.params({}),
+		SQL.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id, discordId: Schema.linkedSteamAccounts.discordId }).from(
+			Schema.linkedSteamAccounts,
+		),
+		{ scans: ['linkedSteamAccounts'] },
+	)
+}
 
 async function rebuild(): Promise<void> {
 	try {
 		const ctx = DB.withDb(CS.init())
-		const links = DB.all(ctx, allLinks({}))
+		const links = DB.all(ctx, Q.allLinks({}))
 		if (links.length === 0) {
 			rolesBySteamId = new Map()
 			return

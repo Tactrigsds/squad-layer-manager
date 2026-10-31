@@ -19,21 +19,22 @@ const module = initModule('match-events-cache')
 const SQL = Sql.forModule(module)
 let log!: CS.Logger
 
-const matchIdsP = SQL.params({ ids: SQL.list(Schema.appEvents.matchId) })
-const appEventsOfMatches = SQL.def(
-	'appEventsOfMatches',
-	matchIdsP,
-	SQL.select().from(Schema.appEvents).where(SQL.inJson(Schema.appEvents.matchId, matchIdsP.ids)).orderBy(E.asc(Schema.appEvents.time)),
-)
-
-const playerIdsP = SQL.params({ ids: SQL.list(Schema.players.eosId) })
-const playerNames = SQL.def(
-	'playerNames',
-	playerIdsP,
-	SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
-		.from(Schema.players)
-		.where(SQL.inJson(Schema.players.eosId, playerIdsP.ids)),
-)
+namespace Q {
+	const matchIdsP = SQL.params({ ids: SQL.list(Schema.appEvents.matchId) })
+	export const appEventsOfMatches = SQL.def(
+		'appEventsOfMatches',
+		matchIdsP,
+		SQL.select().from(Schema.appEvents).where(SQL.inJson(Schema.appEvents.matchId, matchIdsP.ids)).orderBy(E.asc(Schema.appEvents.time)),
+	)
+	const playerIdsP = SQL.params({ ids: SQL.list(Schema.players.eosId) })
+	export const playerNames = SQL.def(
+		'playerNames',
+		playerIdsP,
+		SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
+			.from(Schema.players)
+			.where(SQL.inJson(Schema.players.eosId, playerIdsP.ids)),
+	)
+}
 
 export function setup() {
 	log = module.getLogger()
@@ -66,7 +67,7 @@ export const readMatchFeeds = Instr.spanOp(
 		// isFeedVisible is what keeps audit-only rows (a queue-driven MAP_SET) from duplicating their cause.
 		// app events are not archived: the table is three orders of magnitude smaller than serverEvents and is
 		// read by the global audit log on a time cursor, which a per-match blob cannot serve.
-		const rawAppEvents = DB.all(ctx, appEventsOfMatches({ ids: matchIds }))
+		const rawAppEvents = DB.all(ctx, Q.appEventsOfMatches({ ids: matchIds }))
 
 		const appEventsByMatch = new Map<number, AppEvents.AppEvent[]>()
 		for (const appEvent of AppEvents.fromRows(ctx, rawAppEvents, 'the match feed')) {
@@ -196,7 +197,7 @@ export function reviveNoops(ctx: C.Db, events: CHAT.EventEnriched[], opts: { kee
 	}
 	if (missing.size === 0) return events.filter((e) => !revivable(e) && kept(e))
 
-	const nameRows = DB.all(ctx, playerNames({ ids: [...missing] }))
+	const nameRows = DB.all(ctx, Q.playerNames({ ids: [...missing] }))
 	const names = new Map(nameRows.map((r) => [r.eosId, r]))
 	const synth = (value: unknown) => {
 		if (typeof value !== 'string') return value

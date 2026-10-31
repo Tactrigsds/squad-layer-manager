@@ -53,132 +53,11 @@ export const userColumns = {
 	nickname: Schema.users.nickname,
 	username: Schema.discordAccounts.username,
 }
-
-const userIdP = SQL.params({ id: Schema.users.discordId })
-const userById = SQL.def(
-	'userById',
-	userIdP,
-	SQL.select(userColumns)
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
-		.where(E.eq(Schema.users.discordId, userIdP.id)),
-)
-const userIdsP = SQL.params({ ids: SQL.list(Schema.users.discordId) })
-const usersByIds = SQL.def(
-	'usersByIds',
-	userIdsP,
-	SQL.select(userColumns)
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
-		.where(SQL.inJson(Schema.users.discordId, userIdsP.ids)),
-)
-const allUsers = SQL.def(
-	'allUsers',
-	SQL.params({}),
-	SQL.select(userColumns)
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId)),
-	{ scans: ['users'] },
-)
-const userRow = SQL.def('userRow', userIdP, SQL.select().from(Schema.users).where(E.eq(Schema.users.discordId, userIdP.id)))
-const setNicknameP = SQL.params({ id: Schema.users.discordId, nickname: Schema.users.nickname })
-const setNickname = SQL.def(
-	'setNickname',
-	setNicknameP,
-	SQL.update(Schema.users).set({ nickname: setNicknameP.nickname }).where(E.eq(Schema.users.discordId, setNicknameP.id)),
-)
-
-const discordAccountP = SQL.params({
-	discordId: Schema.discordAccounts.discordId,
-	username: Schema.discordAccounts.username,
-	now: Schema.discordAccounts.updatedAt,
-})
-const upsertDiscordAccount = SQL.def(
-	'upsertDiscordAccount',
-	discordAccountP,
-	SQL.insert(Schema.discordAccounts)
-		.values({ discordId: discordAccountP.discordId, username: discordAccountP.username, updatedAt: discordAccountP.now })
-		.onConflictDoUpdate({
-			target: Schema.discordAccounts.discordId,
-			set: { username: E.sql`excluded.username`, updatedAt: E.sql`excluded.updatedAt` },
-		}),
-)
-
-const steamIdP = SQL.params({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
-const linkOwner = SQL.def(
-	'linkOwner',
-	steamIdP,
-	SQL.select({ discordId: Schema.linkedSteamAccounts.discordId })
-		.from(Schema.linkedSteamAccounts)
-		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steam64Id)),
-)
-const steamIdsP = SQL.params({ ids: SQL.list(Schema.linkedSteamAccounts.steam64Id) })
-const linkOwners = SQL.def(
-	'linkOwners',
-	steamIdsP,
-	SQL.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id, discordId: Schema.linkedSteamAccounts.discordId })
-		.from(Schema.linkedSteamAccounts)
-		.where(SQL.inJson(Schema.linkedSteamAccounts.steam64Id, steamIdsP.ids)),
-)
-const linkOwnerIdP = SQL.params({ discordId: Schema.linkedSteamAccounts.discordId })
-const linkedSteamIds = SQL.def(
-	'linkedSteamIds',
-	linkOwnerIdP,
-	SQL.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
-		.from(Schema.linkedSteamAccounts)
-		.where(E.eq(Schema.linkedSteamAccounts.discordId, linkOwnerIdP.discordId)),
-)
-const isConnectionLinkOf = (discordId: typeof linkOwnerIdP.discordId) =>
+const isConnectionLinkOf = (discordId: typeof Q.linkOwnerIdP.discordId) =>
 	E.and(
 		E.eq(Schema.linkedSteamAccounts.discordId, discordId),
 		E.eq(Schema.linkedSteamAccounts.origin, SQL.lit('discord-connection' as const)),
 	)
-const connectionLinkedSteamIds = SQL.def(
-	'connectionLinkedSteamIds',
-	linkOwnerIdP,
-	SQL.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
-		.from(Schema.linkedSteamAccounts)
-		.where(isConnectionLinkOf(linkOwnerIdP.discordId)),
-)
-const ownLinksP = SQL.params({ discordId: Schema.linkedSteamAccounts.discordId, ids: SQL.list(Schema.linkedSteamAccounts.steam64Id) })
-const deleteConnectionLinks = SQL.def(
-	'deleteConnectionLinks',
-	ownLinksP,
-	SQL.delete(Schema.linkedSteamAccounts)
-		.where(E.and(isConnectionLinkOf(ownLinksP.discordId), SQL.inJson(Schema.linkedSteamAccounts.steam64Id, ownLinksP.ids)))
-		.returning({ steam64Id: Schema.linkedSteamAccounts.steam64Id }),
-)
-const deleteOwnLinks = SQL.def(
-	'deleteOwnLinks',
-	ownLinksP,
-	SQL.delete(Schema.linkedSteamAccounts).where(
-		E.and(
-			E.eq(Schema.linkedSteamAccounts.discordId, ownLinksP.discordId),
-			SQL.inJson(Schema.linkedSteamAccounts.steam64Id, ownLinksP.ids),
-		),
-	),
-)
-const deleteLink = SQL.def(
-	'deleteLink',
-	steamIdP,
-	SQL.delete(Schema.linkedSteamAccounts).where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steam64Id)),
-)
-const linkP = SQL.params({
-	steam64Id: Schema.linkedSteamAccounts.steam64Id,
-	discordId: Schema.linkedSteamAccounts.discordId,
-	origin: Schema.linkedSteamAccounts.origin,
-	linkedBy: Schema.linkedSteamAccounts.linkedBy,
-	createdAt: Schema.linkedSteamAccounts.createdAt,
-})
-const insertLink = SQL.def('insertLink', linkP, SQL.insert(Schema.linkedSteamAccounts).values(linkP))
-const insertLinkIfFree = SQL.def(
-	'insertLinkIfFree',
-	linkP,
-	SQL.insert(Schema.linkedSteamAccounts)
-		.values(linkP)
-		.onConflictDoNothing()
-		.returning({ steam64Id: Schema.linkedSteamAccounts.steam64Id }),
-)
 
 const linkColumns = {
 	steam64Id: Schema.linkedSteamAccounts.steam64Id,
@@ -188,40 +67,160 @@ const linkColumns = {
 	createdAt: Schema.linkedSteamAccounts.createdAt,
 	username: Schema.discordAccounts.username,
 }
-const linksOfDiscordAccount = SQL.def(
-	'linksOfDiscordAccount',
-	linkOwnerIdP,
-	SQL.select(linkColumns)
-		.from(Schema.linkedSteamAccounts)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.linkedSteamAccounts.discordId))
-		.where(E.eq(Schema.linkedSteamAccounts.discordId, linkOwnerIdP.discordId)),
-)
-const linkOfSteamAccount = SQL.def(
-	'linkOfSteamAccount',
-	steamIdP,
-	SQL.select(linkColumns)
-		.from(Schema.linkedSteamAccounts)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.linkedSteamAccounts.discordId))
-		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steam64Id)),
-)
 
-const userBySteamId = SQL.def(
-	'userBySteamId',
-	steamIdP,
-	SQL.select(userColumns)
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
-		.innerJoin(Schema.linkedSteamAccounts, E.eq(Schema.users.discordId, Schema.linkedSteamAccounts.discordId))
-		.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steam64Id)),
-)
-const userPlayerIds = SQL.def(
-	'userPlayerIds',
-	linkOwnerIdP,
-	SQL.select({ eosid: Schema.players.eosId, steamId: Schema.players.steamId })
-		.from(Schema.linkedSteamAccounts)
-		.leftJoin(Schema.players, E.eq(Schema.linkedSteamAccounts.steam64Id, Schema.players.steamId))
-		.where(E.eq(Schema.linkedSteamAccounts.discordId, linkOwnerIdP.discordId)),
-)
+namespace Q {
+	const userIdP = SQL.params({ id: Schema.users.discordId })
+	export const userById = SQL.def(
+		'userById',
+		userIdP,
+		SQL.select(userColumns)
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
+			.where(E.eq(Schema.users.discordId, userIdP.id)),
+	)
+	const userIdsP = SQL.params({ ids: SQL.list(Schema.users.discordId) })
+	export const usersByIds = SQL.def(
+		'usersByIds',
+		userIdsP,
+		SQL.select(userColumns)
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
+			.where(SQL.inJson(Schema.users.discordId, userIdsP.ids)),
+	)
+	export const allUsers = SQL.def(
+		'allUsers',
+		SQL.params({}),
+		SQL.select(userColumns)
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId)),
+		{ scans: ['users'] },
+	)
+	export const userRow = SQL.def('userRow', userIdP, SQL.select().from(Schema.users).where(E.eq(Schema.users.discordId, userIdP.id)))
+	const setNicknameP = SQL.params({ id: Schema.users.discordId, nickname: Schema.users.nickname })
+	export const setNickname = SQL.def(
+		'setNickname',
+		setNicknameP,
+		SQL.update(Schema.users).set({ nickname: setNicknameP.nickname }).where(E.eq(Schema.users.discordId, setNicknameP.id)),
+	)
+	const discordAccountP = SQL.params({
+		discordId: Schema.discordAccounts.discordId,
+		username: Schema.discordAccounts.username,
+		now: Schema.discordAccounts.updatedAt,
+	})
+	export const upsertDiscordAccount = SQL.def(
+		'upsertDiscordAccount',
+		discordAccountP,
+		SQL.insert(Schema.discordAccounts)
+			.values({ discordId: discordAccountP.discordId, username: discordAccountP.username, updatedAt: discordAccountP.now })
+			.onConflictDoUpdate({
+				target: Schema.discordAccounts.discordId,
+				set: { username: E.sql`excluded.username`, updatedAt: E.sql`excluded.updatedAt` },
+			}),
+	)
+	const steamIdP = SQL.params({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
+	export const linkOwner = SQL.def(
+		'linkOwner',
+		steamIdP,
+		SQL.select({ discordId: Schema.linkedSteamAccounts.discordId })
+			.from(Schema.linkedSteamAccounts)
+			.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steam64Id)),
+	)
+	const steamIdsP = SQL.params({ ids: SQL.list(Schema.linkedSteamAccounts.steam64Id) })
+	export const linkOwners = SQL.def(
+		'linkOwners',
+		steamIdsP,
+		SQL.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id, discordId: Schema.linkedSteamAccounts.discordId })
+			.from(Schema.linkedSteamAccounts)
+			.where(SQL.inJson(Schema.linkedSteamAccounts.steam64Id, steamIdsP.ids)),
+	)
+	export const linkOwnerIdP = SQL.params({ discordId: Schema.linkedSteamAccounts.discordId })
+	export const linkedSteamIds = SQL.def(
+		'linkedSteamIds',
+		linkOwnerIdP,
+		SQL.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
+			.from(Schema.linkedSteamAccounts)
+			.where(E.eq(Schema.linkedSteamAccounts.discordId, linkOwnerIdP.discordId)),
+	)
+	export const connectionLinkedSteamIds = SQL.def(
+		'connectionLinkedSteamIds',
+		linkOwnerIdP,
+		SQL.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id })
+			.from(Schema.linkedSteamAccounts)
+			.where(isConnectionLinkOf(linkOwnerIdP.discordId)),
+	)
+	const ownLinksP = SQL.params({ discordId: Schema.linkedSteamAccounts.discordId, ids: SQL.list(Schema.linkedSteamAccounts.steam64Id) })
+	export const deleteConnectionLinks = SQL.def(
+		'deleteConnectionLinks',
+		ownLinksP,
+		SQL.delete(Schema.linkedSteamAccounts)
+			.where(E.and(isConnectionLinkOf(ownLinksP.discordId), SQL.inJson(Schema.linkedSteamAccounts.steam64Id, ownLinksP.ids)))
+			.returning({ steam64Id: Schema.linkedSteamAccounts.steam64Id }),
+	)
+	export const deleteOwnLinks = SQL.def(
+		'deleteOwnLinks',
+		ownLinksP,
+		SQL.delete(Schema.linkedSteamAccounts).where(
+			E.and(
+				E.eq(Schema.linkedSteamAccounts.discordId, ownLinksP.discordId),
+				SQL.inJson(Schema.linkedSteamAccounts.steam64Id, ownLinksP.ids),
+			),
+		),
+	)
+	export const deleteLink = SQL.def(
+		'deleteLink',
+		steamIdP,
+		SQL.delete(Schema.linkedSteamAccounts).where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steam64Id)),
+	)
+	const linkP = SQL.params({
+		steam64Id: Schema.linkedSteamAccounts.steam64Id,
+		discordId: Schema.linkedSteamAccounts.discordId,
+		origin: Schema.linkedSteamAccounts.origin,
+		linkedBy: Schema.linkedSteamAccounts.linkedBy,
+		createdAt: Schema.linkedSteamAccounts.createdAt,
+	})
+	export const insertLink = SQL.def('insertLink', linkP, SQL.insert(Schema.linkedSteamAccounts).values(linkP))
+	export const insertLinkIfFree = SQL.def(
+		'insertLinkIfFree',
+		linkP,
+		SQL.insert(Schema.linkedSteamAccounts)
+			.values(linkP)
+			.onConflictDoNothing()
+			.returning({ steam64Id: Schema.linkedSteamAccounts.steam64Id }),
+	)
+	export const linksOfDiscordAccount = SQL.def(
+		'linksOfDiscordAccount',
+		linkOwnerIdP,
+		SQL.select(linkColumns)
+			.from(Schema.linkedSteamAccounts)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.linkedSteamAccounts.discordId))
+			.where(E.eq(Schema.linkedSteamAccounts.discordId, linkOwnerIdP.discordId)),
+	)
+	export const linkOfSteamAccount = SQL.def(
+		'linkOfSteamAccount',
+		steamIdP,
+		SQL.select(linkColumns)
+			.from(Schema.linkedSteamAccounts)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.linkedSteamAccounts.discordId))
+			.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steam64Id)),
+	)
+	export const userBySteamId = SQL.def(
+		'userBySteamId',
+		steamIdP,
+		SQL.select(userColumns)
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
+			.innerJoin(Schema.linkedSteamAccounts, E.eq(Schema.users.discordId, Schema.linkedSteamAccounts.discordId))
+			.where(E.eq(Schema.linkedSteamAccounts.steam64Id, steamIdP.steam64Id)),
+	)
+	export const userPlayerIds = SQL.def(
+		'userPlayerIds',
+		linkOwnerIdP,
+		SQL.select({ eosid: Schema.players.eosId, steamId: Schema.players.steamId })
+			.from(Schema.linkedSteamAccounts)
+			.leftJoin(Schema.players, E.eq(Schema.linkedSteamAccounts.steam64Id, Schema.players.steamId))
+			.where(E.eq(Schema.linkedSteamAccounts.discordId, linkOwnerIdP.discordId)),
+	)
+}
 
 export function recordUserAccount(
 	ctx: C.Db,
@@ -294,13 +293,13 @@ export async function consumeSteamLinkCode(ctx: C.Db & CS.AbortSignal, input: { 
 	const discordId = pending.discordId
 
 	const res = DB.transaction(ctx, {}, (ctx) => {
-		const existing = DB.get(ctx, linkOwner({ steam64Id: input.steamId }))
+		const existing = DB.get(ctx, Q.linkOwner({ steam64Id: input.steamId }))
 		// left live deliberately: the caller can retry once an admin has removed the other link, and burning the code
 		// on a failure they cannot act on from in game just sends them back to the website for nothing
 		if (existing && existing.discordId !== discordId) return { code: 'err:steam-already-linked' as const }
 		if (existing) return { code: 'ok' as const, discordId }
 
-		DB.run(ctx, insertLink({ steam64Id: input.steamId, discordId, origin: 'self-serve', linkedBy: discordId, createdAt: new Date() }))
+		DB.run(ctx, Q.insertLink({ steam64Id: input.steamId, discordId, origin: 'self-serve', linkedBy: discordId, createdAt: new Date() }))
 		recordUserAccount(ctx, discordId, 'steam-linked', { steamIds: [input.steamId.toString()] })
 		return { code: 'ok' as const, discordId }
 	})
@@ -320,13 +319,13 @@ export function syncDiscordConnectionLinks(ctx: C.Db, discordUser: { id: bigint;
 	let res: { added: bigint[]; removed: bigint[]; conflicts: bigint[] }
 	try {
 		res = DB.transaction(ctx, {}, (ctx) => {
-			const owners = connectedSteamIds.length > 0 ? DB.all(ctx, linkOwners({ ids: connectedSteamIds })) : []
+			const owners = connectedSteamIds.length > 0 ? DB.all(ctx, Q.linkOwners({ ids: connectedSteamIds })) : []
 			const ownerBySteamId = new Map(owners.map((row) => [row.steam64Id, row.discordId]))
 			const toAdd = connectedSteamIds.filter((id) => !ownerBySteamId.has(id))
 			const conflicts = connectedSteamIds.filter((id) => (ownerBySteamId.get(id) ?? discordId) !== discordId)
 
 			const connected = new Set(connectedSteamIds)
-			const toRemove = DB.all(ctx, connectionLinkedSteamIds({ discordId }))
+			const toRemove = DB.all(ctx, Q.connectionLinkedSteamIds({ discordId }))
 				.map((row) => row.steam64Id)
 				.filter((id) => !connected.has(id))
 
@@ -337,7 +336,7 @@ export function syncDiscordConnectionLinks(ctx: C.Db, discordUser: { id: bigint;
 				for (const steam64Id of toAdd) {
 					const row = DB.get(
 						ctx,
-						insertLinkIfFree({ steam64Id, discordId, origin: 'discord-connection', linkedBy: null, createdAt: new Date() }),
+						Q.insertLinkIfFree({ steam64Id, discordId, origin: 'discord-connection', linkedBy: null, createdAt: new Date() }),
 					)
 					if (row) added.push(row.steam64Id)
 				}
@@ -345,7 +344,7 @@ export function syncDiscordConnectionLinks(ctx: C.Db, discordUser: { id: bigint;
 			}
 			let removed: bigint[] = []
 			if (toRemove.length > 0) {
-				removed = DB.all(ctx, deleteConnectionLinks({ discordId, ids: toRemove })).map((row) => row.steam64Id)
+				removed = DB.all(ctx, Q.deleteConnectionLinks({ discordId, ids: toRemove })).map((row) => row.steam64Id)
 				if (removed.length > 0) recordUserAccount(ctx, discordId, 'steam-unlinked', { steamIds: removed.map(String) })
 			}
 			return { code: 'ok' as const, added, removed, conflicts }
@@ -401,7 +400,7 @@ export const orpcRouter = {
 	}),
 
 	getUsers: orpcBase.input(z.array(USR.UserIdSchema).optional()).handler(async ({ context, input }) => {
-		const dbUsers = input ? getDbUsers(context, input) : DB.all(context, allUsers({}))
+		const dbUsers = input ? getDbUsers(context, input) : DB.all(context, Q.allUsers({}))
 		const users = await buildUsers(dbUsers)
 		return { code: 'ok' as const, users }
 	}),
@@ -409,7 +408,7 @@ export const orpcRouter = {
 	// every link on the caller's account, including ones an admin assigned: a link decides what the person is
 	// entitled to in game, so being able to see one somebody else made is the point.
 	getMyLinkedSteamAccounts: orpcBase.handler(async ({ context }) => {
-		const links = DB.all(context, linksOfDiscordAccount({ discordId: context.user.discordId }))
+		const links = DB.all(context, Q.linksOfDiscordAccount({ discordId: context.user.discordId }))
 		return { code: 'ok' as const, links: await resolveLinkActors(context, links) }
 	}),
 
@@ -437,7 +436,7 @@ export const orpcRouter = {
 			}
 			const res = DB.transaction(context, {}, (context) => {
 				const discordId = context.user.discordId
-				const currentRows = DB.all(context, linkedSteamIds({ discordId }))
+				const currentRows = DB.all(context, Q.linkedSteamIds({ discordId }))
 				const current = new Set(currentRows.map((r) => r.steam64Id))
 				const next = new Set(parsed)
 				const added = parsed.filter((id) => !current.has(id))
@@ -448,7 +447,7 @@ export const orpcRouter = {
 				}
 
 				if (removed.length > 0) {
-					DB.run(context, deleteOwnLinks({ discordId, ids: removed }))
+					DB.run(context, Q.deleteOwnLinks({ discordId, ids: removed }))
 					recordUserAccount(context, discordId, 'steam-unlinked', { steamIds: removed.map((id) => id.toString()) })
 				}
 				return { code: 'ok' as const, steamIds: parsed.map((id) => id.toString()) }
@@ -469,7 +468,7 @@ export const orpcRouter = {
 		const parsed = ZodUtils.Steam64IdSchema.safeParse(input.steamId)
 		if (!parsed.success) return { code: 'err:invalid-steam-id' as const, steamId: input.steamId }
 
-		const links = DB.all(context, linkOfSteamAccount({ steam64Id: BigInt(parsed.data) }))
+		const links = DB.all(context, Q.linkOfSteamAccount({ steam64Id: BigInt(parsed.data) }))
 		const [link] = await resolveLinkActors(context, links)
 		return { code: 'ok' as const, link: link ?? null }
 	}),
@@ -498,7 +497,7 @@ export const orpcRouter = {
 			const escalationRes = await Rbac.tryDenySteamLinkEscalation(context, discordId, steam64Id)
 			if (escalationRes) return escalationRes
 			const res = DB.transaction(context, {}, (context) => {
-				const existing = DB.get(context, linkOwner({ steam64Id }))
+				const existing = DB.get(context, Q.linkOwner({ steam64Id }))
 				if (existing && existing.discordId !== discordId) {
 					return {
 						code: 'err:steam-already-linked' as const,
@@ -511,7 +510,7 @@ export const orpcRouter = {
 				recordDiscordAccount(context, discordId, username)
 				DB.run(
 					context,
-					insertLink({ steam64Id, discordId, origin: 'assigned', linkedBy: context.user.discordId, createdAt: new Date() }),
+					Q.insertLink({ steam64Id, discordId, origin: 'assigned', linkedBy: context.user.discordId, createdAt: new Date() }),
 				)
 				recordUserAccount(context, context.user.discordId, 'steam-linked', {
 					steamIds: [steam.data],
@@ -535,7 +534,7 @@ export const orpcRouter = {
 			if (!steam.success) return { code: 'err:invalid-steam-id' as const, steamId: input.steamId }
 
 			const steam64Id = BigInt(steam.data)
-			const linked = DB.get(context, linkOwner({ steam64Id }))
+			const linked = DB.get(context, Q.linkOwner({ steam64Id }))
 			// Removing a link revokes exactly what adding it granted, so it takes the same standing. Read outside the
 			// transaction because the check itself reads the linked set, which the transaction is about to change.
 			if (linked) {
@@ -544,10 +543,10 @@ export const orpcRouter = {
 			}
 
 			const res = DB.transaction(context, {}, (context) => {
-				const existing = DB.get(context, linkOwner({ steam64Id }))
+				const existing = DB.get(context, Q.linkOwner({ steam64Id }))
 				if (!existing) return { code: 'err:not-linked' as const }
 
-				DB.run(context, deleteLink({ steam64Id }))
+				DB.run(context, Q.deleteLink({ steam64Id }))
 				recordUserAccount(context, context.user.discordId, 'steam-unlinked', {
 					steamIds: [steam.data],
 					subjectDiscordId: existing.discordId.toString(),
@@ -566,11 +565,11 @@ export const orpcRouter = {
 		.input(z.string().max(64).optional())
 		.handler(async ({ context, input }) => {
 			return DB.transaction(context, {}, (context) => {
-				const user = DB.get(context, userRow({ id: context.user.discordId }))
+				const user = DB.get(context, Q.userRow({ id: context.user.discordId }))
 				if (!user) return { code: 'err:user-not-found' as const, msg: 'User not found.' }
 
 				const nickname = input?.trim() || null
-				DB.run(context, setNickname({ id: context.user.discordId, nickname }))
+				DB.run(context, Q.setNickname({ id: context.user.discordId, nickname }))
 				DB.afterCommit(context, () => {
 					context.user.nickname = nickname
 					if (nickname) context.user.displayName = nickname
@@ -595,17 +594,17 @@ export const orpcRouter = {
 }
 
 export function getDbUser(ctx: C.Db, discordId: bigint): DbUser | undefined {
-	return DB.get(ctx, userById({ id: discordId }))
+	return DB.get(ctx, Q.userById({ id: discordId }))
 }
 
 export function getDbUsers(ctx: C.Db, discordIds: bigint[]): DbUser[] {
-	return DB.all(ctx, usersByIds({ ids: discordIds }))
+	return DB.all(ctx, Q.usersByIds({ ids: discordIds }))
 }
 
 // Records a discord account, or refreshes the username we last saw for it. Called on sign-in and whenever a link is
 // assigned to somebody who has never signed in, which is the case the table exists for.
 export function recordDiscordAccount(ctx: C.Db, discordId: bigint, username: string) {
-	DB.run(ctx, upsertDiscordAccount({ discordId, username, now: new Date() }))
+	DB.run(ctx, Q.upsertDiscordAccount({ discordId, username, now: new Date() }))
 }
 
 export async function getUser(ctx: C.Db, discordId: bigint) {
@@ -617,23 +616,23 @@ export async function getUser(ctx: C.Db, discordId: bigint) {
 // The discord identity a steam account is linked to, which need not have signed into SLM: a link assigned by an
 // admin is exactly the case where it has not.
 export function findDiscordIdBySteam64Id(ctx: C.Db, steam64Id: bigint): bigint | undefined {
-	return DB.get(ctx, linkOwner({ steam64Id }))?.discordId
+	return DB.get(ctx, Q.linkOwner({ steam64Id }))?.discordId
 }
 
 // resolves an in-game (chat) sender's linked SLM account, e.g. for RBAC checks on chat-initiated actions. Unlike
 // findDiscordIdBySteam64Id this is users-only: somebody who has never signed in has no SLM account to act as.
 export async function findUserBySteam64Id(ctx: C.Db, steam64Id: bigint) {
-	const rawUser = DB.get(ctx, userBySteamId({ steam64Id }))
+	const rawUser = DB.get(ctx, Q.userBySteamId({ steam64Id }))
 	if (!rawUser) return null
 	return buildUser(rawUser)
 }
 
 export function findUserSteamIds(ctx: C.Db, userId: bigint) {
-	return DB.all(ctx, linkedSteamIds({ discordId: userId })).map((row) => row.steam64Id)
+	return DB.all(ctx, Q.linkedSteamIds({ discordId: userId })).map((row) => row.steam64Id)
 }
 
 export function findUserPlayerIds(ctx: C.Db, userId: bigint) {
-	const rows = DB.all(ctx, userPlayerIds({ discordId: userId }))
+	const rows = DB.all(ctx, Q.userPlayerIds({ discordId: userId }))
 	let ids: SM.PlayerIds.IdQuery<'eos' | 'steam'>[] = []
 	for (const row of rows) {
 		if (row.eosid && row.steamId) ids.push({ eos: row.eosid, steam: row.steamId.toString() })

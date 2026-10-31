@@ -24,12 +24,14 @@ const SQL = Sql.forModule(module)
 
 const MAX_LAYER_MATCHES = 100_000
 
-const allServerIds = SQL.def('allServerIds', SQL.params({}), SQL.select({ id: Schema.servers.id }).from(Schema.servers), {
-	scans: ['servers'],
-})
+namespace Q {
+	export const allServerIds = SQL.def('allServerIds', SQL.params({}), SQL.select({ id: Schema.servers.id }).from(Schema.servers), {
+		scans: ['servers'],
+	})
+}
 
 export async function visibleServerIds(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal): Promise<string[]> {
-	const servers = DB.all(ctx, allServerIds({}))
+	const servers = DB.all(ctx, Q.allServerIds({}))
 	const canAccess = await Rbac.getUserAccessCheck(ctx)
 	return servers.flatMap(({ id }) => (canAccess(RBAC.Req.viewServer(id)) ? [id] : []))
 }

@@ -33,64 +33,70 @@ const buildEnv = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.httpSe
 
 let ENV!: ReturnType<typeof buildEnv>
 
-const nowP = SQL.params({ now: Schema.sessions.expiresAt })
-const validSessions = SQL.def(
-	'validSessions',
-	nowP,
-	SQL.select({ session: Schema.sessions, user: Users.userColumns })
-		.from(Schema.sessions)
-		.where(E.gt(Schema.sessions.expiresAt, nowP.now))
-		.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId)),
-)
-const deleteExpiredSessions = SQL.def(
-	'deleteExpiredSessions',
-	nowP,
-	SQL.delete(Schema.sessions).where(E.lt(Schema.sessions.expiresAt, nowP.now)),
-)
-const sessionIdP = SQL.params({ id: Schema.sessions.id })
-const sessionWithUser = SQL.def(
-	'sessionWithUser',
-	sessionIdP,
-	SQL.select({ session: Schema.sessions, user: Users.userColumns })
-		.from(Schema.sessions)
-		.where(E.eq(Schema.sessions.id, sessionIdP.id))
-		.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId)),
-)
-const deleteSession = SQL.def('deleteSession', sessionIdP, SQL.delete(Schema.sessions).where(E.eq(Schema.sessions.id, sessionIdP.id)))
-const extendP = SQL.params({ id: Schema.sessions.id, expiresAt: Schema.sessions.expiresAt })
-const extendSession = SQL.def(
-	'extendSession',
-	extendP,
-	SQL.update(Schema.sessions).set({ expiresAt: extendP.expiresAt }).where(E.eq(Schema.sessions.id, extendP.id)),
-)
-const sessionP = SQL.params({ id: Schema.sessions.id, userId: Schema.sessions.userId, expiresAt: Schema.sessions.expiresAt })
-const insertSession = SQL.def('insertSession', sessionP, SQL.insert(Schema.sessions).values(sessionP))
-const userIdP = SQL.params({ discordId: Schema.users.discordId })
-const ensureUser = SQL.def('ensureUser', userIdP, SQL.insert(Schema.users).values(userIdP).onConflictDoNothing())
-const usernameP = SQL.params({ username: Schema.discordAccounts.username })
-const userByUsername = SQL.def(
-	'userByUsername',
-	usernameP,
-	SQL.select(Users.userColumns)
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-		.where(E.eq(Schema.discordAccounts.username, usernameP.username)),
-	// only the development and test login bypass looks a user up by name
-	{ scans: ['discordAccounts'] },
-)
-const lowerNameP = SQL.params({ name: SQL.value<string>() })
-const accountsByLowerName = SQL.def(
-	'accountsByLowerName',
-	lowerNameP,
-	SQL.select({ discordId: Schema.discordAccounts.discordId, username: Schema.discordAccounts.username })
-		.from(Schema.discordAccounts)
-		.where(E.eq(E.sql`lower(${Schema.discordAccounts.username})`, lowerNameP.name))
-		.orderBy(Schema.discordAccounts.discordId),
-	// only the no-auth login looks an account up by name
-	{ scans: ['discordAccounts'] },
-)
+namespace Q {
+	const nowP = SQL.params({ now: Schema.sessions.expiresAt })
+	export const validSessions = SQL.def(
+		'validSessions',
+		nowP,
+		SQL.select({ session: Schema.sessions, user: Users.userColumns })
+			.from(Schema.sessions)
+			.where(E.gt(Schema.sessions.expiresAt, nowP.now))
+			.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId)),
+	)
+	export const deleteExpiredSessions = SQL.def(
+		'deleteExpiredSessions',
+		nowP,
+		SQL.delete(Schema.sessions).where(E.lt(Schema.sessions.expiresAt, nowP.now)),
+	)
+	const sessionIdP = SQL.params({ id: Schema.sessions.id })
+	export const sessionWithUser = SQL.def(
+		'sessionWithUser',
+		sessionIdP,
+		SQL.select({ session: Schema.sessions, user: Users.userColumns })
+			.from(Schema.sessions)
+			.where(E.eq(Schema.sessions.id, sessionIdP.id))
+			.innerJoin(Schema.users, E.eq(Schema.users.discordId, Schema.sessions.userId))
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId)),
+	)
+	export const deleteSession = SQL.def(
+		'deleteSession',
+		sessionIdP,
+		SQL.delete(Schema.sessions).where(E.eq(Schema.sessions.id, sessionIdP.id)),
+	)
+	const extendP = SQL.params({ id: Schema.sessions.id, expiresAt: Schema.sessions.expiresAt })
+	export const extendSession = SQL.def(
+		'extendSession',
+		extendP,
+		SQL.update(Schema.sessions).set({ expiresAt: extendP.expiresAt }).where(E.eq(Schema.sessions.id, extendP.id)),
+	)
+	const sessionP = SQL.params({ id: Schema.sessions.id, userId: Schema.sessions.userId, expiresAt: Schema.sessions.expiresAt })
+	export const insertSession = SQL.def('insertSession', sessionP, SQL.insert(Schema.sessions).values(sessionP))
+	const userIdP = SQL.params({ discordId: Schema.users.discordId })
+	export const ensureUser = SQL.def('ensureUser', userIdP, SQL.insert(Schema.users).values(userIdP).onConflictDoNothing())
+	const usernameP = SQL.params({ username: Schema.discordAccounts.username })
+	export const userByUsername = SQL.def(
+		'userByUsername',
+		usernameP,
+		SQL.select(Users.userColumns)
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+			.where(E.eq(Schema.discordAccounts.username, usernameP.username)),
+		// only the development and test login bypass looks a user up by name
+		{ scans: ['discordAccounts'] },
+	)
+	const lowerNameP = SQL.params({ name: SQL.value<string>() })
+	export const accountsByLowerName = SQL.def(
+		'accountsByLowerName',
+		lowerNameP,
+		SQL.select({ discordId: Schema.discordAccounts.discordId, username: Schema.discordAccounts.username })
+			.from(Schema.discordAccounts)
+			.where(E.eq(E.sql`lower(${Schema.discordAccounts.username})`, lowerNameP.name))
+			.orderBy(Schema.discordAccounts.discordId),
+		// only the no-auth login looks an account up by name
+		{ scans: ['discordAccounts'] },
+	)
+}
 
 // In-memory cache for sessions
 type CachedSession = {
@@ -105,7 +111,7 @@ const sessionCache = new Map<string, CachedSession>()
 // Load all valid sessions into cache on startup
 function loadValidSessionsIntoCache(ctx: C.Db) {
 	log.info('Loading valid sessions into cache...')
-	const sessions = DB.all(ctx, validSessions({ now: new Date() }))
+	const sessions = DB.all(ctx, Q.validSessions({ now: new Date() }))
 
 	let validCount = 0
 	for (const row of sessions) {
@@ -122,7 +128,7 @@ function loadValidSessionsIntoCache(ctx: C.Db) {
 }
 
 function extendSessionInCacheAndDb(ctx: C.Db, sessionId: string, expiresAt: Date) {
-	DB.run(ctx, extendSession({ id: sessionId, expiresAt }))
+	DB.run(ctx, Q.extendSession({ id: sessionId, expiresAt }))
 	DB.afterCommit(ctx, () => {
 		const cached = sessionCache.get(sessionId)
 		if (cached) cached.expiresAt = expiresAt
@@ -130,12 +136,12 @@ function extendSessionInCacheAndDb(ctx: C.Db, sessionId: string, expiresAt: Date
 }
 
 function removeSessionFromCacheAndDb(ctx: C.Db, sessionId: string) {
-	DB.run(ctx, deleteSession({ id: sessionId }))
+	DB.run(ctx, Q.deleteSession({ id: sessionId }))
 	DB.afterCommit(ctx, () => sessionCache.delete(sessionId))
 }
 
 function addSessionToCacheAndDb(ctx: C.Db, session: CachedSession) {
-	DB.run(ctx, insertSession({ id: session.id, userId: session.userId, expiresAt: session.expiresAt }))
+	DB.run(ctx, Q.insertSession({ id: session.id, userId: session.userId, expiresAt: session.expiresAt }))
 	DB.afterCommit(ctx, () => sessionCache.set(session.id, session))
 }
 
@@ -161,7 +167,7 @@ export async function setup() {
 		}
 		module.tracer.startActiveSpan('sessions:cleanup', (span) => {
 			const currentTime = new Date()
-			DB.run(ctx, deleteExpiredSessions({ now: currentTime }))
+			DB.run(ctx, Q.deleteExpiredSessions({ now: currentTime }))
 			for (const [sessionId, session] of sessionCache.entries()) {
 				if (currentTime > session.expiresAt) {
 					sessionCache.delete(sessionId)
@@ -209,7 +215,7 @@ export const validateAndUpdate = Instr.spanOp(
 				if (!query.login) return res
 				const username = query['login']
 				log.info('bypassing with username %s', username)
-				const user = DB.get(ctx, userByUsername({ username }))
+				const user = DB.get(ctx, Q.userByUsername({ username }))
 				// falling through leaves the caller on the login portal, which is where an unknown name belongs:
 				// the portal creates the user, `?login=` only ever picks an existing one
 				if (!user) {
@@ -283,7 +289,7 @@ export function noAuthUserId(username: string): bigint {
 // second one beside it: a derived id never matches the real snowflake a seeded account has, and `?login=` looks
 // accounts up by name and cannot choose between two of them.
 export async function logInWithoutAuth(ctx: C.Db & C.FastifyRequest & C.FastifyReply, username: string) {
-	const existing = DB.all(ctx, accountsByLowerName({ name: username.toLowerCase() }))
+	const existing = DB.all(ctx, Q.accountsByLowerName({ name: username.toLowerCase() }))
 
 	if (existing.length > 1) {
 		log.warn('%d accounts are named %s; signing in as the first', existing.length, username)
@@ -318,7 +324,7 @@ export async function logInUser(ctx: C.Db & C.FastifyRequest & C.FastifyReply, d
 	DB.transaction(ctx, {}, (ctx) => {
 		// the account carries the username and must exist first: the user row references it
 		Users.recordDiscordAccount(ctx, discordUser.id, discordUser.username)
-		DB.run(ctx, ensureUser({ discordId: discordUser.id }))
+		DB.run(ctx, Q.ensureUser({ discordId: discordUser.id }))
 		addSessionToCacheAndDb(ctx, { id: sessionId, userId: discordUser.id, expiresAt, user: builtUser })
 	})
 	setSessionCookie(ctx, token)
@@ -361,7 +367,7 @@ export const getUser = Instr.spanOp(
 
 		// Fallback to database (cache miss - this shouldn't happen often)
 		log.warn({ sessionId: ctx.sessionId }, 'Session cache miss in getUser, falling back to database')
-		const row = DB.get(ctx, sessionWithUser({ id: ctx.sessionId }))
+		const row = DB.get(ctx, Q.sessionWithUser({ id: ctx.sessionId }))
 		if (row) {
 			sessionCache.set(ctx.sessionId, {
 				id: row.session.id,

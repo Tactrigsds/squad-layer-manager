@@ -6,6 +6,8 @@
 //   running it directly with .all()/.get()/.run() would reach drizzle's own execution, which throws at runtime.
 // - sql/no-dropped-statement: a statement built and never run.
 // - sql/no-module-builder: a builder stored at module level outside SQL.def, which callers could extend in place.
+// - sql/statements-in-q: a module-level SQL.def or SQL.params outside the module's `namespace Q`, which keeps
+//   statements apart from the functions that run them.
 // - sql/one-for-module: Sql.forModule called more than once for one database in a file.
 // - sql/no-reveal-in-statement: Secret.reveal() inside a statement built per call, which would bind the revealed value
 //   where the logger cannot mask it. Declare the parameter with SQL.secret in a definition instead.
@@ -132,6 +134,36 @@ const noModuleBuilder = {
 	},
 }
 
+const statementsInQ = {
+	meta: {
+		type: 'problem',
+		messages: { outside: "Define a module's statements and their parameters inside `namespace Q`." },
+	},
+	create(context) {
+		return {
+			Program(program) {
+				const sqlNames = collectSqlNames(program)
+				const isDefinition = (init) => {
+					const c = chainOf(init)
+					return c !== null && sqlNames.has(c.root) && (c.methods[0] === 'def' || c.methods[0] === 'params')
+				}
+				const check = (statements, inQ) => {
+					for (const st of statements) {
+						const decl = st.type === 'ExportNamedDeclaration' ? st.declaration : st
+						if (decl?.type === 'TSModuleDeclaration' && decl.body?.type === 'TSModuleBlock') {
+							check(decl.body.body, decl.id.type === 'Identifier' && decl.id.name === 'Q')
+							continue
+						}
+						if (inQ || decl?.type !== 'VariableDeclaration') continue
+						for (const d of decl.declarations) if (isDefinition(d.init)) context.report({ node: d, messageId: 'outside' })
+					}
+				}
+				check(program.body, false)
+			},
+		}
+	},
+}
+
 const oneForModule = {
 	meta: { type: 'problem', messages: { twice: "Call Sql.forModule once per file and database, with this file's own module." } },
 	create(context) {
@@ -232,6 +264,7 @@ export default {
 		'no-async-statement': noAsyncStatement,
 		'no-dropped-statement': noDroppedStatement,
 		'no-module-builder': noModuleBuilder,
+		'statements-in-q': statementsInQ,
 		'one-for-module': oneForModule,
 		'no-reveal-in-statement': noRevealInStatement,
 		'no-dynamic-raw': noDynamicRaw,

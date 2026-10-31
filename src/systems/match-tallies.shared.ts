@@ -39,26 +39,27 @@ function pendingTalliesCond(p: { serverId: Sql.Parameter<string>; skip: Sql.Para
 	)
 }
 
-const pendingP = SQL.params({ serverId: mh.serverId, skip: skipJson, limit: SQL.count() })
-/** The next matches to tally, newest first, so the page the history panel is showing fills in before the rest. */
-export const pendingMatches = SQL.def(
-	'pendingMatches',
-	pendingP,
-	SQL.select({
-		id: mh.id,
-		needsScoreline: sql<number>`${needsScoreline}`.mapWith(Boolean),
-		needsPopulation: sql<number>`${needsPopulation}`.mapWith(Boolean),
-	})
-		.from(mh)
-		.leftJoin(mp, E.eq(mp.matchId, mh.id))
-		.where(pendingTalliesCond(pendingP))
-		.orderBy(E.desc(mh.ordinal))
-		.limit(pendingP.limit),
-)
-
-const anyPendingP = SQL.params({ serverId: mh.serverId, skip: skipJson })
-export const anyPendingMatch = SQL.def(
-	'anyPendingMatch',
-	anyPendingP,
-	SQL.select({ id: mh.id }).from(mh).leftJoin(mp, E.eq(mp.matchId, mh.id)).where(pendingTalliesCond(anyPendingP)).limit(1),
-)
+export namespace Q {
+	const pendingP = SQL.params({ serverId: mh.serverId, skip: skipJson, limit: SQL.count() })
+	/** The next matches to tally, newest first, so the page the history panel is showing fills in before the rest. */
+	export const pendingMatches = SQL.def(
+		'pendingMatches',
+		pendingP,
+		SQL.select({
+			id: mh.id,
+			needsScoreline: sql<number>`${needsScoreline}`.mapWith(Boolean),
+			needsPopulation: sql<number>`${needsPopulation}`.mapWith(Boolean),
+		})
+			.from(mh)
+			.leftJoin(mp, E.eq(mp.matchId, mh.id))
+			.where(pendingTalliesCond(pendingP))
+			.orderBy(E.desc(mh.ordinal))
+			.limit(pendingP.limit),
+	)
+	const anyPendingP = SQL.params({ serverId: mh.serverId, skip: skipJson })
+	export const anyPendingMatch = SQL.def(
+		'anyPendingMatch',
+		anyPendingP,
+		SQL.select({ id: mh.id }).from(mh).leftJoin(mp, E.eq(mp.matchId, mh.id)).where(pendingTalliesCond(anyPendingP)).limit(1),
+	)
+}

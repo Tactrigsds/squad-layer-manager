@@ -23,18 +23,9 @@ const SQL = Sql.forModule(module)
 const mh = Schema.matchHistory
 const mp = Schema.matchPopulation
 
-const storeP = SQL.params({ matchId: mp.matchId, samples: mp.samples })
-const upsertSamples = SQL.def(
-	'upsertSamples',
-	storeP,
-	SQL.insert(mp)
-		.values({ matchId: storeP.matchId, version: SQL.lit(Pop.SAMPLER_VERSION), samples: storeP.samples })
-		.onConflictDoUpdate({ target: mp.matchId, set: { version: SQL.lit(Pop.SAMPLER_VERSION), samples: storeP.samples } }),
-)
-
 export async function store(ctx: C.Db & CS.AbortSignal, matchId: number, samples: Pop.Samples) {
 	const blob = await zstdCompress(Buffer.from(JSON.stringify(samples), 'utf8'))
-	DB.run(ctx, upsertSamples({ matchId, samples: blob }))
+	DB.run(ctx, Q.upsertSamples({ matchId, samples: blob }))
 	decoded.delete(matchId)
 }
 
@@ -56,45 +47,57 @@ const MATCH_REACH_MS = 6 * 3_600_000
 // How long a match's samples can run past its end time, through its post-game.
 const POST_GAME_REACH_MS = 3_600_000
 
-const rangeP = SQL.params({ serverId: mh.serverId, startedSince: mh.startTime, endedSince: mh.endTime })
-const matchesReaching = SQL.def(
-	'matchesReaching',
-	rangeP,
-	SQL.select({
-		id: mh.id,
-		ordinal: mh.ordinal,
-		layerId: mh.layerId,
-		startTime: mh.startTime,
-		createdAt: mh.createdAt,
-		endTime: mh.endTime,
-		version: mp.version,
-		samples: mp.samples,
-	})
-		.from(mh)
-		.leftJoin(mp, E.eq(mp.matchId, mh.id))
-		.where(
-			E.and(
-				E.eq(mh.serverId, rangeP.serverId),
-				E.or(
-					E.gte(mh.endTime, rangeP.endedSince),
-					E.and(
-						E.isNull(mh.endTime),
-						E.or(E.gte(mh.startTime, rangeP.startedSince), E.and(E.isNull(mh.startTime), E.gte(mh.createdAt, rangeP.startedSince))),
+namespace Q {
+	const storeP = SQL.params({ matchId: mp.matchId, samples: mp.samples })
+	export const upsertSamples = SQL.def(
+		'upsertSamples',
+		storeP,
+		SQL.insert(mp)
+			.values({ matchId: storeP.matchId, version: SQL.lit(Pop.SAMPLER_VERSION), samples: storeP.samples })
+			.onConflictDoUpdate({ target: mp.matchId, set: { version: SQL.lit(Pop.SAMPLER_VERSION), samples: storeP.samples } }),
+	)
+	const rangeP = SQL.params({ serverId: mh.serverId, startedSince: mh.startTime, endedSince: mh.endTime })
+	export const matchesReaching = SQL.def(
+		'matchesReaching',
+		rangeP,
+		SQL.select({
+			id: mh.id,
+			ordinal: mh.ordinal,
+			layerId: mh.layerId,
+			startTime: mh.startTime,
+			createdAt: mh.createdAt,
+			endTime: mh.endTime,
+			version: mp.version,
+			samples: mp.samples,
+		})
+			.from(mh)
+			.leftJoin(mp, E.eq(mp.matchId, mh.id))
+			.where(
+				E.and(
+					E.eq(mh.serverId, rangeP.serverId),
+					E.or(
+						E.gte(mh.endTime, rangeP.endedSince),
+						E.and(
+							E.isNull(mh.endTime),
+							E.or(
+								E.gte(mh.startTime, rangeP.startedSince),
+								E.and(E.isNull(mh.startTime), E.gte(mh.createdAt, rangeP.startedSince)),
+							),
+						),
 					),
 				),
-			),
-		)
-		.orderBy(E.asc(mh.ordinal)),
-)
-
-const serverP = SQL.params({ serverId: mh.serverId })
-const newestOrdinal = SQL.def(
-	'newestOrdinal',
-	serverP,
-	SQL.select({ ordinal: E.max(mh.ordinal) })
-		.from(mh)
-		.where(E.eq(mh.serverId, serverP.serverId)),
-)
+			)
+			.orderBy(E.asc(mh.ordinal)),
+	)
+	const serverP = SQL.params({ serverId: mh.serverId })
+	export const newestOrdinal = SQL.def(
+		'newestOrdinal',
+		serverP,
+		SQL.select({ ordinal: E.max(mh.ordinal) })
+			.from(mh)
+			.where(E.eq(mh.serverId, serverP.serverId)),
+	)
+}
 
 /** Every finished match on the server in `range` up to `now`, bucketed, with their bands. `cap` counts as full. */
 export async function getRange(ctx: C.Db & CS.ServerId, range: Pop.Range, now: number, cap: number): Promise<Pop.RangeData> {
@@ -102,7 +105,7 @@ export async function getRange(ctx: C.Db & CS.ServerId, range: Pop.Range, now: n
 	const start = Math.floor((now - Pop.RANGE_MS[range]) / bucketMs) * bucketMs
 	const rows = DB.all(
 		ctx,
-		matchesReaching({
+		Q.matchesReaching({
 			serverId: ctx.serverId,
 			startedSince: new Date(start - MATCH_REACH_MS),
 			endedSince: new Date(start - POST_GAME_REACH_MS),
@@ -110,7 +113,7 @@ export async function getRange(ctx: C.Db & CS.ServerId, range: Pop.Range, now: n
 	)
 
 	// the server's newest match is the current one, which the client draws from its live feed
-	const newest = DB.get(ctx, newestOrdinal({ serverId: ctx.serverId }))
+	const newest = DB.get(ctx, Q.newestOrdinal({ serverId: ctx.serverId }))
 	const finished = rows.filter((row) => row.ordinal < (newest?.ordinal ?? -1))
 	// a match's last sample lands on the grid time after its last event, which for a match that just ended is still ahead
 	const buckets = Pop.emptyBuckets(start, now + Pop.SAMPLE_STEP_MS, bucketMs)

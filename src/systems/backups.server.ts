@@ -140,19 +140,21 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 	}
 }
 
-const lastEventOfTypeP = SQL.params({ type: Schema.appEvents.type })
-const lastEventOfType = SQL.def(
-	'lastEventOfType',
-	lastEventOfTypeP,
-	SQL.select({ time: Schema.appEvents.time })
-		.from(Schema.appEvents)
-		.where(E.eq(Schema.appEvents.type, lastEventOfTypeP.type))
-		.orderBy(E.desc(Schema.appEvents.time))
-		.limit(1),
-)
+namespace Q {
+	const lastEventOfTypeP = SQL.params({ type: Schema.appEvents.type })
+	export const lastEventOfType = SQL.def(
+		'lastEventOfType',
+		lastEventOfTypeP,
+		SQL.select({ time: Schema.appEvents.time })
+			.from(Schema.appEvents)
+			.where(E.eq(Schema.appEvents.type, lastEventOfTypeP.type))
+			.orderBy(E.desc(Schema.appEvents.time))
+			.limit(1),
+	)
+}
 
 function getLastBackupEventTime(ctx: C.Db) {
-	return DB.get(ctx, lastEventOfType({ type: 'BACKUP_CREATED' }))?.time.getTime()
+	return DB.get(ctx, Q.lastEventOfType({ type: 'BACKUP_CREATED' }))?.time.getTime()
 }
 
 // when the last backup was taken, or null if we can't account for one. The audit log records every backup this app

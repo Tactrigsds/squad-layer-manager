@@ -27,8 +27,9 @@ columns). The schema is `drizzle/schema.ts`. Migrations are described in
 
 - Every statement runs synchronously. Never `await` a statement, a transaction or a function that only runs
   statements.
-- Define each statement once, at module level, with `SQL.def`. Build a statement inside a function only where its
-  shape depends on input no definition can express, such as the history query compiler, or in code that runs once.
+- Define each statement once, at module level, with `SQL.def`, inside the module's `namespace Q`. Build a
+  statement inside a function only where its shape depends on input no definition can express, such as the history
+  query compiler, or in code that runs once.
 - Run a statement with `DB.all`, `DB.get` or `DB.run`, passing the ctx it runs with.
 - Writes that belong together go in one `DB.transaction()`, or in a `DB.txOp`. A transaction callback may not await:
   work that waits, such as an rcon command or a discord call, goes before the transaction or after it.
@@ -62,11 +63,22 @@ A statement with a fixed shape is a definition: declared once, rendered and chec
 connection. Calling it with its values gives what an executor runs.
 
 ```ts
-const sessionP = SQL.params({ id: Schema.sessions.id })
-const sessionById = SQL.def('sessionById', sessionP, SQL.select().from(Schema.sessions).where(E.eq(Schema.sessions.id, sessionP.id)))
+namespace Q {
+	const sessionP = SQL.params({ id: Schema.sessions.id })
+	export const sessionById = SQL.def(
+		'sessionById',
+		sessionP,
+		SQL.select().from(Schema.sessions).where(E.eq(Schema.sessions.id, sessionP.id)),
+	)
+}
 
-const session = DB.get(ctx, sessionById({ id }))
+const session = DB.get(ctx, Q.sessionById({ id }))
 ```
+
+`Q` holds every definition in the module, writes included, and the parameter sets they use. A parameter set stays
+unexported unless code outside `Q` names it. `Q` itself is exported only from a `.shared.ts` module, whose statements
+a worker runs too. The lint rule `sql/statements-in-q` rejects a module-level `SQL.def` or
+`SQL.params` outside `Q`.
 
 - Every value that changes between calls is a parameter. A value fixed in the statement is wrapped in `SQL.lit(...)`:
   `E.eq(Schema.timeouts.cancelled, SQL.lit(false))`, `set({ endTime: SQL.lit(null) })`. A literal without it is
@@ -110,23 +122,25 @@ objects must be `z.strictObject`. A null skips the schema and is stored as SQL N
 A statement whose shape varies, such as an optional condition or a `set` of only the fields given, takes arguments:
 
 ```ts
-const timeoutsP = SQL.params({ playerId: Schema.timeouts.playerId, now: Schema.timeouts.expiresAt })
-const timeoutsFor = SQL.def(
-	'timeoutsFor',
-	timeoutsP,
-	(activeOnly: boolean) =>
-		SQL.select()
-			.from(Schema.timeouts)
-			.where(
-				E.and(
-					E.eq(Schema.timeouts.playerId, timeoutsP.playerId),
-					activeOnly ? E.gt(Schema.timeouts.expiresAt, timeoutsP.now) : undefined,
+namespace Q {
+	const timeoutsP = SQL.params({ playerId: Schema.timeouts.playerId, now: Schema.timeouts.expiresAt })
+	export const timeoutsFor = SQL.def(
+		'timeoutsFor',
+		timeoutsP,
+		(activeOnly: boolean) =>
+			SQL.select()
+				.from(Schema.timeouts)
+				.where(
+					E.and(
+						E.eq(Schema.timeouts.playerId, timeoutsP.playerId),
+						activeOnly ? E.gt(Schema.timeouts.expiresAt, timeoutsP.now) : undefined,
+					),
 				),
-			),
-	{ domains: [[true, false]] },
-)
+		{ domains: [[true, false]] },
+	)
+}
 
-DB.all(ctx, timeoutsFor(activeOnly)({ playerId, now: activeOnly ? new Date() : undefined }))
+DB.all(ctx, Q.timeoutsFor(activeOnly)({ playerId, now: activeOnly ? new Date() : undefined }))
 ```
 
 - Arguments are primitives that change the SQL. An argument that changes only a bound value is refused in development

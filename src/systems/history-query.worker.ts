@@ -29,10 +29,8 @@ import {
 	GAME_PARTICIPANT,
 	inJsonSet,
 	matchBoundsCond,
-	matchesByIds,
 	matchTime,
-	newestOrdinalByServer,
-	playerNamesByEosIds,
+	Q,
 	type Bounds,
 	type QueryError,
 	type ResolvedArtifacts,
@@ -311,7 +309,7 @@ export async function queryPlayerRows(
 	if (rows.length === 0) return { rows: [], total }
 	await yieldToCancel(ctx)
 
-	const nameRows = DB.all(ctx, playerNamesByEosIds({ ids: rows.map((r) => r.playerId) }))
+	const nameRows = DB.all(ctx, Q.playerNamesByEosIds({ ids: rows.map((r) => r.playerId) }))
 	const names = new Map(nameRows.map((r) => [r.eosId, r]))
 	const events = eventCountsFor(
 		ctx,
@@ -435,7 +433,7 @@ async function loadEventPage(
 ): Promise<EventPage> {
 	if (hits.length === 0) return { events: null, matches: [] }
 	const matchIds = [...new Set(hits.map((h) => h.matchId))]
-	const matchRows = DB.all(ctx, matchesByIds({ ids: matchIds }))
+	const matchRows = DB.all(ctx, Q.matchesByIds({ ids: matchIds }))
 
 	const optsKey = JSON.stringify(opts.chat)
 	if (optsKey !== feedCacheOptsKey) {
@@ -450,7 +448,7 @@ async function loadEventPage(
 		if (!rows) byServer.set(row.serverId, (rows = []))
 		rows.push(row)
 	}
-	const newestRows = DB.all(ctx, newestOrdinalByServer({ ids: [...byServer.keys()] }))
+	const newestRows = DB.all(ctx, Q.newestOrdinalByServer({ ids: [...byServer.keys()] }))
 	const newestOrdinal = new Map(newestRows.map((r) => [r.serverId, r.ordinal]))
 
 	// hits from either family; a replayed entry is kept when it stands for one of them (see iterContainedEventIds)

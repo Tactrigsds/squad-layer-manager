@@ -49,18 +49,6 @@ const RECONCILED_HASH_KEY = 'matchLayers.reconciledArtifactHash'
 // process-wide write lock is never held long, since this runs while the app is already serving.
 const UPDATE_BATCH = 250
 
-const countUnresolved = SQL.def(
-	'countUnresolved',
-	SQL.params({}),
-	SQL.select({ count: E.count() }).from(Schema.matchHistory).where(E.isNull(Schema.matchHistory.layerMap)),
-)
-
-const unresolvedLayerIds = SQL.def(
-	'unresolvedLayerIds',
-	SQL.params({}),
-	SQL.selectDistinct({ layerId: Schema.matchHistory.layerId }).from(Schema.matchHistory).where(E.isNull(Schema.matchHistory.layerMap)),
-)
-
 const PARTS_COLUMNS = {
 	layerMap: Schema.matchHistory.layerMap,
 	layerGamemode: Schema.matchHistory.layerGamemode,
@@ -82,35 +70,45 @@ function partsSet(p: Sql.Params<typeof PARTS_COLUMNS>) {
 	}
 }
 
-const setPartsP = SQL.params({ ...PARTS_COLUMNS, layerId: Schema.matchHistory.layerId })
-const setUnresolvedParts = SQL.def(
-	'setUnresolvedParts',
-	setPartsP,
-	SQL.update(Schema.matchHistory)
-		.set(partsSet(setPartsP))
-		.where(E.and(E.eq(Schema.matchHistory.layerId, setPartsP.layerId), E.isNull(Schema.matchHistory.layerMap))),
-)
-
-const unresolvedWithCommandText = SQL.def(
-	'unresolvedWithCommandText',
-	SQL.params({}),
-	SQL.select({
-		id: Schema.matchHistory.id,
-		layerId: Schema.matchHistory.layerId,
-		rawLayerCommandText: Schema.matchHistory.rawLayerCommandText,
-	})
-		.from(Schema.matchHistory)
-		.where(E.and(E.isNull(Schema.matchHistory.layerMap), E.isNotNull(Schema.matchHistory.rawLayerCommandText))),
-)
-
-const rewriteLayerP = SQL.params({ ...PARTS_COLUMNS, layerId: Schema.matchHistory.layerId, id: Schema.matchHistory.id })
-const rewriteLayer = SQL.def(
-	'rewriteLayer',
-	rewriteLayerP,
-	SQL.update(Schema.matchHistory)
-		.set({ layerId: rewriteLayerP.layerId, ...partsSet(rewriteLayerP) })
-		.where(E.eq(Schema.matchHistory.id, rewriteLayerP.id)),
-)
+namespace Q {
+	export const countUnresolved = SQL.def(
+		'countUnresolved',
+		SQL.params({}),
+		SQL.select({ count: E.count() }).from(Schema.matchHistory).where(E.isNull(Schema.matchHistory.layerMap)),
+	)
+	export const unresolvedLayerIds = SQL.def(
+		'unresolvedLayerIds',
+		SQL.params({}),
+		SQL.selectDistinct({ layerId: Schema.matchHistory.layerId }).from(Schema.matchHistory).where(E.isNull(Schema.matchHistory.layerMap)),
+	)
+	const setPartsP = SQL.params({ ...PARTS_COLUMNS, layerId: Schema.matchHistory.layerId })
+	export const setUnresolvedParts = SQL.def(
+		'setUnresolvedParts',
+		setPartsP,
+		SQL.update(Schema.matchHistory)
+			.set(partsSet(setPartsP))
+			.where(E.and(E.eq(Schema.matchHistory.layerId, setPartsP.layerId), E.isNull(Schema.matchHistory.layerMap))),
+	)
+	export const unresolvedWithCommandText = SQL.def(
+		'unresolvedWithCommandText',
+		SQL.params({}),
+		SQL.select({
+			id: Schema.matchHistory.id,
+			layerId: Schema.matchHistory.layerId,
+			rawLayerCommandText: Schema.matchHistory.rawLayerCommandText,
+		})
+			.from(Schema.matchHistory)
+			.where(E.and(E.isNull(Schema.matchHistory.layerMap), E.isNotNull(Schema.matchHistory.rawLayerCommandText))),
+	)
+	const rewriteLayerP = SQL.params({ ...PARTS_COLUMNS, layerId: Schema.matchHistory.layerId, id: Schema.matchHistory.id })
+	export const rewriteLayer = SQL.def(
+		'rewriteLayer',
+		rewriteLayerP,
+		SQL.update(Schema.matchHistory)
+			.set({ layerId: rewriteLayerP.layerId, ...partsSet(rewriteLayerP) })
+			.where(E.eq(Schema.matchHistory.id, rewriteLayerP.id)),
+	)
+}
 
 /**
  * Re-resolves matches whose layer this build's engine could not parse when they were recorded.
@@ -132,12 +130,12 @@ export const reconcileMatchLayers = Instr.spanOp('reconcileMatchLayers', { modul
 	if (lastHash === artifactHash) return undefined
 
 	// unresolved is exactly "layerMap is null": layerParts writes all seven columns or none of them
-	const unresolvedTotal = DB.get(ctx, countUnresolved({}))?.count ?? 0
+	const unresolvedTotal = DB.get(ctx, Q.countUnresolved({}))?.count ?? 0
 
 	// By distinct layer rather than by match: an id resolves the same way for every match that played it, and
 	// there are far fewer ids than matches (5k against 8.5k on the largest install, and the gap only widens).
 	// A RAW: id carries its command text inside itself, so this pass covers those too.
-	const distinctIds = DB.all(ctx, unresolvedLayerIds({}))
+	const distinctIds = DB.all(ctx, Q.unresolvedLayerIds({}))
 
 	let updated = 0
 
@@ -148,7 +146,7 @@ export const reconcileMatchLayers = Instr.spanOp('reconcileMatchLayers', { modul
 			for (const { layerId } of batch) {
 				const parts = MH.layerParts(L.readStoredLayerId(layerId))
 				if (parts.layerMap === null) continue
-				changes += DB.run(ctx, setUnresolvedParts({ ...parts, layerId })).changes
+				changes += DB.run(ctx, Q.setUnresolvedParts({ ...parts, layerId })).changes
 			}
 			return { code: 'ok' as const, changes }
 		}).changes
@@ -158,7 +156,7 @@ export const reconcileMatchLayers = Instr.spanOp('reconcileMatchLayers', { modul
 	// what is left is an id the engine still cannot place. Those are worth a second look one at a time,
 	// because rawLayerCommandText may name a layer the id does not -- and rewriting the id is the only case
 	// where a match's recorded layer changes, so it stays per row and stays attributable.
-	const stillUnresolved = DB.all(ctx, unresolvedWithCommandText({}))
+	const stillUnresolved = DB.all(ctx, Q.unresolvedWithCommandText({}))
 
 	// only the rewrites are listed on the event. A plain backfill resolves thousands of ids to themselves,
 	// which the count already says; an id that CHANGED is the part that alters what a search returns.
@@ -172,7 +170,7 @@ export const reconcileMatchLayers = Instr.spanOp('reconcileMatchLayers', { modul
 				const parts = MH.layerParts(parsed.id)
 				if (parts.layerMap === null) continue
 				const to = L.toLayerText(parsed.id)
-				DB.run(ctx, rewriteLayer({ ...parts, layerId: to, id: match.id }))
+				DB.run(ctx, Q.rewriteLayer({ ...parts, layerId: to, id: match.id }))
 				const key = `${match.layerId} ${to}`
 				const entry = rewritten.get(key) ?? { from: match.layerId, to, matches: 0 }
 				entry.matches++

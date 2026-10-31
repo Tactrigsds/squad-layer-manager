@@ -53,10 +53,6 @@ export type MatchHistoryState = {
 	recentMatches: MH.MatchDetails[]
 } & Parts<USR.UserPart>
 
-const lastSquadId = SQL.def('lastSquadId', SQL.params({}), SQL.select({ id: E.max(Schema.squads.id) }).from(Schema.squads))
-const serverByIdP = SQL.params({ id: Schema.servers.id })
-const serverById = SQL.def('serverById', serverByIdP, SQL.select().from(Schema.servers).where(E.eq(Schema.servers.id, serverByIdP.id)))
-
 const STATE_COLUMNS = [
 	'displayName',
 	'enabled',
@@ -69,24 +65,34 @@ const STATE_COLUMNS = [
 	'ownerDiscordId',
 ] as const
 type StateColumn = (typeof STATE_COLUMNS)[number]
-const stateP = SQL.params({
-	id: Schema.servers.id,
-	displayName: Schema.servers.displayName,
-	enabled: Schema.servers.enabled,
-	defaultServer: Schema.servers.defaultServer,
-	layerQueue: Schema.servers.layerQueue,
-	teamswaps: Schema.servers.teamswaps,
-	backburner: Schema.servers.backburner,
-	switchRequests: Schema.servers.switchRequests,
-	visibility: Schema.servers.visibility,
-	ownerDiscordId: Schema.servers.ownerDiscordId,
-})
-// the columns given, in STATE_COLUMNS order
-const updateStateColumns = SQL.def('updateStateColumns', stateP, (...columns: StateColumn[]) =>
-	SQL.update(Schema.servers)
-		.set(Object.fromEntries(columns.map((c) => [c, stateP[c]])))
-		.where(E.eq(Schema.servers.id, stateP.id)),
-)
+
+namespace Q {
+	export const lastSquadId = SQL.def('lastSquadId', SQL.params({}), SQL.select({ id: E.max(Schema.squads.id) }).from(Schema.squads))
+	const serverByIdP = SQL.params({ id: Schema.servers.id })
+	export const serverById = SQL.def(
+		'serverById',
+		serverByIdP,
+		SQL.select().from(Schema.servers).where(E.eq(Schema.servers.id, serverByIdP.id)),
+	)
+	const stateP = SQL.params({
+		id: Schema.servers.id,
+		displayName: Schema.servers.displayName,
+		enabled: Schema.servers.enabled,
+		defaultServer: Schema.servers.defaultServer,
+		layerQueue: Schema.servers.layerQueue,
+		teamswaps: Schema.servers.teamswaps,
+		backburner: Schema.servers.backburner,
+		switchRequests: Schema.servers.switchRequests,
+		visibility: Schema.servers.visibility,
+		ownerDiscordId: Schema.servers.ownerDiscordId,
+	})
+	// the columns given, in STATE_COLUMNS order
+	export const updateStateColumns = SQL.def('updateStateColumns', stateP, (...columns: StateColumn[]) =>
+		SQL.update(Schema.servers)
+			.set(Object.fromEntries(columns.map((c) => [c, stateP[c]])))
+			.where(E.eq(Schema.servers.id, stateP.id)),
+	)
+}
 
 // state every squad-server module reads; runs before any managed server boots
 export function init() {
@@ -100,13 +106,13 @@ export function init() {
 		lifecycleMtxs: new Map(),
 	}
 
-	const lastSquad = DB.get(ctx, lastSquadId({}))
+	const lastSquad = DB.get(ctx, Q.lastSquadId({}))
 	const nextSquadId = lastSquad?.id != null ? lastSquad.id + 1 : 0
 	globalState.squadIdCounter = Gen.counter(nextSquadId)
 }
 
 export function getFullServerState(ctx: C.Db & LQ.Ctx) {
-	return Settings.parseServerStateRow(DB.get(ctx, serverById({ id: ctx.serverId })))
+	return Settings.parseServerStateRow(DB.get(ctx, Q.serverById({ id: ctx.serverId })))
 }
 
 /** The current teams on the server, as tracked by the server event state */
@@ -275,7 +281,7 @@ export function getBaseCtx() {
 }
 
 export function getServerState(ctx: C.Db & CS.ServerId) {
-	return Settings.parseServerStateRow(DB.get(ctx, serverById({ id: ctx.serverId })))
+	return Settings.parseServerStateRow(DB.get(ctx, Q.serverById({ id: ctx.serverId })))
 }
 
 // settings changes go through Settings.updateServerSettings instead — that's the one source of truth for reading/writing/broadcasting settings
@@ -291,7 +297,7 @@ export function updateServerState(
 	if (columns.length > 0) {
 		DB.run(
 			ctx,
-			updateStateColumns(...columns)({
+			Q.updateStateColumns(...columns)({
 				id: ctx.serverId,
 				displayName: stored.displayName,
 				enabled: stored.enabled,

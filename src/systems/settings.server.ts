@@ -34,95 +34,94 @@ const SQL = Sql.forModule(module)
 let log!: ReturnType<typeof module.getLogger>
 const orpcBase = getOrpcBase(module)
 
-const globalSettingsRows = SQL.def('globalSettingsRows', SQL.params({}), SQL.select().from(Schema.globalSettings), {
-	scans: ['globalSettings'],
-})
-const globalSettingsP = SQL.params({ settings: Schema.globalSettings.settings })
-const writeGlobalSettings = SQL.def(
-	'writeGlobalSettings',
-	globalSettingsP,
-	SQL.update(Schema.globalSettings).set({ settings: globalSettingsP.settings }),
-	{ scans: ['globalSettings'] },
-)
-const insertGlobalSettings = SQL.def(
-	'insertGlobalSettings',
-	globalSettingsP,
-	SQL.insert(Schema.globalSettings).values({ settings: globalSettingsP.settings }),
-)
-
-const serverRows = SQL.def('serverRows', SQL.params({}), SQL.select().from(Schema.servers), { scans: ['servers'] })
-const serverSettingsRows = SQL.def(
-	'serverSettingsRows',
-	SQL.params({}),
-	SQL.select({ id: Schema.servers.id, settings: Schema.servers.settings }).from(Schema.servers),
-	{ scans: ['servers'] },
-)
-const serverIdP = SQL.params({ id: Schema.servers.id })
-const serverSettingsById = SQL.def(
-	'serverSettingsById',
-	serverIdP,
-	SQL.select({ id: Schema.servers.id, settings: Schema.servers.settings })
-		.from(Schema.servers)
-		.where(E.eq(Schema.servers.id, serverIdP.id)),
-)
-// the foreign keys onto servers cascade into tables with no index on serverId, which a deletion this rare can afford
-const deleteServer = SQL.def('deleteServer', serverIdP, SQL.delete(Schema.servers).where(E.eq(Schema.servers.id, serverIdP.id)), {
-	scans: ['serverEventIndex', 'playerEventIndex', 'timeouts'],
-})
-const clearDefaultServer = SQL.def(
-	'clearDefaultServer',
-	SQL.params({}),
-	SQL.update(Schema.servers).set({ defaultServer: SQL.lit(false) }),
-	{ scans: ['servers'] },
-)
-const markDefaultServer = SQL.def(
-	'markDefaultServer',
-	serverIdP,
-	SQL.update(Schema.servers)
-		.set({ defaultServer: SQL.lit(true) })
-		.where(E.eq(Schema.servers.id, serverIdP.id)),
-)
-
-const serverSettingsP = SQL.params({ id: Schema.servers.id, settings: Schema.servers.settings })
-const writeServerSettings = SQL.def(
-	'writeServerSettings',
-	serverSettingsP,
-	SQL.update(Schema.servers).set({ settings: serverSettingsP.settings }).where(E.eq(Schema.servers.id, serverSettingsP.id)),
-)
-const serverEnabledP = SQL.params({ id: Schema.servers.id, enabled: Schema.servers.enabled })
-const writeServerEnabled = SQL.def(
-	'writeServerEnabled',
-	serverEnabledP,
-	SQL.update(Schema.servers).set({ enabled: serverEnabledP.enabled }).where(E.eq(Schema.servers.id, serverEnabledP.id)),
-)
-
-const newServerP = SQL.params({
-	id: Schema.servers.id,
-	displayName: Schema.servers.displayName,
-	layerQueue: Schema.servers.layerQueue,
-	backburner: Schema.servers.backburner,
-	switchRequests: Schema.servers.switchRequests,
-	visibility: Schema.servers.visibility,
-	ownerDiscordId: Schema.servers.ownerDiscordId,
-	settings: Schema.servers.settings,
-})
-// teamswaps is left to its column default, which reads as no saved teamswaps
-const insertServer = SQL.def(
-	'insertServer',
-	newServerP,
-	SQL.insert(Schema.servers).values({
-		id: newServerP.id,
-		displayName: newServerP.displayName,
-		enabled: SQL.lit(false),
-		defaultServer: SQL.lit(false),
-		layerQueue: newServerP.layerQueue,
-		backburner: newServerP.backburner,
-		switchRequests: newServerP.switchRequests,
-		visibility: newServerP.visibility,
-		ownerDiscordId: newServerP.ownerDiscordId,
-		settings: newServerP.settings,
-	}),
-)
+namespace Q {
+	export const globalSettingsRows = SQL.def('globalSettingsRows', SQL.params({}), SQL.select().from(Schema.globalSettings), {
+		scans: ['globalSettings'],
+	})
+	const globalSettingsP = SQL.params({ settings: Schema.globalSettings.settings })
+	export const writeGlobalSettings = SQL.def(
+		'writeGlobalSettings',
+		globalSettingsP,
+		SQL.update(Schema.globalSettings).set({ settings: globalSettingsP.settings }),
+		{ scans: ['globalSettings'] },
+	)
+	export const insertGlobalSettings = SQL.def(
+		'insertGlobalSettings',
+		globalSettingsP,
+		SQL.insert(Schema.globalSettings).values({ settings: globalSettingsP.settings }),
+	)
+	export const serverRows = SQL.def('serverRows', SQL.params({}), SQL.select().from(Schema.servers), { scans: ['servers'] })
+	export const serverSettingsRows = SQL.def(
+		'serverSettingsRows',
+		SQL.params({}),
+		SQL.select({ id: Schema.servers.id, settings: Schema.servers.settings }).from(Schema.servers),
+		{ scans: ['servers'] },
+	)
+	const serverIdP = SQL.params({ id: Schema.servers.id })
+	export const serverSettingsById = SQL.def(
+		'serverSettingsById',
+		serverIdP,
+		SQL.select({ id: Schema.servers.id, settings: Schema.servers.settings })
+			.from(Schema.servers)
+			.where(E.eq(Schema.servers.id, serverIdP.id)),
+	)
+	// the foreign keys onto servers cascade into tables with no index on serverId, which a deletion this rare can afford
+	export const deleteServer = SQL.def('deleteServer', serverIdP, SQL.delete(Schema.servers).where(E.eq(Schema.servers.id, serverIdP.id)), {
+		scans: ['serverEventIndex', 'playerEventIndex', 'timeouts'],
+	})
+	export const clearDefaultServer = SQL.def(
+		'clearDefaultServer',
+		SQL.params({}),
+		SQL.update(Schema.servers).set({ defaultServer: SQL.lit(false) }),
+		{ scans: ['servers'] },
+	)
+	export const markDefaultServer = SQL.def(
+		'markDefaultServer',
+		serverIdP,
+		SQL.update(Schema.servers)
+			.set({ defaultServer: SQL.lit(true) })
+			.where(E.eq(Schema.servers.id, serverIdP.id)),
+	)
+	const serverSettingsP = SQL.params({ id: Schema.servers.id, settings: Schema.servers.settings })
+	export const writeServerSettings = SQL.def(
+		'writeServerSettings',
+		serverSettingsP,
+		SQL.update(Schema.servers).set({ settings: serverSettingsP.settings }).where(E.eq(Schema.servers.id, serverSettingsP.id)),
+	)
+	const serverEnabledP = SQL.params({ id: Schema.servers.id, enabled: Schema.servers.enabled })
+	export const writeServerEnabled = SQL.def(
+		'writeServerEnabled',
+		serverEnabledP,
+		SQL.update(Schema.servers).set({ enabled: serverEnabledP.enabled }).where(E.eq(Schema.servers.id, serverEnabledP.id)),
+	)
+	const newServerP = SQL.params({
+		id: Schema.servers.id,
+		displayName: Schema.servers.displayName,
+		layerQueue: Schema.servers.layerQueue,
+		backburner: Schema.servers.backburner,
+		switchRequests: Schema.servers.switchRequests,
+		visibility: Schema.servers.visibility,
+		ownerDiscordId: Schema.servers.ownerDiscordId,
+		settings: Schema.servers.settings,
+	})
+	// teamswaps is left to its column default, which reads as no saved teamswaps
+	export const insertServer = SQL.def(
+		'insertServer',
+		newServerP,
+		SQL.insert(Schema.servers).values({
+			id: newServerP.id,
+			displayName: newServerP.displayName,
+			enabled: SQL.lit(false),
+			defaultServer: SQL.lit(false),
+			layerQueue: newServerP.layerQueue,
+			backburner: newServerP.backburner,
+			switchRequests: newServerP.switchRequests,
+			visibility: newServerP.visibility,
+			ownerDiscordId: newServerP.ownerDiscordId,
+			settings: newServerP.settings,
+		}),
+	)
+}
 
 export function setup(ctx: C.Db) {
 	log = module.getLogger()
@@ -167,17 +166,17 @@ function openGlobalSecrets(encoded: unknown): { settings: unknown; unreadable: s
 }
 
 function persistGlobalSettings(ctx: C.Db) {
-	DB.run(ctx, writeGlobalSettings({ settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS)) }))
+	DB.run(ctx, Q.writeGlobalSettings({ settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(GLOBAL_SETTINGS)) }))
 }
 
 function loadGlobalSettings(ctx: C.Db) {
-	const row = DB.get(ctx, globalSettingsRows({}))
+	const row = DB.get(ctx, Q.globalSettingsRows({}))
 	if (!row) {
 		// fresh install: schema defaults include the tiered admins/managers/owners RBAC preset (see defaultRbacSettings)
 		const defaultsRes = SETTINGS.parseGlobalSettings({ integrations: Env.legacyIntegrationSettings() })
 		if (!defaultsRes.success) throw new Error('Default global settings failed schema validation', { cause: defaultsRes.error })
 		const defaults = Seed.applyInitialGlobalSettings(defaultsRes.data)
-		DB.run(ctx, insertGlobalSettings({ settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(defaults)) }))
+		DB.run(ctx, Q.insertGlobalSettings({ settings: sealGlobalSecrets(SETTINGS.GlobalSettingsSchema.encode(defaults)) }))
 		GLOBAL_SETTINGS = defaults
 		log.info('Created default global settings row')
 	} else {
@@ -292,7 +291,7 @@ function pushScopedServersToRbac() {
 }
 
 function loadServerRegistry(ctx: C.Db) {
-	for (const row of DB.all(ctx, serverRows({}))) {
+	for (const row of DB.all(ctx, Q.serverRows({}))) {
 		const settingsRes = SETTINGS.ServerSettingsSchema.safeParse(row.settings)
 		let broken = !settingsRes.success
 		let brokenReason: unknown = settingsRes.success ? undefined : settingsRes.error
@@ -303,7 +302,7 @@ function loadServerRegistry(ctx: C.Db) {
 			try {
 				if (connectionsNeedReseal(settingsRes.data)) {
 					const sealed = resealConnections(settingsRes.data)
-					DB.run(ctx, writeServerSettings({ id: row.id, settings: sealed }))
+					DB.run(ctx, Q.writeServerSettings({ id: row.id, settings: sealed }))
 					log.info(`Re-encrypted connection secrets at rest for server ${row.id}`)
 				}
 			} catch (err) {
@@ -323,7 +322,7 @@ function loadServerRegistry(ctx: C.Db) {
 				// force it disabled so that repairing the settings later doesn't silently bring it back online -- an admin has to
 				// explicitly re-enable it once they're confident the fix is correct
 				enabled = false
-				DB.run(ctx, writeServerEnabled({ id: row.id, enabled: false }))
+				DB.run(ctx, Q.writeServerEnabled({ id: row.id, enabled: false }))
 				log.warn(`Server ${row.id} was enabled but has broken settings; forcing it disabled`)
 			}
 		}
@@ -404,7 +403,7 @@ export function createServerEntry(
 	const stored = SS.toStoredChanges(newServer)
 	DB.run(
 		ctx,
-		insertServer({
+		Q.insertServer({
 			id: stored.id,
 			displayName: stored.displayName,
 			layerQueue: stored.layerQueue,
@@ -447,7 +446,7 @@ function pickServerColor(ownerDiscordId: bigint | null): string {
 
 export function deleteServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	if (!serverRegistry.has(serverId)) return { code: 'err:server-not-found' as const }
-	DB.run(ctx, deleteServer({ id: serverId }))
+	DB.run(ctx, Q.deleteServer({ id: serverId }))
 	serverRegistry.delete(serverId)
 	// the server's own ruleset goes with it, unless another server has come to use it, which keeps it ownerless
 	const owned = GLOBAL_SETTINGS.repeatRulesets.filter((r) => r.ownerServerId === serverId)
@@ -473,7 +472,7 @@ export function setServerEnabled(ctx: C.Db, serverId: SS.ServerId, enabled: bool
 	const entry = serverRegistry.get(serverId)
 	if (!entry) return { code: 'err:server-not-found' as const }
 	if (enabled && entry.broken) return { code: 'err:server-settings-invalid' as const }
-	DB.run(ctx, writeServerEnabled({ id: serverId, enabled }))
+	DB.run(ctx, Q.writeServerEnabled({ id: serverId, enabled }))
 	entry.enabled = enabled
 	settings$.next({ scope: 'registry' })
 	log.info('Server %s %s', serverId, enabled ? 'enabled' : 'disabled')
@@ -483,8 +482,8 @@ export function setServerEnabled(ctx: C.Db, serverId: SS.ServerId, enabled: bool
 export function setDefaultServerEntry(ctx: C.Db, serverId: SS.ServerId) {
 	if (!serverRegistry.has(serverId)) return { code: 'err:server-not-found' as const }
 	DB.transaction(ctx, {}, (ctx) => {
-		DB.run(ctx, clearDefaultServer({}))
-		DB.run(ctx, markDefaultServer({ id: serverId }))
+		DB.run(ctx, Q.clearDefaultServer({}))
+		DB.run(ctx, Q.markDefaultServer({ id: serverId }))
 	})
 	for (const entry of serverRegistry.values()) {
 		entry.defaultServer = entry.id === serverId
@@ -576,7 +575,7 @@ export function parseServerStateRow(rawRow: unknown): SS.ServerState {
 
 // reads settings for a server that may not have a live managed server (e.g. it's disabled), always going to the DB
 export function getServerSettings(ctx: C.Db, serverId: SS.ServerId): SETTINGS.ServerSettings {
-	const row = DB.get(ctx, serverSettingsById({ id: serverId }))
+	const row = DB.get(ctx, Q.serverSettingsById({ id: serverId }))
 	if (!row) throw new Error(`Server ${serverId} not found`)
 	return openConnections(SETTINGS.ServerSettingsSchema.parse(row.settings))
 }
@@ -586,7 +585,7 @@ export function getServerSettings(ctx: C.Db, serverId: SS.ServerId): SETTINGS.Se
 // skipped, since nothing can be read out of them.
 export function listServerPoolConfigs(ctx: C.Db): { serverId: SS.ServerId; mainPool: SETTINGS.PoolConfiguration }[] {
 	const configs: { serverId: SS.ServerId; mainPool: SETTINGS.PoolConfiguration }[] = []
-	for (const row of DB.all(ctx, serverSettingsRows({}))) {
+	for (const row of DB.all(ctx, Q.serverSettingsRows({}))) {
 		const res = SETTINGS.ServerSettingsSchema.safeParse(row.settings)
 		if (!res.success) continue
 		configs.push({ serverId: row.id, mainPool: res.data.queue.mainPool })
@@ -600,7 +599,7 @@ export function updateServerSettings(
 	newSettings: SETTINGS.ServerSettings,
 	source: SS.LQStateUpdate['source'],
 ) {
-	DB.run(ctx, writeServerSettings({ id: ctx.serverId, settings: sealConnections(newSettings) }))
+	DB.run(ctx, Q.writeServerSettings({ id: ctx.serverId, settings: sealConnections(newSettings) }))
 
 	DB.afterCommit(ctx, () => {
 		syncServerEntry(ctx.serverId, newSettings)
@@ -610,7 +609,7 @@ export function updateServerSettings(
 
 // reads the raw, unvalidated settings blob so an admin can repair it if it fails schema validation (e.g. after a breaking change)
 export function getRawServerSettings(ctx: C.Db, serverId: SS.ServerId) {
-	const row = DB.get(ctx, serverSettingsById({ id: serverId }))
+	const row = DB.get(ctx, Q.serverSettingsById({ id: serverId }))
 	if (!row) return { code: 'err:server-not-found' as const }
 	return { code: 'ok' as const, settings: row.settings }
 }

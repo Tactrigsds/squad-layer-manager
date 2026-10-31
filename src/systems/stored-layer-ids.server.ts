@@ -165,11 +165,11 @@ export const canonicalizeStoredLayerIds = Instr.spanOp(
 		if (PersistedCache.load<string>(CANONICALIZED_HASH_KEY) === artifactHash) return undefined
 
 		const counts = {
-			matchHistory: await rewriteDistinctText(ctx, DB.all(ctx, matchHistoryLayerIds({})), (ctx, r) =>
-				DB.run(ctx, renameMatchHistoryLayerId(r)),
+			matchHistory: await rewriteDistinctText(ctx, DB.all(ctx, Q.matchHistoryLayerIds({})), (ctx, r) =>
+				DB.run(ctx, Q.renameMatchHistoryLayerId(r)),
 			),
-			associations: await rewriteDistinctText(ctx, DB.all(ctx, associationLayerIds({})), (ctx, r) =>
-				DB.run(ctx, renameAssociationLayerId(r)),
+			associations: await rewriteDistinctText(ctx, DB.all(ctx, Q.associationLayerIds({})), (ctx, r) =>
+				DB.run(ctx, Q.renameAssociationLayerId(r)),
 			),
 			serverEvents: await rewriteServerEvents(ctx),
 			appEvents: await rewriteAppEvents(ctx),
@@ -179,41 +179,6 @@ export const canonicalizeStoredLayerIds = Instr.spanOp(
 		if (Object.values(counts).some((n) => n > 0)) ctx.log.info('rewrote stored layer ids as canonical text: %o', counts)
 		return counts
 	},
-)
-
-const matchHistoryLayerIds = SQL.def(
-	'matchHistoryLayerIds',
-	SQL.params({}),
-	SQL.selectDistinct({ text: Schema.matchHistory.layerId }).from(Schema.matchHistory),
-	{ scans: ['matchHistory'] },
-)
-const renameMatchHistoryP = SQL.params({ text: Schema.matchHistory.layerId, canonical: Schema.matchHistory.layerId })
-const renameMatchHistoryLayerId = SQL.def(
-	'renameMatchHistoryLayerId',
-	renameMatchHistoryP,
-	SQL.update(Schema.matchHistory)
-		.set({ layerId: renameMatchHistoryP.canonical })
-		.where(E.eq(Schema.matchHistory.layerId, renameMatchHistoryP.text)),
-)
-const associationLayerIds = SQL.def(
-	'associationLayerIds',
-	SQL.params({}),
-	SQL.selectDistinct({ text: Schema.appEventAssociations.value })
-		.from(Schema.appEventAssociations)
-		.where(E.eq(Schema.appEventAssociations.dimension, SQL.lit('layer'))),
-)
-const renameAssociationP = SQL.params({ text: Schema.appEventAssociations.value, canonical: Schema.appEventAssociations.value })
-const renameAssociationLayerId = SQL.def(
-	'renameAssociationLayerId',
-	renameAssociationP,
-	SQL.update(Schema.appEventAssociations)
-		.set({ value: renameAssociationP.canonical })
-		.where(
-			E.and(
-				E.eq(Schema.appEventAssociations.value, renameAssociationP.text),
-				E.eq(Schema.appEventAssociations.dimension, SQL.lit('layer')),
-			),
-		),
 )
 
 type Rewrite = { text: string; canonical: string }
@@ -239,35 +204,13 @@ async function rewriteDistinctText(
 	return changed
 }
 
-const serverEventsPageP = SQL.params({ after: Schema.serverEvents.id })
-const layerServerEventsPage = SQL.def(
-	'layerServerEventsPage',
-	serverEventsPageP,
-	SQL.select({ id: Schema.serverEvents.id, type: Schema.serverEvents.type, data: Schema.serverEvents.data })
-		.from(Schema.serverEvents)
-		.where(
-			E.and(
-				E.or(...LAYER_EVENT_TYPES.map((type) => E.eq(Schema.serverEvents.type, SQL.lit(type)))),
-				E.gt(Schema.serverEvents.id, serverEventsPageP.after),
-			),
-		)
-		.orderBy(Schema.serverEvents.id)
-		.limit(PAGE_SIZE),
-)
-const serverEventDataP = SQL.params({ id: Schema.serverEvents.id, data: Schema.serverEvents.data })
-const setServerEventData = SQL.def(
-	'setServerEventData',
-	serverEventDataP,
-	SQL.update(Schema.serverEvents).set({ data: serverEventDataP.data }).where(E.eq(Schema.serverEvents.id, serverEventDataP.id)),
-)
-
 // an event table's `data` holds the superjson envelope as JSON, so it is deserialized and serialized here
 async function rewriteServerEvents(ctx: C.Db & CS.AbortSignal) {
 	let changed = 0
 	let after = 0
 	for (;;) {
 		ctx.signal.throwIfAborted()
-		const rows = DB.all(ctx, layerServerEventsPage({ after }))
+		const rows = DB.all(ctx, Q.layerServerEventsPage({ after }))
 		if (rows.length === 0) return changed
 		after = rows.at(-1)!.id
 		const rewrites: { id: number; data: unknown }[] = []
@@ -285,31 +228,88 @@ async function rewriteServerEvents(ctx: C.Db & CS.AbortSignal) {
 			holder.layerId = canonical
 			rewrites.push({ id: row.id, data: superjson.serialize(payload) })
 		}
-		changed += await writeRows(ctx, rewrites, (ctx, r) => DB.run(ctx, setServerEventData(r)))
+		changed += await writeRows(ctx, rewrites, (ctx, r) => DB.run(ctx, Q.setServerEventData(r)))
 	}
 }
 
-const appEventsPageP = SQL.params({ after: Schema.appEvents.id })
-const layerAppEventsPage = SQL.def(
-	'layerAppEventsPage',
-	appEventsPageP,
-	SQL.select({ id: Schema.appEvents.id, data: Schema.appEvents.data })
-		.from(Schema.appEvents)
-		.where(
-			E.and(
-				E.gt(Schema.appEvents.id, appEventsPageP.after),
-				E.sql`(instr(${Schema.appEvents.data}, 'layerId') > 0 OR instr(${Schema.appEvents.data}, 'LayerId') > 0 OR instr(${Schema.appEvents.data}, 'choices') > 0)`,
+namespace Q {
+	export const matchHistoryLayerIds = SQL.def(
+		'matchHistoryLayerIds',
+		SQL.params({}),
+		SQL.selectDistinct({ text: Schema.matchHistory.layerId }).from(Schema.matchHistory),
+		{ scans: ['matchHistory'] },
+	)
+	const renameMatchHistoryP = SQL.params({ text: Schema.matchHistory.layerId, canonical: Schema.matchHistory.layerId })
+	export const renameMatchHistoryLayerId = SQL.def(
+		'renameMatchHistoryLayerId',
+		renameMatchHistoryP,
+		SQL.update(Schema.matchHistory)
+			.set({ layerId: renameMatchHistoryP.canonical })
+			.where(E.eq(Schema.matchHistory.layerId, renameMatchHistoryP.text)),
+	)
+	export const associationLayerIds = SQL.def(
+		'associationLayerIds',
+		SQL.params({}),
+		SQL.selectDistinct({ text: Schema.appEventAssociations.value })
+			.from(Schema.appEventAssociations)
+			.where(E.eq(Schema.appEventAssociations.dimension, SQL.lit('layer'))),
+	)
+	const renameAssociationP = SQL.params({ text: Schema.appEventAssociations.value, canonical: Schema.appEventAssociations.value })
+	export const renameAssociationLayerId = SQL.def(
+		'renameAssociationLayerId',
+		renameAssociationP,
+		SQL.update(Schema.appEventAssociations)
+			.set({ value: renameAssociationP.canonical })
+			.where(
+				E.and(
+					E.eq(Schema.appEventAssociations.value, renameAssociationP.text),
+					E.eq(Schema.appEventAssociations.dimension, SQL.lit('layer')),
+				),
 			),
-		)
-		.orderBy(Schema.appEvents.id)
-		.limit(PAGE_SIZE),
-)
-const appEventDataP = SQL.params({ id: Schema.appEvents.id, data: Schema.appEvents.data })
-const setAppEventData = SQL.def(
-	'setAppEventData',
-	appEventDataP,
-	SQL.update(Schema.appEvents).set({ data: appEventDataP.data }).where(E.eq(Schema.appEvents.id, appEventDataP.id)),
-)
+	)
+	const serverEventsPageP = SQL.params({ after: Schema.serverEvents.id })
+	export const layerServerEventsPage = SQL.def(
+		'layerServerEventsPage',
+		serverEventsPageP,
+		SQL.select({ id: Schema.serverEvents.id, type: Schema.serverEvents.type, data: Schema.serverEvents.data })
+			.from(Schema.serverEvents)
+			.where(
+				E.and(
+					E.or(...LAYER_EVENT_TYPES.map((type) => E.eq(Schema.serverEvents.type, SQL.lit(type)))),
+					E.gt(Schema.serverEvents.id, serverEventsPageP.after),
+				),
+			)
+			.orderBy(Schema.serverEvents.id)
+			.limit(PAGE_SIZE),
+	)
+	const serverEventDataP = SQL.params({ id: Schema.serverEvents.id, data: Schema.serverEvents.data })
+	export const setServerEventData = SQL.def(
+		'setServerEventData',
+		serverEventDataP,
+		SQL.update(Schema.serverEvents).set({ data: serverEventDataP.data }).where(E.eq(Schema.serverEvents.id, serverEventDataP.id)),
+	)
+	const appEventsPageP = SQL.params({ after: Schema.appEvents.id })
+	export const layerAppEventsPage = SQL.def(
+		'layerAppEventsPage',
+		appEventsPageP,
+		SQL.select({ id: Schema.appEvents.id, data: Schema.appEvents.data })
+			.from(Schema.appEvents)
+			.where(
+				E.and(
+					E.gt(Schema.appEvents.id, appEventsPageP.after),
+					E.sql`(instr(${Schema.appEvents.data}, 'layerId') > 0 OR instr(${Schema.appEvents.data}, 'LayerId') > 0 OR instr(${Schema.appEvents.data}, 'choices') > 0)`,
+				),
+			)
+			.orderBy(Schema.appEvents.id)
+			.limit(PAGE_SIZE),
+	)
+	const appEventDataP = SQL.params({ id: Schema.appEvents.id, data: Schema.appEvents.data })
+	export const setAppEventData = SQL.def(
+		'setAppEventData',
+		appEventDataP,
+		SQL.update(Schema.appEvents).set({ data: appEventDataP.data }).where(E.eq(Schema.appEvents.id, appEventDataP.id)),
+	)
+}
 
 // Rewrites only the fields that hold layer ids, on the payload as stored. Reading the row through the app event schema
 // instead would drop any field the schema no longer knows.
@@ -319,7 +319,7 @@ async function rewriteAppEvents(ctx: C.Db & CS.AbortSignal) {
 	let after = ''
 	for (;;) {
 		ctx.signal.throwIfAborted()
-		const rows = DB.all(ctx, layerAppEventsPage({ after }))
+		const rows = DB.all(ctx, Q.layerAppEventsPage({ after }))
 		if (rows.length === 0) return changed
 		after = rows.at(-1)!.id
 		const rewrites: { id: string; data: unknown }[] = []
@@ -333,7 +333,7 @@ async function rewriteAppEvents(ctx: C.Db & CS.AbortSignal) {
 			const next = canonicalizedPayload(payload)
 			if (next !== undefined) rewrites.push({ id: row.id, data: superjson.serialize(next) })
 		}
-		changed += await writeRows(ctx, rewrites, (ctx, r) => DB.run(ctx, setAppEventData(r)))
+		changed += await writeRows(ctx, rewrites, (ctx, r) => DB.run(ctx, Q.setAppEventData(r)))
 	}
 }
 

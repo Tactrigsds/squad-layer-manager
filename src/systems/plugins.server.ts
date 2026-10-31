@@ -55,30 +55,34 @@ let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 const SQL = Sql.forModule(module)
 
-const pluginRows = SQL.def('pluginRows', SQL.params({}), SQL.select({ id: Schema.plugins.id }).from(Schema.plugins), { scans: ['plugins'] })
-const pluginIdP = SQL.params({ id: Schema.plugins.id })
-const pluginRow = SQL.def('pluginRow', pluginIdP, SQL.select().from(Schema.plugins).where(eq(Schema.plugins.id, pluginIdP.id)))
-const insertPluginRow = SQL.def('insertPluginRow', pluginIdP, SQL.insert(Schema.plugins).values({ id: pluginIdP.id }))
-const pluginStateP = SQL.params({
-	id: Schema.plugins.id,
-	enabled: Schema.plugins.enabled,
-	config: Schema.plugins.config,
-	commands: Schema.plugins.commands,
-})
-const updatePluginRow = SQL.def(
-	'updatePluginRow',
-	pluginStateP,
-	SQL.update(Schema.plugins)
-		.set({ enabled: pluginStateP.enabled, config: pluginStateP.config, commands: pluginStateP.commands })
-		.where(eq(Schema.plugins.id, pluginStateP.id)),
-)
-const disablePlugin = SQL.def(
-	'disablePlugin',
-	pluginIdP,
-	SQL.update(Schema.plugins)
-		.set({ enabled: SQL.lit(false) })
-		.where(eq(Schema.plugins.id, pluginIdP.id)),
-)
+namespace Q {
+	export const pluginRows = SQL.def('pluginRows', SQL.params({}), SQL.select({ id: Schema.plugins.id }).from(Schema.plugins), {
+		scans: ['plugins'],
+	})
+	const pluginIdP = SQL.params({ id: Schema.plugins.id })
+	export const pluginRow = SQL.def('pluginRow', pluginIdP, SQL.select().from(Schema.plugins).where(eq(Schema.plugins.id, pluginIdP.id)))
+	export const insertPluginRow = SQL.def('insertPluginRow', pluginIdP, SQL.insert(Schema.plugins).values({ id: pluginIdP.id }))
+	const pluginStateP = SQL.params({
+		id: Schema.plugins.id,
+		enabled: Schema.plugins.enabled,
+		config: Schema.plugins.config,
+		commands: Schema.plugins.commands,
+	})
+	export const updatePluginRow = SQL.def(
+		'updatePluginRow',
+		pluginStateP,
+		SQL.update(Schema.plugins)
+			.set({ enabled: pluginStateP.enabled, config: pluginStateP.config, commands: pluginStateP.commands })
+			.where(eq(Schema.plugins.id, pluginStateP.id)),
+	)
+	export const disablePlugin = SQL.def(
+		'disablePlugin',
+		pluginIdP,
+		SQL.update(Schema.plugins)
+			.set({ enabled: SQL.lit(false) })
+			.where(eq(Schema.plugins.id, pluginIdP.id)),
+	)
+}
 
 // ---- ctx types (the P.Ctx / P.ServerCtx the plugin API exposes) ----
 
@@ -237,7 +241,7 @@ export async function setup(ctx: C.Db, builtins: BuiltinPlugin[]) {
 	await loadPackages(ctx)
 
 	const known = new Set(plugins.keys())
-	for (const row of DB.all(ctx, pluginRows({}))) {
+	for (const row of DB.all(ctx, Q.pluginRows({}))) {
 		if (!known.has(row.id)) {
 			log.warn({ [ATTRS.Plugin.ID]: row.id }, 'plugin %s has a db row but is not installed; leaving its state alone', row.id)
 		}
@@ -259,9 +263,9 @@ export async function setup(ctx: C.Db, builtins: BuiltinPlugin[]) {
 async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 	const id = entry.manifest.id
 	if (plugins.has(id)) throw new Error(`duplicate plugin id: ${id}`)
-	let row = DB.get(ctx, pluginRow({ id }))
+	let row = DB.get(ctx, Q.pluginRow({ id }))
 	if (!row) {
-		DB.run(ctx, insertPluginRow({ id }))
+		DB.run(ctx, Q.insertPluginRow({ id }))
 		row = { id, enabled: false, config: {}, commands: {} }
 	}
 	const mod = pluginModule(entry)
@@ -866,7 +870,7 @@ function otherCommandConfigs(pluginId: string): Record<string, CMD.PluginCommand
 // ---- persistence ----
 
 function persistRow(ctx: C.Db, rt: Runtime) {
-	DB.run(ctx, updatePluginRow({ id: rt.ref.id, enabled: rt.enabled, config: rt.configInput, commands: rt.commandConfigs }))
+	DB.run(ctx, Q.updatePluginRow({ id: rt.ref.id, enabled: rt.enabled, config: rt.configInput, commands: rt.commandConfigs }))
 }
 
 // ---- router ----
@@ -1178,7 +1182,7 @@ export const router = {
 			if (rt && rt.entry.source === 'builtin') return { code: 'err:builtin' as const }
 			if (!rt && !brokenPackages.has(input.pluginId)) return { code: 'err:unknown-plugin' as const }
 			// the row outlives the package, and an enabled row would start whatever is next installed under this id
-			DB.run(ctx, disablePlugin({ id: input.pluginId }))
+			DB.run(ctx, Q.disablePlugin({ id: input.pluginId }))
 			await Pkgs.remove(input.pluginId)
 			await reloadPackages(ctx)
 			return { code: 'ok' as const }

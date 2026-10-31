@@ -22,14 +22,6 @@ const SQL = Sql.forModule(module)
 export let version = CL.runningVersion(null, 0)
 let releases: CL.ServedRelease[] = []
 
-const allEntries = SQL.def('allEntries', SQL.params({}), SQL.select().from(Schema.changelogEntries), { scans: ['changelogEntries'] })
-const entryP = SQL.params({ entryId: Schema.changelogEntries.entryId, firstServedAt: Schema.changelogEntries.firstServedAt })
-const insertEntry = SQL.def(
-	'insertEntry',
-	entryP,
-	SQL.insert(Schema.changelogEntries).values({ entryId: entryP.entryId, firstServedAt: entryP.firstServedAt }).onConflictDoNothing(),
-)
-
 export function setup(ctx: C.Db) {
 	const log = module.getLogger()
 	const loaded = ChangelogFiles.load(Paths.CHANGELOG, Paths.CHANGES)
@@ -38,13 +30,13 @@ export function setup(ctx: C.Db) {
 
 	const now = Date.now()
 	const { known: servedAt } = DB.transaction(ctx, {}, (ctx) => {
-		const rows = DB.all(ctx, allEntries({}))
+		const rows = DB.all(ctx, Q.allEntries({}))
 		const known = new Map(rows.map((row) => [row.entryId, row.firstServedAt.getTime()]))
 		// an install's first boot with a changelog: everything it ships is history, not news
 		const stampedAt = rows.length === 0 ? 0 : now
 		const arrived = loaded.releases.flatMap((r) => r.entries).filter((e) => !known.has(e.id))
 		for (const e of arrived) {
-			DB.run(ctx, insertEntry({ entryId: e.id, firstServedAt: new Date(stampedAt) }))
+			DB.run(ctx, Q.insertEntry({ entryId: e.id, firstServedAt: new Date(stampedAt) }))
 			known.set(e.id, stampedAt)
 		}
 		return { code: 'ok' as const, known }
@@ -66,47 +58,58 @@ export function setup(ctx: C.Db) {
 	}
 }
 
-const userIdP = SQL.params({ userId: Schema.changelogUserState.userId })
-const userState = SQL.def(
-	'userState',
-	userIdP,
-	SQL.select().from(Schema.changelogUserState).where(E.eq(Schema.changelogUserState.userId, userIdP.userId)),
-)
-const newUserStateP = SQL.params({ userId: Schema.changelogUserState.userId, seenAt: Schema.changelogUserState.seenAt })
-const insertUserState = SQL.def(
-	'insertUserState',
-	newUserStateP,
-	SQL.insert(Schema.changelogUserState)
-		.values({ userId: newUserStateP.userId, seenAt: newUserStateP.seenAt })
-		.onConflictDoUpdate({ target: Schema.changelogUserState.userId, set: { userId: newUserStateP.userId } })
-		.returning(),
-)
-const markSeenP = SQL.params({ userId: Schema.changelogUserState.userId, seenAt: Schema.changelogUserState.seenAt })
-const markSeenUpTo = SQL.def(
-	'markSeenUpTo',
-	markSeenP,
-	SQL.update(Schema.changelogUserState)
-		.set({ seenAt: markSeenP.seenAt })
-		.where(E.and(E.eq(Schema.changelogUserState.userId, markSeenP.userId), E.lt(Schema.changelogUserState.seenAt, markSeenP.seenAt))),
-)
-const prefsP = SQL.params({
-	userId: Schema.changelogUserState.userId,
-	notifyLevel: Schema.changelogUserState.notifyLevel,
-	showOperatorNotes: Schema.changelogUserState.showOperatorNotes,
-})
-const setUserPrefs = SQL.def(
-	'setUserPrefs',
-	prefsP,
-	SQL.update(Schema.changelogUserState)
-		.set({ notifyLevel: prefsP.notifyLevel, showOperatorNotes: prefsP.showOperatorNotes })
-		.where(E.eq(Schema.changelogUserState.userId, prefsP.userId)),
-)
+namespace Q {
+	export const allEntries = SQL.def('allEntries', SQL.params({}), SQL.select().from(Schema.changelogEntries), {
+		scans: ['changelogEntries'],
+	})
+	const entryP = SQL.params({ entryId: Schema.changelogEntries.entryId, firstServedAt: Schema.changelogEntries.firstServedAt })
+	export const insertEntry = SQL.def(
+		'insertEntry',
+		entryP,
+		SQL.insert(Schema.changelogEntries).values({ entryId: entryP.entryId, firstServedAt: entryP.firstServedAt }).onConflictDoNothing(),
+	)
+	const userIdP = SQL.params({ userId: Schema.changelogUserState.userId })
+	export const userState = SQL.def(
+		'userState',
+		userIdP,
+		SQL.select().from(Schema.changelogUserState).where(E.eq(Schema.changelogUserState.userId, userIdP.userId)),
+	)
+	const newUserStateP = SQL.params({ userId: Schema.changelogUserState.userId, seenAt: Schema.changelogUserState.seenAt })
+	export const insertUserState = SQL.def(
+		'insertUserState',
+		newUserStateP,
+		SQL.insert(Schema.changelogUserState)
+			.values({ userId: newUserStateP.userId, seenAt: newUserStateP.seenAt })
+			.onConflictDoUpdate({ target: Schema.changelogUserState.userId, set: { userId: newUserStateP.userId } })
+			.returning(),
+	)
+	const markSeenP = SQL.params({ userId: Schema.changelogUserState.userId, seenAt: Schema.changelogUserState.seenAt })
+	export const markSeenUpTo = SQL.def(
+		'markSeenUpTo',
+		markSeenP,
+		SQL.update(Schema.changelogUserState)
+			.set({ seenAt: markSeenP.seenAt })
+			.where(E.and(E.eq(Schema.changelogUserState.userId, markSeenP.userId), E.lt(Schema.changelogUserState.seenAt, markSeenP.seenAt))),
+	)
+	const prefsP = SQL.params({
+		userId: Schema.changelogUserState.userId,
+		notifyLevel: Schema.changelogUserState.notifyLevel,
+		showOperatorNotes: Schema.changelogUserState.showOperatorNotes,
+	})
+	export const setUserPrefs = SQL.def(
+		'setUserPrefs',
+		prefsP,
+		SQL.update(Schema.changelogUserState)
+			.set({ notifyLevel: prefsP.notifyLevel, showOperatorNotes: prefsP.showOperatorNotes })
+			.where(E.eq(Schema.changelogUserState.userId, prefsP.userId)),
+	)
+}
 
 // the caller's place in the changelog, created on first read as having seen everything so far, so a new user does
 // not start with the install's whole history marked unread
 function readUserState(ctx: C.Db, userId: bigint): CL.UserState {
 	const row =
-		DB.get(ctx, userState({ userId })) ?? DB.get(ctx, insertUserState({ userId, seenAt: new Date(CL.latestServedAt(releases)) }))!
+		DB.get(ctx, Q.userState({ userId })) ?? DB.get(ctx, Q.insertUserState({ userId, seenAt: new Date(CL.latestServedAt(releases)) }))!
 	return { seenAt: row.seenAt.getTime(), notifyLevel: row.notifyLevel, showOperatorNotes: row.showOperatorNotes }
 }
 
@@ -130,7 +133,7 @@ export const orpcRouter = {
 		.handler(({ context, input }) => {
 			readUserState(context, context.user.discordId)
 			const seenAt = new Date(Math.min(input.upTo, Date.now()))
-			DB.run(context, markSeenUpTo({ userId: context.user.discordId, seenAt }))
+			DB.run(context, Q.markSeenUpTo({ userId: context.user.discordId, seenAt }))
 			return { code: 'ok' as const }
 		}),
 
@@ -142,7 +145,7 @@ export const orpcRouter = {
 			const state = readUserState(context, userId)
 			DB.run(
 				context,
-				setUserPrefs({
+				Q.setUserPrefs({
 					userId,
 					notifyLevel: input.notifyLevel ?? state.notifyLevel,
 					showOperatorNotes: input.showOperatorNotes ?? state.showOperatorNotes,

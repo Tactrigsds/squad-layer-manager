@@ -478,10 +478,10 @@ async function backdatePastMatches(ctx: StageCtx, reader: ReaderClock) {
 		const newStart = now - Math.floor(plan.startedAgoMin * 60_000 * scale)
 		const newEnd = newStart + Math.floor(plan.lastedMin * 60_000 * scale)
 		const oldSpan = Math.max(1, oldEnd - oldStart)
-		DB.run(ctx, retimeMatch({ id: match.historyEntryId, startTime: new Date(newStart), endTime: new Date(newEnd) }))
+		DB.run(ctx, Q.retimeMatch({ id: match.historyEntryId, startTime: new Date(newStart), endTime: new Date(newEnd) }))
 		const span = { matchId: match.historyEntryId, newStart, oldStart, oldSpan, newSpan: newEnd - newStart }
-		DB.run(ctx, rescaleServerEventTimes(span))
-		DB.run(ctx, rescaleAppEventTimes(span))
+		DB.run(ctx, Q.rescaleServerEventTimes(span))
+		DB.run(ctx, Q.rescaleAppEventTimes(span))
 		ctx.matchEventsCache.events.delete(match.historyEntryId)
 	}
 	MatchHistory.loadState(ctx)
@@ -694,42 +694,12 @@ function filterIdsFor(owner: bigint) {
 	const prefix = `${TUTORIAL_FILTER_PREFIX}${owner}-`
 	return { pool: `${prefix}pool`, indicator: `${prefix}large`, all: [`${prefix}pool`, `${prefix}large`] }
 }
-
-const retimeP = SQL.params({ id: Schema.matchHistory.id, startTime: Schema.matchHistory.startTime, endTime: Schema.matchHistory.endTime })
-const retimeMatch = SQL.def(
-	'retimeMatch',
-	retimeP,
-	SQL.update(Schema.matchHistory)
-		.set({ startTime: retimeP.startTime, endTime: retimeP.endTime, createdAt: retimeP.startTime })
-		.where(E.eq(Schema.matchHistory.id, retimeP.id)),
-)
 // event times are stored as epoch milliseconds, which is what the rescale does arithmetic on
 const epochMs = SQL.value((ms: number) => ms)
-const rescaleP = SQL.params({
-	matchId: Schema.serverEvents.matchId,
-	newStart: epochMs,
-	oldStart: epochMs,
-	oldSpan: SQL.value<number>(),
-	newSpan: SQL.value<number>(),
-})
 // the log reads server events and SLM's own (app) events together, so both move. What the roll records after the
 // match ends is pinned to the end, rather than landing after the next match began.
 const rescaled = (column: typeof Schema.serverEvents.time | typeof Schema.appEvents.time) =>
-	E.sql`cast(${rescaleP.newStart} + (min(max(${column} - ${rescaleP.oldStart}, 0), ${rescaleP.oldSpan}) * ${rescaleP.newSpan}) / ${rescaleP.oldSpan} as integer)`
-const rescaleServerEventTimes = SQL.def(
-	'rescaleServerEventTimes',
-	rescaleP,
-	SQL.update(Schema.serverEvents)
-		.set({ time: rescaled(Schema.serverEvents.time) })
-		.where(E.eq(Schema.serverEvents.matchId, rescaleP.matchId)),
-)
-const rescaleAppEventTimes = SQL.def(
-	'rescaleAppEventTimes',
-	rescaleP,
-	SQL.update(Schema.appEvents)
-		.set({ time: rescaled(Schema.appEvents.time) })
-		.where(E.eq(Schema.appEvents.matchId, rescaleP.matchId)),
-)
+	E.sql`cast(${Q.rescaleP.newStart} + (min(max(${column} - ${Q.rescaleP.oldStart}, 0), ${Q.rescaleP.oldSpan}) * ${Q.rescaleP.newSpan}) / ${Q.rescaleP.oldSpan} as integer)`
 
 // The second editor a run stands up so the force-save step has something to override. One identity shared by every
 // run rather than one each: presence is keyed by client, so concurrent runs get their own editor from the clientId
@@ -742,26 +712,9 @@ function peerClientId(serverId: string) {
 	return `${serverId}-peer`
 }
 
-const peerAccountP = SQL.params({ discordId: Schema.discordAccounts.discordId, updatedAt: Schema.discordAccounts.updatedAt })
-const insertPeerAccount = SQL.def(
-	'insertPeerAccount',
-	peerAccountP,
-	SQL.insert(Schema.discordAccounts)
-		.values({ discordId: peerAccountP.discordId, username: SQL.lit(PEER_USERNAME), updatedAt: peerAccountP.updatedAt })
-		.onConflictDoNothing(),
-)
-const peerUserP = SQL.params({ discordId: Schema.users.discordId })
-const insertPeerUser = SQL.def('insertPeerUser', peerUserP, SQL.insert(Schema.users).values(peerUserP).onConflictDoNothing())
-const peerIdP = SQL.params({ discordId: Schema.discordAccounts.discordId })
-const deletePeerAccount = SQL.def(
-	'deletePeerAccount',
-	peerIdP,
-	SQL.delete(Schema.discordAccounts).where(E.eq(Schema.discordAccounts.discordId, peerIdP.discordId)),
-)
-
 function ensurePeerUser(ctx: C.Db) {
-	DB.run(ctx, insertPeerAccount({ discordId: PEER_USER_ID, updatedAt: new Date(0) }))
-	DB.run(ctx, insertPeerUser({ discordId: PEER_USER_ID }))
+	DB.run(ctx, Q.insertPeerAccount({ discordId: PEER_USER_ID, updatedAt: new Date(0) }))
+	DB.run(ctx, Q.insertPeerUser({ discordId: PEER_USER_ID }))
 }
 
 // What a run's rows look like, so a sweep matches only those. The prefix alone is not enough: an owner is a
@@ -859,40 +812,21 @@ async function runStage(
 	return pending
 }
 
-// ============================== lifecycle ==============================
-
-const tutorialServerIds = SQL.def(
-	'tutorialServerIds',
-	SQL.params({}),
-	SQL.select({ id: Schema.servers.id })
-		.from(Schema.servers)
-		.where(E.like(Schema.servers.id, SQL.lit(`${TUTORIAL_FILTER_PREFIX}%`))),
-	{ scans: ['servers'] },
-)
-const tutorialFilterIds = SQL.def(
-	'tutorialFilterIds',
-	SQL.params({}),
-	SQL.select({ id: Schema.filters.id })
-		.from(Schema.filters)
-		.where(E.like(Schema.filters.id, SQL.lit(`${TUTORIAL_FILTER_PREFIX}%`))),
-	{ scans: ['filters'] },
-)
-
 // A run's server and its filters are created together and only make sense together, so boot sweeps both: a
 // process killed mid-run leaves the server row enabled and its filters behind, and clearing one without the other
 // would leave a server pointing at a filter that no longer exists. Nothing else owns this id prefix.
 export async function setup(ctx: C.Db) {
 	log = module.getLogger()
-	const servers = DB.all(ctx, tutorialServerIds({}))
+	const servers = DB.all(ctx, Q.tutorialServerIds({}))
 		.map(({ id }) => id)
 		.filter((id) => TUTORIAL_SERVER_ID.test(id))
 	for (const id of servers) await SquadServerLifecycle.deleteServer(id)
-	const filterIds = DB.all(ctx, tutorialFilterIds({}))
+	const filterIds = DB.all(ctx, Q.tutorialFilterIds({}))
 		.map(({ id }) => id)
 		.filter((id) => TUTORIAL_FILTER_ID.test(id))
 	const filters = FilterEntity.deleteRuntimeFilters(ctx, filterIds)
 	// no run holds the second editor at boot, so its identity goes with them; the user row cascades from the account
-	DB.run(ctx, deletePeerAccount({ discordId: PEER_USER_ID }))
+	DB.run(ctx, Q.deletePeerAccount({ discordId: PEER_USER_ID }))
 	if (servers.length || filters) log.info('swept %d tutorial servers and %d filters left by an earlier run', servers.length, filters)
 }
 
@@ -933,43 +867,8 @@ const start = Instr.spanOp(
 	},
 )
 
-// ============================== progress ==============================
-
-// A user's place in each tutorial, which outlives the run: the server a run stands up is ephemeral and gets
-// reaped, but where the reader got to is theirs. Written on every step, so it is one upsert of a tiny row.
-const progressUserP = SQL.params({ userId: Schema.tutorialProgress.userId })
-const progressOf = SQL.def(
-	'progressOf',
-	progressUserP,
-	SQL.select().from(Schema.tutorialProgress).where(E.eq(Schema.tutorialProgress.userId, progressUserP.userId)),
-)
-const progressP = SQL.params({
-	userId: Schema.tutorialProgress.userId,
-	scenarioId: Schema.tutorialProgress.scenarioId,
-	stepId: Schema.tutorialProgress.stepId,
-	completedAt: Schema.tutorialProgress.completedAt,
-	updatedAt: Schema.tutorialProgress.updatedAt,
-})
-const upsertProgress = SQL.def(
-	'upsertProgress',
-	progressP,
-	(completed: boolean) =>
-		SQL.insert(Schema.tutorialProgress)
-			.values(progressP)
-			.onConflictDoUpdate({
-				target: [Schema.tutorialProgress.userId, Schema.tutorialProgress.scenarioId],
-				// completion is not undone by starting the tutorial again, so it only ever goes from null to a date
-				set: {
-					stepId: progressP.stepId,
-					updatedAt: progressP.updatedAt,
-					...(completed ? { completedAt: progressP.completedAt } : {}),
-				},
-			}),
-	{ domains: [[true, false]] },
-)
-
 function readProgress(ctx: C.Db, userId: bigint): TUT.Progress[] {
-	const rows = DB.all(ctx, progressOf({ userId }))
+	const rows = DB.all(ctx, Q.progressOf({ userId }))
 	return rows
 		.filter((row): row is typeof row & { scenarioId: TUT.ScenarioId } => TUT.ScenarioIdSchema.safeParse(row.scenarioId).success)
 		.map((row) => ({ scenarioId: row.scenarioId, stepId: row.stepId, completed: row.completedAt !== null }))
@@ -979,7 +878,7 @@ function writeProgress(ctx: C.Db, userId: bigint, progress: TUT.Progress) {
 	const now = new Date()
 	DB.run(
 		ctx,
-		upsertProgress(progress.completed)({
+		Q.upsertProgress(progress.completed)({
 			userId,
 			scenarioId: progress.scenarioId,
 			stepId: progress.stepId,
@@ -989,29 +888,132 @@ function writeProgress(ctx: C.Db, userId: bigint, progress: TUT.Progress) {
 	)
 }
 
-// ============================== page prompts ==============================
+namespace Q {
+	const retimeP = SQL.params({
+		id: Schema.matchHistory.id,
+		startTime: Schema.matchHistory.startTime,
+		endTime: Schema.matchHistory.endTime,
+	})
+	export const retimeMatch = SQL.def(
+		'retimeMatch',
+		retimeP,
+		SQL.update(Schema.matchHistory)
+			.set({ startTime: retimeP.startTime, endTime: retimeP.endTime, createdAt: retimeP.startTime })
+			.where(E.eq(Schema.matchHistory.id, retimeP.id)),
+	)
+	export const rescaleP = SQL.params({
+		matchId: Schema.serverEvents.matchId,
+		newStart: epochMs,
+		oldStart: epochMs,
+		oldSpan: SQL.value<number>(),
+		newSpan: SQL.value<number>(),
+	})
+	export const rescaleServerEventTimes = SQL.def(
+		'rescaleServerEventTimes',
+		rescaleP,
+		SQL.update(Schema.serverEvents)
+			.set({ time: rescaled(Schema.serverEvents.time) })
+			.where(E.eq(Schema.serverEvents.matchId, rescaleP.matchId)),
+	)
+	export const rescaleAppEventTimes = SQL.def(
+		'rescaleAppEventTimes',
+		rescaleP,
+		SQL.update(Schema.appEvents)
+			.set({ time: rescaled(Schema.appEvents.time) })
+			.where(E.eq(Schema.appEvents.matchId, rescaleP.matchId)),
+	)
+	const peerAccountP = SQL.params({ discordId: Schema.discordAccounts.discordId, updatedAt: Schema.discordAccounts.updatedAt })
+	export const insertPeerAccount = SQL.def(
+		'insertPeerAccount',
+		peerAccountP,
+		SQL.insert(Schema.discordAccounts)
+			.values({ discordId: peerAccountP.discordId, username: SQL.lit(PEER_USERNAME), updatedAt: peerAccountP.updatedAt })
+			.onConflictDoNothing(),
+	)
+	const peerUserP = SQL.params({ discordId: Schema.users.discordId })
+	export const insertPeerUser = SQL.def('insertPeerUser', peerUserP, SQL.insert(Schema.users).values(peerUserP).onConflictDoNothing())
+	const peerIdP = SQL.params({ discordId: Schema.discordAccounts.discordId })
+	export const deletePeerAccount = SQL.def(
+		'deletePeerAccount',
+		peerIdP,
+		SQL.delete(Schema.discordAccounts).where(E.eq(Schema.discordAccounts.discordId, peerIdP.discordId)),
+	)
+	// ============================== lifecycle ==============================
 
-// Which pages the user has told to stop offering their tutorials. A row per dismissal, so nothing is written for
-// the ordinary case of never having dismissed one.
-const dismissalUserP = SQL.params({ userId: Schema.tutorialPromptDismissals.userId })
-const dismissalsOf = SQL.def(
-	'dismissalsOf',
-	dismissalUserP,
-	SQL.select().from(Schema.tutorialPromptDismissals).where(E.eq(Schema.tutorialPromptDismissals.userId, dismissalUserP.userId)),
-)
-const dismissalP = SQL.params({
-	userId: Schema.tutorialPromptDismissals.userId,
-	surfaceId: Schema.tutorialPromptDismissals.surfaceId,
-	dismissedAt: Schema.tutorialPromptDismissals.dismissedAt,
-})
-const insertDismissal = SQL.def(
-	'insertDismissal',
-	dismissalP,
-	SQL.insert(Schema.tutorialPromptDismissals).values(dismissalP).onConflictDoNothing(),
-)
+	export const tutorialServerIds = SQL.def(
+		'tutorialServerIds',
+		SQL.params({}),
+		SQL.select({ id: Schema.servers.id })
+			.from(Schema.servers)
+			.where(E.like(Schema.servers.id, SQL.lit(`${TUTORIAL_FILTER_PREFIX}%`))),
+		{ scans: ['servers'] },
+	)
+	export const tutorialFilterIds = SQL.def(
+		'tutorialFilterIds',
+		SQL.params({}),
+		SQL.select({ id: Schema.filters.id })
+			.from(Schema.filters)
+			.where(E.like(Schema.filters.id, SQL.lit(`${TUTORIAL_FILTER_PREFIX}%`))),
+		{ scans: ['filters'] },
+	)
+	// ============================== progress ==============================
+
+	// A user's place in each tutorial, which outlives the run: the server a run stands up is ephemeral and gets
+	// reaped, but where the reader got to is theirs. Written on every step, so it is one upsert of a tiny row.
+	const progressUserP = SQL.params({ userId: Schema.tutorialProgress.userId })
+	export const progressOf = SQL.def(
+		'progressOf',
+		progressUserP,
+		SQL.select().from(Schema.tutorialProgress).where(E.eq(Schema.tutorialProgress.userId, progressUserP.userId)),
+	)
+	const progressP = SQL.params({
+		userId: Schema.tutorialProgress.userId,
+		scenarioId: Schema.tutorialProgress.scenarioId,
+		stepId: Schema.tutorialProgress.stepId,
+		completedAt: Schema.tutorialProgress.completedAt,
+		updatedAt: Schema.tutorialProgress.updatedAt,
+	})
+	export const upsertProgress = SQL.def(
+		'upsertProgress',
+		progressP,
+		(completed: boolean) =>
+			SQL.insert(Schema.tutorialProgress)
+				.values(progressP)
+				.onConflictDoUpdate({
+					target: [Schema.tutorialProgress.userId, Schema.tutorialProgress.scenarioId],
+					// completion is not undone by starting the tutorial again, so it only ever goes from null to a date
+					set: {
+						stepId: progressP.stepId,
+						updatedAt: progressP.updatedAt,
+						...(completed ? { completedAt: progressP.completedAt } : {}),
+					},
+				}),
+		{ domains: [[true, false]] },
+	)
+	// ============================== page prompts ==============================
+
+	// Which pages the user has told to stop offering their tutorials. A row per dismissal, so nothing is written for
+	// the ordinary case of never having dismissed one.
+	const dismissalUserP = SQL.params({ userId: Schema.tutorialPromptDismissals.userId })
+	export const dismissalsOf = SQL.def(
+		'dismissalsOf',
+		dismissalUserP,
+		SQL.select().from(Schema.tutorialPromptDismissals).where(E.eq(Schema.tutorialPromptDismissals.userId, dismissalUserP.userId)),
+	)
+	const dismissalP = SQL.params({
+		userId: Schema.tutorialPromptDismissals.userId,
+		surfaceId: Schema.tutorialPromptDismissals.surfaceId,
+		dismissedAt: Schema.tutorialPromptDismissals.dismissedAt,
+	})
+	export const insertDismissal = SQL.def(
+		'insertDismissal',
+		dismissalP,
+		SQL.insert(Schema.tutorialPromptDismissals).values(dismissalP).onConflictDoNothing(),
+	)
+}
 
 function readDismissedPrompts(ctx: C.Db, userId: bigint): TUT.SurfaceId[] {
-	const rows = DB.all(ctx, dismissalsOf({ userId }))
+	const rows = DB.all(ctx, Q.dismissalsOf({ userId }))
 	return rows
 		.map((row) => TUT.SurfaceIdSchema.safeParse(row.surfaceId))
 		.filter((parsed) => parsed.success)
@@ -1028,7 +1030,7 @@ export const orpcRouter = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ surfaceId: TUT.SurfaceIdSchema }))
 		.handler(async ({ context, input }) => {
-			DB.run(context, insertDismissal({ userId: context.user.discordId, surfaceId: input.surfaceId, dismissedAt: new Date() }))
+			DB.run(context, Q.insertDismissal({ userId: context.user.discordId, surfaceId: input.surfaceId, dismissedAt: new Date() }))
 			return { code: 'ok' as const }
 		}),
 

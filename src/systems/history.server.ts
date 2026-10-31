@@ -188,122 +188,120 @@ export const DEFAULT_RENDER: RenderOpts = RenderSchema.parse({})
 // a name picker only has to show enough to pick from; a needle matching thousands is a needle to keep typing
 const PLAYER_SEARCH_LIMIT = 25
 
-const userIdsP = SQL.params({ ids: SQL.list(Schema.users.discordId) })
-const userNamesByIds = SQL.def(
-	'userNamesByIds',
-	userIdsP,
-	SQL.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-		.where(SQL.inJson(Schema.users.discordId, userIdsP.ids)),
-)
-
-const steamIdsP = SQL.params({ ids: SQL.list(Schema.players.steamId) })
-const playerNamesBySteamIds = SQL.def(
-	'playerNamesBySteamIds',
-	steamIdsP,
-	SQL.select({ steamId: Schema.players.steamId, username: Schema.players.username })
-		.from(Schema.players)
-		.where(SQL.inJson(Schema.players.steamId, steamIdsP.ids)),
-)
-
-const playerP = SQL.params({ eosId: Schema.players.eosId })
-const playerById = SQL.def(
-	'playerById',
-	playerP,
-	SQL.select({ username: Schema.players.username, steamId: Schema.players.steamId })
-		.from(Schema.players)
-		.where(E.eq(Schema.players.eosId, playerP.eosId)),
-)
-
-const eosIdsP = SQL.params({ ids: SQL.list(Schema.players.eosId) })
-const playerSearchResults = SQL.def(
-	'playerSearchResults',
-	eosIdsP,
-	SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username })
-		.from(Schema.players)
-		.where(SQL.inJson(Schema.players.eosId, eosIdsP.ids))
-		.limit(PLAYER_SEARCH_LIMIT),
-)
-
-const allUserNames = SQL.def(
-	'allUserNames',
-	SQL.params({}),
-	SQL.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId)),
-	{ scans: ['users', 'discordAccounts'] },
-)
-
-const playerLabelsP = SQL.params({ steamIds: SQL.list(Schema.players.steamId), hexIds: SQL.list(Schema.players.eosId) })
-const playersByIdRefs = SQL.def(
-	'playersByIdRefs',
-	playerLabelsP,
-	SQL.select({
-		eosId: Schema.players.eosId,
-		steamId: Schema.players.steamId,
-		epicId: Schema.players.epicId,
-		username: Schema.players.username,
-	})
-		.from(Schema.players)
-		.where(
-			E.or(
-				SQL.inJson(Schema.players.steamId, playerLabelsP.steamIds),
-				SQL.inJson(Schema.players.eosId, playerLabelsP.hexIds),
-				SQL.inJson(Schema.players.epicId, playerLabelsP.hexIds),
+namespace Q {
+	const userIdsP = SQL.params({ ids: SQL.list(Schema.users.discordId) })
+	export const userNamesByIds = SQL.def(
+		'userNamesByIds',
+		userIdsP,
+		SQL.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+			.where(SQL.inJson(Schema.users.discordId, userIdsP.ids)),
+	)
+	const steamIdsP = SQL.params({ ids: SQL.list(Schema.players.steamId) })
+	export const playerNamesBySteamIds = SQL.def(
+		'playerNamesBySteamIds',
+		steamIdsP,
+		SQL.select({ steamId: Schema.players.steamId, username: Schema.players.username })
+			.from(Schema.players)
+			.where(SQL.inJson(Schema.players.steamId, steamIdsP.ids)),
+	)
+	const playerP = SQL.params({ eosId: Schema.players.eosId })
+	export const playerById = SQL.def(
+		'playerById',
+		playerP,
+		SQL.select({ username: Schema.players.username, steamId: Schema.players.steamId })
+			.from(Schema.players)
+			.where(E.eq(Schema.players.eosId, playerP.eosId)),
+	)
+	const eosIdsP = SQL.params({ ids: SQL.list(Schema.players.eosId) })
+	export const playerSearchResults = SQL.def(
+		'playerSearchResults',
+		eosIdsP,
+		SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username })
+			.from(Schema.players)
+			.where(SQL.inJson(Schema.players.eosId, eosIdsP.ids))
+			.limit(PLAYER_SEARCH_LIMIT),
+	)
+	export const allUserNames = SQL.def(
+		'allUserNames',
+		SQL.params({}),
+		SQL.select({ discordId: Schema.users.discordId, nickname: Schema.users.nickname, username: Schema.discordAccounts.username })
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId)),
+		{ scans: ['users', 'discordAccounts'] },
+	)
+	const playerLabelsP = SQL.params({ steamIds: SQL.list(Schema.players.steamId), hexIds: SQL.list(Schema.players.eosId) })
+	export const playersByIdRefs = SQL.def(
+		'playersByIdRefs',
+		playerLabelsP,
+		SQL.select({
+			eosId: Schema.players.eosId,
+			steamId: Schema.players.steamId,
+			epicId: Schema.players.epicId,
+			username: Schema.players.username,
+		})
+			.from(Schema.players)
+			.where(
+				E.or(
+					SQL.inJson(Schema.players.steamId, playerLabelsP.steamIds),
+					SQL.inJson(Schema.players.eosId, playerLabelsP.hexIds),
+					SQL.inJson(Schema.players.epicId, playerLabelsP.hexIds),
+				),
 			),
-		),
-)
-
-const ownerP = SQL.params({ ownerId: Schema.savedQueries.ownerId })
-const savedQueriesVisibleTo = SQL.def(
-	'savedQueriesVisibleTo',
-	ownerP,
-	SQL.select({ row: Schema.savedQueries, ownerName: Schema.discordAccounts.username })
-		.from(Schema.savedQueries)
-		.leftJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.savedQueries.ownerId))
-		.where(E.or(E.eq(Schema.savedQueries.ownerId, ownerP.ownerId), E.eq(Schema.savedQueries.visibility, SQL.lit('shared'))))
-		.orderBy(E.desc(Schema.savedQueries.updatedAt)),
-	{ scans: ['savedQueries'] },
-)
-
-const savedIdP = SQL.params({ id: Schema.savedQueries.id })
-const savedQueryById = SQL.def(
-	'savedQueryById',
-	savedIdP,
-	SQL.select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, savedIdP.id)),
-)
-const deleteSavedQuery = SQL.def(
-	'deleteSavedQuery',
-	savedIdP,
-	SQL.delete(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, savedIdP.id)),
-)
-
-const updateSavedP = SQL.params({
-	id: Schema.savedQueries.id,
-	name: Schema.savedQueries.name,
-	visibility: Schema.savedQueries.visibility,
-	query: Schema.savedQueries.query,
-	updatedAt: Schema.savedQueries.updatedAt,
-})
-const updateSavedQuery = SQL.def(
-	'updateSavedQuery',
-	updateSavedP,
-	SQL.update(Schema.savedQueries)
-		.set({ name: updateSavedP.name, visibility: updateSavedP.visibility, query: updateSavedP.query, updatedAt: updateSavedP.updatedAt })
-		.where(E.eq(Schema.savedQueries.id, updateSavedP.id)),
-)
-
-const insertSavedP = SQL.params({
-	id: Schema.savedQueries.id,
-	name: Schema.savedQueries.name,
-	ownerId: Schema.savedQueries.ownerId,
-	visibility: Schema.savedQueries.visibility,
-	query: Schema.savedQueries.query,
-	createdAt: Schema.savedQueries.createdAt,
-	updatedAt: Schema.savedQueries.updatedAt,
-})
-const insertSavedQuery = SQL.def('insertSavedQuery', insertSavedP, SQL.insert(Schema.savedQueries).values(insertSavedP))
+	)
+	const ownerP = SQL.params({ ownerId: Schema.savedQueries.ownerId })
+	export const savedQueriesVisibleTo = SQL.def(
+		'savedQueriesVisibleTo',
+		ownerP,
+		SQL.select({ row: Schema.savedQueries, ownerName: Schema.discordAccounts.username })
+			.from(Schema.savedQueries)
+			.leftJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.savedQueries.ownerId))
+			.where(E.or(E.eq(Schema.savedQueries.ownerId, ownerP.ownerId), E.eq(Schema.savedQueries.visibility, SQL.lit('shared'))))
+			.orderBy(E.desc(Schema.savedQueries.updatedAt)),
+		{ scans: ['savedQueries'] },
+	)
+	const savedIdP = SQL.params({ id: Schema.savedQueries.id })
+	export const savedQueryById = SQL.def(
+		'savedQueryById',
+		savedIdP,
+		SQL.select().from(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, savedIdP.id)),
+	)
+	export const deleteSavedQuery = SQL.def(
+		'deleteSavedQuery',
+		savedIdP,
+		SQL.delete(Schema.savedQueries).where(E.eq(Schema.savedQueries.id, savedIdP.id)),
+	)
+	const updateSavedP = SQL.params({
+		id: Schema.savedQueries.id,
+		name: Schema.savedQueries.name,
+		visibility: Schema.savedQueries.visibility,
+		query: Schema.savedQueries.query,
+		updatedAt: Schema.savedQueries.updatedAt,
+	})
+	export const updateSavedQuery = SQL.def(
+		'updateSavedQuery',
+		updateSavedP,
+		SQL.update(Schema.savedQueries)
+			.set({
+				name: updateSavedP.name,
+				visibility: updateSavedP.visibility,
+				query: updateSavedP.query,
+				updatedAt: updateSavedP.updatedAt,
+			})
+			.where(E.eq(Schema.savedQueries.id, updateSavedP.id)),
+	)
+	const insertSavedP = SQL.params({
+		id: Schema.savedQueries.id,
+		name: Schema.savedQueries.name,
+		ownerId: Schema.savedQueries.ownerId,
+		visibility: Schema.savedQueries.visibility,
+		query: Schema.savedQueries.query,
+		createdAt: Schema.savedQueries.createdAt,
+		updatedAt: Schema.savedQueries.updatedAt,
+	})
+	export const insertSavedQuery = SQL.def('insertSavedQuery', insertSavedP, SQL.insert(Schema.savedQueries).values(insertSavedP))
+}
 
 // what running a query needs: the db, and the user whose server visibility bounds it
 type QueryCtx = C.Db & USR.Ctx.Id & CS.AbortSignal
@@ -378,8 +376,8 @@ function setByNames(ctx: C.Db, matches: MH.MatchDetails[]): MatchSummary.SetByNa
 			}
 		}
 	}
-	const users = userIds.size > 0 ? DB.all(ctx, userNamesByIds({ ids: [...userIds] })) : []
-	const players = steamIds.size > 0 ? DB.all(ctx, playerNamesBySteamIds({ ids: [...steamIds] })) : []
+	const users = userIds.size > 0 ? DB.all(ctx, Q.userNamesByIds({ ids: [...userIds] })) : []
+	const players = steamIds.size > 0 ? DB.all(ctx, Q.playerNamesBySteamIds({ ids: [...steamIds] })) : []
 	const pluginNames = new Map(PluginsSys.listRuntimeInfo().map((p) => [p.id, p.name]))
 	return {
 		users: Object.fromEntries(users.map((u) => [u.discordId.toString(), u.nickname || u.username])),
@@ -505,7 +503,7 @@ export const router = {
 	// the admin-list groups they hold are true of the person; whether those groups make them an admin is a property of
 	// the lists a *server* recognises, so there is deliberately no isAdmin here and the window shows no badge.
 	playerInfo: orpcBase.input(z.object({ playerId: z.string() })).handler(async ({ input, context: ctx }) => {
-		const row = DB.get(ctx, playerById({ eosId: input.playerId }))
+		const row = DB.get(ctx, Q.playerById({ eosId: input.playerId }))
 		if (!row) return { code: 'err:not-found' as const }
 		const usernames = PlayerUsernames.getPeriods(ctx, input.playerId)
 		const adminLists = await AdminList.getAllLists(ctx)
@@ -529,7 +527,7 @@ export const router = {
 			? HistoryQuery.resolvePlayerRefs(ctx, [needle])
 			: HistoryQuery.resolveNamedPlayerIds(ctx, needle)
 		if (eosIds.length === 0) return { code: 'ok' as const, players: [] }
-		const rows = DB.all(ctx, playerSearchResults({ ids: eosIds }))
+		const rows = DB.all(ctx, Q.playerSearchResults({ ids: eosIds }))
 		return { code: 'ok' as const, players: rows }
 	}),
 
@@ -537,7 +535,7 @@ export const router = {
 	// searched: an install has hundreds of users where it has hundreds of thousands of players, so the whole
 	// table is cheaper than a round trip per keystroke plus another to name what is already selected.
 	listUsers: orpcBase.handler(({ context: ctx }) => {
-		const rows = DB.all(ctx, allUserNames({}))
+		const rows = DB.all(ctx, Q.allUserNames({}))
 		return { code: 'ok' as const, users: rows.map((r) => ({ userId: r.discordId.toString(), name: r.nickname || r.username })) }
 	}),
 
@@ -552,7 +550,7 @@ export const router = {
 			else if (HQ.EOS_ID_RE.test(ref)) hexIds.push(ref.toLowerCase())
 		}
 		if (steam64s.length === 0 && hexIds.length === 0) return { code: 'ok' as const, players: [] }
-		const rows = DB.all(ctx, playersByIdRefs({ steamIds: steam64s, hexIds }))
+		const rows = DB.all(ctx, Q.playersByIdRefs({ steamIds: steam64s, hexIds }))
 		const byRef = new Map<string, { eosId: string; username: string }>()
 		for (const r of rows) {
 			const player = { eosId: r.eosId, username: r.username }
@@ -571,7 +569,7 @@ export const router = {
 	// -------- saved queries --------
 
 	listSaved: orpcBase.handler(({ context: ctx }) => {
-		const rows = DB.all(ctx, savedQueriesVisibleTo({ ownerId: ctx.user.discordId }))
+		const rows = DB.all(ctx, Q.savedQueriesVisibleTo({ ownerId: ctx.user.discordId }))
 		const out: (HQ.SavedQuery & { ownerName: string | null })[] = []
 		for (const { row, ownerName } of rows) {
 			const query = HQ.QuerySchema.safeParse(row.query)
@@ -597,12 +595,12 @@ export const router = {
 		.input(z.object({ id: HQ.SAVED_QUERY_ID.optional() }).extend(HQ.SavedQueryUpdateSchema.shape))
 		.handler(({ input, context: ctx }) => {
 			if (input.id) {
-				const existing = DB.get(ctx, savedQueryById({ id: input.id }))
+				const existing = DB.get(ctx, Q.savedQueryById({ id: input.id }))
 				if (!existing) return { code: 'err:not-found' as const }
 				if (existing.ownerId !== ctx.user.discordId) return { code: 'err:not-owner' as const }
 				DB.run(
 					ctx,
-					updateSavedQuery({
+					Q.updateSavedQuery({
 						id: input.id,
 						name: input.name,
 						visibility: input.visibility,
@@ -616,7 +614,7 @@ export const router = {
 			const now = new Date()
 			DB.run(
 				ctx,
-				insertSavedQuery({
+				Q.insertSavedQuery({
 					id,
 					name: input.name,
 					ownerId: ctx.user.discordId,
@@ -633,10 +631,10 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ id: HQ.SAVED_QUERY_ID }))
 		.handler(({ input, context: ctx }) => {
-			const existing = DB.get(ctx, savedQueryById({ id: input.id }))
+			const existing = DB.get(ctx, Q.savedQueryById({ id: input.id }))
 			if (!existing) return { code: 'err:not-found' as const }
 			if (existing.ownerId !== ctx.user.discordId) return { code: 'err:not-owner' as const }
-			DB.run(ctx, deleteSavedQuery({ id: input.id }))
+			DB.run(ctx, Q.deleteSavedQuery({ id: input.id }))
 			return { code: 'ok' as const }
 		}),
 }
@@ -700,7 +698,7 @@ function actorLabels(ctx: C.Db, events: CHAT.EventEnriched[]) {
 	}
 	// nickname over the discord username, and no discord fetch: a row is not worth a round trip per actor, and
 	// this is the fallback every lookup lands on anyway when discord is disabled (see selectBestDisplayName)
-	const users = userIds.size > 0 ? DB.all(ctx, userNamesByIds({ ids: [...userIds] })) : []
+	const users = userIds.size > 0 ? DB.all(ctx, Q.userNamesByIds({ ids: [...userIds] })) : []
 	const names = new Map(users.map((u) => [u.discordId, u.nickname || u.username]))
 	const pluginNames = new Map(PluginsSys.listRuntimeInfo().map((p) => [p.id, p.name]))
 	return {

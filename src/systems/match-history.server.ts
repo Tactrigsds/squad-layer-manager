@@ -43,117 +43,113 @@ let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
 const SQL = Sql.forModule(module)
 
-const recentMatchesP = SQL.params({
-	startAtOrdinal: Schema.matchHistory.ordinal,
-	serverId: Schema.matchHistory.serverId,
-	limit: SQL.count(),
-})
-const recentMatchesWithUsers = SQL.def(
-	'recentMatchesWithUsers',
-	recentMatchesP,
-	(() => {
-		const recent = SQL.select()
-			.from(Schema.matchHistory)
-			.where(
-				E.and(
-					E.gte(Schema.matchHistory.ordinal, recentMatchesP.startAtOrdinal),
-					E.eq(Schema.matchHistory.serverId, recentMatchesP.serverId),
-				),
-			)
-			.orderBy(E.desc(Schema.matchHistory.ordinal))
-			.limit(recentMatchesP.limit)
-			.as('recent_matches')
-		return SQL.select()
-			.from(recent)
-			.leftJoin(Schema.users, E.eq(recent.setByUserId, Schema.users.discordId))
-			.leftJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
-	})(),
-	{ scans: ['recent_matches'] },
-)
-
-const serverIdP = SQL.params({ serverId: Schema.matchHistory.serverId })
-const latestMatch = SQL.def(
-	'latestMatch',
-	serverIdP,
-	SQL.select()
-		.from(Schema.matchHistory)
-		.where(E.eq(Schema.matchHistory.serverId, serverIdP.serverId))
-		.orderBy(E.desc(Schema.matchHistory.ordinal))
-		.limit(1),
-)
-
-const matchByOrdinalP = SQL.params({ serverId: Schema.matchHistory.serverId, ordinal: Schema.matchHistory.ordinal })
-const matchByOrdinal = SQL.def(
-	'matchByOrdinal',
-	matchByOrdinalP,
-	SQL.select()
-		.from(Schema.matchHistory)
-		.where(
-			E.and(E.eq(Schema.matchHistory.serverId, matchByOrdinalP.serverId), E.eq(Schema.matchHistory.ordinal, matchByOrdinalP.ordinal)),
-		),
-)
-
 const matchColumns = Obj.omit(E.getTableColumns(Schema.matchHistory), ['id'])
-const insertMatchP = SQL.params(matchColumns)
-const insertMatch = SQL.def('insertMatch', insertMatchP, SQL.insert(Schema.matchHistory).values(insertMatchP))
 
 // every column the entry leaves out is null, as an insert that omits it would store
-function matchRow(entry: Omit<SchemaModels.NewMatchHistory, 'id'>): Sql.ValuesOf<typeof insertMatchP> {
+function matchRow(entry: Omit<SchemaModels.NewMatchHistory, 'id'>): Sql.ValuesOf<typeof Q.insertMatchP> {
 	const row: Record<string, unknown> = {}
 	for (const key of Object.keys(matchColumns)) row[key] = entry[key as keyof typeof entry] ?? null
 	row.createdAt ??= new Date()
-	return row as Sql.ValuesOf<typeof insertMatchP>
+	return row as Sql.ValuesOf<typeof Q.insertMatchP>
 }
 
-const finalizeMatchP = SQL.params({
-	id: Schema.matchHistory.id,
-	endTime: Schema.matchHistory.endTime,
-	outcome: Schema.matchHistory.outcome,
-	team1Tickets: Schema.matchHistory.team1Tickets,
-	team2Tickets: Schema.matchHistory.team2Tickets,
-})
-const finalizeMatch = SQL.def(
-	'finalizeMatch',
-	finalizeMatchP,
-	(withTickets: boolean) =>
-		SQL.update(Schema.matchHistory)
-			.set({
-				endTime: finalizeMatchP.endTime,
-				outcome: finalizeMatchP.outcome,
-				...(withTickets ? { team1Tickets: finalizeMatchP.team1Tickets, team2Tickets: finalizeMatchP.team2Tickets } : {}),
-			})
-			.where(E.eq(Schema.matchHistory.id, finalizeMatchP.id)),
-	{ domains: [[true, false]] },
-)
-
-// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a connection: the
-// player is present (backfilled from the teams poll) even if we never saw their join log.
-const lastConnectionEventP = SQL.params({ playerId: Schema.playerEventIndex.playerId, serverId: Schema.playerEventIndex.serverId })
-const lastConnectionEvent = SQL.def(
-	'lastConnectionEvent',
-	lastConnectionEventP,
-	SQL.select({ type: Schema.playerEventIndex.type, time: Schema.playerEventIndex.time })
-		.from(Schema.playerEventIndex)
-		.where(
-			E.and(
-				E.eq(Schema.playerEventIndex.playerId, lastConnectionEventP.playerId),
-				E.eq(Schema.playerEventIndex.serverId, lastConnectionEventP.serverId),
-				E.sql`${Schema.playerEventIndex.type} in (${SQL.lit('PLAYER_CONNECTED')}, ${SQL.lit('PLAYER_RECONCILED')}, ${SQL.lit('PLAYER_DISCONNECTED')})`,
+namespace Q {
+	const recentMatchesP = SQL.params({
+		startAtOrdinal: Schema.matchHistory.ordinal,
+		serverId: Schema.matchHistory.serverId,
+		limit: SQL.count(),
+	})
+	export const recentMatchesWithUsers = SQL.def(
+		'recentMatchesWithUsers',
+		recentMatchesP,
+		(() => {
+			const recent = SQL.select()
+				.from(Schema.matchHistory)
+				.where(
+					E.and(
+						E.gte(Schema.matchHistory.ordinal, recentMatchesP.startAtOrdinal),
+						E.eq(Schema.matchHistory.serverId, recentMatchesP.serverId),
+					),
+				)
+				.orderBy(E.desc(Schema.matchHistory.ordinal))
+				.limit(recentMatchesP.limit)
+				.as('recent_matches')
+			return SQL.select()
+				.from(recent)
+				.leftJoin(Schema.users, E.eq(recent.setByUserId, Schema.users.discordId))
+				.leftJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
+		})(),
+		{ scans: ['recent_matches'] },
+	)
+	const serverIdP = SQL.params({ serverId: Schema.matchHistory.serverId })
+	export const latestMatch = SQL.def(
+		'latestMatch',
+		serverIdP,
+		SQL.select()
+			.from(Schema.matchHistory)
+			.where(E.eq(Schema.matchHistory.serverId, serverIdP.serverId))
+			.orderBy(E.desc(Schema.matchHistory.ordinal))
+			.limit(1),
+	)
+	const matchByOrdinalP = SQL.params({ serverId: Schema.matchHistory.serverId, ordinal: Schema.matchHistory.ordinal })
+	export const matchByOrdinal = SQL.def(
+		'matchByOrdinal',
+		matchByOrdinalP,
+		SQL.select()
+			.from(Schema.matchHistory)
+			.where(
+				E.and(E.eq(Schema.matchHistory.serverId, matchByOrdinalP.serverId), E.eq(Schema.matchHistory.ordinal, matchByOrdinalP.ordinal)),
 			),
-		)
-		.orderBy(E.desc(Schema.playerEventIndex.time))
-		.limit(1),
-)
-
-const steamIdOfP = SQL.params({ eosId: Schema.players.eosId })
-const steamIdOf = SQL.def(
-	'steamIdOf',
-	steamIdOfP,
-	SQL.select({ steamId: Schema.players.steamId }).from(Schema.players).where(E.eq(Schema.players.eosId, steamIdOfP.eosId)),
-)
-
-const squadByIdP = SQL.params({ id: Schema.squads.id })
-const squadById = SQL.def('squadById', squadByIdP, SQL.select().from(Schema.squads).where(E.eq(Schema.squads.id, squadByIdP.id)))
+	)
+	export const insertMatchP = SQL.params(matchColumns)
+	export const insertMatch = SQL.def('insertMatch', insertMatchP, SQL.insert(Schema.matchHistory).values(insertMatchP))
+	const finalizeMatchP = SQL.params({
+		id: Schema.matchHistory.id,
+		endTime: Schema.matchHistory.endTime,
+		outcome: Schema.matchHistory.outcome,
+		team1Tickets: Schema.matchHistory.team1Tickets,
+		team2Tickets: Schema.matchHistory.team2Tickets,
+	})
+	export const finalizeMatch = SQL.def(
+		'finalizeMatch',
+		finalizeMatchP,
+		(withTickets: boolean) =>
+			SQL.update(Schema.matchHistory)
+				.set({
+					endTime: finalizeMatchP.endTime,
+					outcome: finalizeMatchP.outcome,
+					...(withTickets ? { team1Tickets: finalizeMatchP.team1Tickets, team2Tickets: finalizeMatchP.team2Tickets } : {}),
+				})
+				.where(E.eq(Schema.matchHistory.id, finalizeMatchP.id)),
+		{ domains: [[true, false]] },
+	)
+	// Most recent connection event, for the connection status indicator. PLAYER_RECONCILED counts as a connection: the
+	// player is present (backfilled from the teams poll) even if we never saw their join log.
+	const lastConnectionEventP = SQL.params({ playerId: Schema.playerEventIndex.playerId, serverId: Schema.playerEventIndex.serverId })
+	export const lastConnectionEvent = SQL.def(
+		'lastConnectionEvent',
+		lastConnectionEventP,
+		SQL.select({ type: Schema.playerEventIndex.type, time: Schema.playerEventIndex.time })
+			.from(Schema.playerEventIndex)
+			.where(
+				E.and(
+					E.eq(Schema.playerEventIndex.playerId, lastConnectionEventP.playerId),
+					E.eq(Schema.playerEventIndex.serverId, lastConnectionEventP.serverId),
+					E.sql`${Schema.playerEventIndex.type} in (${SQL.lit('PLAYER_CONNECTED')}, ${SQL.lit('PLAYER_RECONCILED')}, ${SQL.lit('PLAYER_DISCONNECTED')})`,
+				),
+			)
+			.orderBy(E.desc(Schema.playerEventIndex.time))
+			.limit(1),
+	)
+	const steamIdOfP = SQL.params({ eosId: Schema.players.eosId })
+	export const steamIdOf = SQL.def(
+		'steamIdOf',
+		steamIdOfP,
+		SQL.select({ steamId: Schema.players.steamId }).from(Schema.players).where(E.eq(Schema.players.eosId, steamIdOfP.eosId)),
+	)
+	const squadByIdP = SQL.params({ id: Schema.squads.id })
+	export const squadById = SQL.def('squadById', squadByIdP, SQL.select().from(Schema.squads).where(E.eq(Schema.squads.id, squadByIdP.id)))
+}
 
 export function setup() {
 	log = module.getLogger()
@@ -199,7 +195,7 @@ export function getPublicMatchHistoryState(ctx: MH.Ctx): MH.PublicMatchHistorySt
 // The window's state changes once the read commits, so a rolled-back write never shows in it.
 export const loadState = Instr.spanOpSync('loadState', { module }, (ctx: C.Db & MH.Ctx, opts?: { startAtOrdinal?: number }) => {
 	const startAtOrdinal = opts?.startAtOrdinal ?? 0
-	const rows = DB.all(ctx, recentMatchesWithUsers({ startAtOrdinal, serverId: ctx.serverId, limit: MH.MAX_RECENT_MATCHES }))
+	const rows = DB.all(ctx, Q.recentMatchesWithUsers({ startAtOrdinal, serverId: ctx.serverId, limit: MH.MAX_RECENT_MATCHES }))
 	log.info('found %d match history rows', rows.length)
 
 	rows.reverse()
@@ -342,7 +338,7 @@ export const getMatchById = Instr.spanOp(
 )
 
 function readCurrentMatch(ctx: C.Db & MH.Ctx) {
-	const match = DB.get(ctx, latestMatch({ serverId: ctx.serverId }))
+	const match = DB.get(ctx, Q.latestMatch({ serverId: ctx.serverId }))
 	if (!match) return null
 	return MH.matchHistoryEntryToMatchDetails(match, true)
 }
@@ -385,7 +381,7 @@ export const matchHistoryRouter = {
 
 		let match = ctx.matchHistory.recentMatches.find((m) => ctx.serverId === m.serverId && m.ordinal === ordinal)
 		if (!match) {
-			const matchRaw = DB.get(ctx, matchByOrdinal({ serverId: ctx.serverId, ordinal }))
+			const matchRaw = DB.get(ctx, Q.matchByOrdinal({ serverId: ctx.serverId, ordinal }))
 			if (!matchRaw) throw new Error(`Match with ordinal ${ordinal} not found`)
 			match = MH.matchHistoryEntryToMatchDetails(matchRaw, false)
 		}
@@ -412,10 +408,10 @@ export const matchHistoryRouter = {
 			const ctx = ctxRes.ctx
 			const playerId = input.playerId
 
-			const lastConnection = DB.get(ctx, lastConnectionEvent({ playerId, serverId: input.serverId }))
+			const lastConnection = DB.get(ctx, Q.lastConnectionEvent({ playerId, serverId: input.serverId }))
 			// an admin list can key a player by either id, so their steam id is worth the lookup even though the
 			// window asks by eos
-			const player = DB.get(ctx, steamIdOf({ eosId: playerId }))
+			const player = DB.get(ctx, Q.steamIdOf({ eosId: playerId }))
 			const usernames = PlayerUsernames.getPeriods(ctx, playerId)
 			const adminLists = await AdminList.getListsForServerId(ctx, input.serverId)
 
@@ -461,7 +457,7 @@ export const matchHistoryRouter = {
 			if (ctxRes.code !== 'ok') return ctxRes
 			const ctx = ctxRes.ctx
 
-			const squadRow = DB.get(ctx, squadById({ id: input.uniqueSquadId }))
+			const squadRow = DB.get(ctx, Q.squadById({ id: input.uniqueSquadId }))
 			if (!squadRow) throw new Error(`Squad ${input.uniqueSquadId} not found`)
 			if (squadRow.matchId === null) return { squad: squadRow, events: [] }
 
@@ -486,7 +482,7 @@ export const addNewCurrentMatch = Instr.spanOp(
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			DB.run(
 				ctx,
-				insertMatch(matchRow({ ...entry, ...MH.layerParts(L.readStoredLayerId(entry.layerId)), ordinal, serverId: ctx.serverId })),
+				Q.insertMatch(matchRow({ ...entry, ...MH.layerParts(L.readStoredLayerId(entry.layerId)), ordinal, serverId: ctx.serverId })),
 			)
 
 			// events are persisted as they're emitted, so the in-memory caches are just dropped; they only ever
@@ -526,7 +522,7 @@ export const finalizeCurrentMatch = Instr.spanOp(
 			const withTickets = outcome.type === 'team1' || outcome.type === 'team2'
 			DB.run(
 				ctx,
-				finalizeMatch(withTickets)({
+				Q.finalizeMatch(withTickets)({
 					id: currentMatch.historyEntryId,
 					endTime: time,
 					outcome: outcome.type === 'unknown' ? null : outcome.type,
@@ -575,7 +571,7 @@ export const syncWithCurrentLayer = Instr.spanOp(
 			const ordinal = currentMatch ? currentMatch.ordinal + 1 : 0
 			DB.run(
 				ctx,
-				insertMatch(
+				Q.insertMatch(
 					matchRow({ serverId: ctx.serverId, layerId: L.toLayerText(currentLayerOnServer.id), ordinal, setByType: 'unknown' }),
 				),
 			)

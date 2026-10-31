@@ -43,107 +43,105 @@ function isActive(now: Sql.Parameter<Date>) {
 	return E.and(E.eq(Schema.timeouts.cancelled, SQL.lit(false)), E.gt(Schema.timeouts.expiresAt, now))
 }
 
-const activeForPlayersP = SQL.params({ now: Schema.timeouts.expiresAt, ids: SQL.list(Schema.timeouts.playerId) })
-const activeForPlayers = SQL.def(
-	'activeForPlayers',
-	activeForPlayersP,
-	SQL.select()
-		.from(Schema.timeouts)
-		.where(E.and(isActive(activeForPlayersP.now), SQL.inJson(Schema.timeouts.playerId, activeForPlayersP.ids))),
-)
-
-const activeByIdP = SQL.params({ id: Schema.timeouts.id, now: Schema.timeouts.expiresAt })
-const activeById = SQL.def(
-	'activeById',
-	activeByIdP,
-	SQL.select()
-		.from(Schema.timeouts)
-		.where(E.and(E.eq(Schema.timeouts.id, activeByIdP.id), isActive(activeByIdP.now))),
-)
-
 // the players table is joined twice: once for the player under timeout, once for the admin who issued it
 const actorPlayer = alias(Schema.players, 'actorPlayer')
-const listActiveP = SQL.params({ now: Schema.timeouts.expiresAt })
-const listActive = SQL.def(
-	'listActive',
-	listActiveP,
-	SQL.select({
-		timeout: Schema.timeouts,
-		username: Schema.players.username,
-		steamId: Schema.players.steamId,
-		actorType: Schema.appEvents.actorType,
-		actorUserId: Schema.appEvents.actorUserId,
-		actorPlayerId: Schema.appEvents.actorPlayerId,
-		actorUsername: actorPlayer.username,
-	})
-		.from(Schema.timeouts)
-		.leftJoin(Schema.players, E.eq(Schema.timeouts.playerId, Schema.players.eosId))
-		.leftJoin(Schema.appEvents, E.eq(Schema.timeouts.appEventId, Schema.appEvents.id))
-		.leftJoin(actorPlayer, E.eq(Schema.appEvents.actorPlayerId, actorPlayer.eosId))
-		.where(isActive(listActiveP.now))
-		.orderBy(E.asc(Schema.timeouts.expiresAt)),
-)
 
-const ensurePlayerP = SQL.params({
-	eosId: Schema.players.eosId,
-	steamId: Schema.players.steamId,
-	username: Schema.players.username,
-	now: Schema.players.createdAt,
-})
-const ensurePlayer = SQL.def(
-	'ensurePlayer',
-	ensurePlayerP,
-	SQL.insert(Schema.players)
-		.values({
-			eosId: ensurePlayerP.eosId,
-			steamId: ensurePlayerP.steamId,
-			username: ensurePlayerP.username,
-			createdAt: ensurePlayerP.now,
-			modifiedAt: ensurePlayerP.now,
+namespace Q {
+	const activeForPlayersP = SQL.params({ now: Schema.timeouts.expiresAt, ids: SQL.list(Schema.timeouts.playerId) })
+	export const activeForPlayers = SQL.def(
+		'activeForPlayers',
+		activeForPlayersP,
+		SQL.select()
+			.from(Schema.timeouts)
+			.where(E.and(isActive(activeForPlayersP.now), SQL.inJson(Schema.timeouts.playerId, activeForPlayersP.ids))),
+	)
+	const activeByIdP = SQL.params({ id: Schema.timeouts.id, now: Schema.timeouts.expiresAt })
+	export const activeById = SQL.def(
+		'activeById',
+		activeByIdP,
+		SQL.select()
+			.from(Schema.timeouts)
+			.where(E.and(E.eq(Schema.timeouts.id, activeByIdP.id), isActive(activeByIdP.now))),
+	)
+	const listActiveP = SQL.params({ now: Schema.timeouts.expiresAt })
+	export const listActive = SQL.def(
+		'listActive',
+		listActiveP,
+		SQL.select({
+			timeout: Schema.timeouts,
+			username: Schema.players.username,
+			steamId: Schema.players.steamId,
+			actorType: Schema.appEvents.actorType,
+			actorUserId: Schema.appEvents.actorUserId,
+			actorPlayerId: Schema.appEvents.actorPlayerId,
+			actorUsername: actorPlayer.username,
 		})
-		.onConflictDoNothing({ target: Schema.players.eosId }),
-)
-
-const insertTimeoutP = SQL.params({
-	id: Schema.timeouts.id,
-	playerId: Schema.timeouts.playerId,
-	expiresAt: Schema.timeouts.expiresAt,
-	createdAt: Schema.timeouts.createdAt,
-	appEventId: Schema.timeouts.appEventId,
-	issuedServerId: Schema.timeouts.issuedServerId,
-	reasonLabel: Schema.timeouts.reasonLabel,
-	reasonTemplate: Schema.timeouts.reasonTemplate,
-	reasonVars: Schema.timeouts.reasonVars,
-})
-const insertTimeout = SQL.def(
-	'insertTimeout',
-	insertTimeoutP,
-	SQL.insert(Schema.timeouts).values({
-		id: insertTimeoutP.id,
-		playerId: insertTimeoutP.playerId,
-		expiresAt: insertTimeoutP.expiresAt,
-		cancelled: SQL.lit(false),
-		createdAt: insertTimeoutP.createdAt,
-		appEventId: insertTimeoutP.appEventId,
-		issuedServerId: insertTimeoutP.issuedServerId,
-		reasonLabel: insertTimeoutP.reasonLabel,
-		reasonTemplate: insertTimeoutP.reasonTemplate,
-		reasonVars: insertTimeoutP.reasonVars,
-	}),
-)
-
-const cancelP = SQL.params({ id: Schema.timeouts.id })
-const cancel = SQL.def(
-	'cancel',
-	cancelP,
-	SQL.update(Schema.timeouts)
-		.set({ cancelled: SQL.lit(true) })
-		.where(E.eq(Schema.timeouts.id, cancelP.id)),
-)
+			.from(Schema.timeouts)
+			.leftJoin(Schema.players, E.eq(Schema.timeouts.playerId, Schema.players.eosId))
+			.leftJoin(Schema.appEvents, E.eq(Schema.timeouts.appEventId, Schema.appEvents.id))
+			.leftJoin(actorPlayer, E.eq(Schema.appEvents.actorPlayerId, actorPlayer.eosId))
+			.where(isActive(listActiveP.now))
+			.orderBy(E.asc(Schema.timeouts.expiresAt)),
+	)
+	const ensurePlayerP = SQL.params({
+		eosId: Schema.players.eosId,
+		steamId: Schema.players.steamId,
+		username: Schema.players.username,
+		now: Schema.players.createdAt,
+	})
+	export const ensurePlayer = SQL.def(
+		'ensurePlayer',
+		ensurePlayerP,
+		SQL.insert(Schema.players)
+			.values({
+				eosId: ensurePlayerP.eosId,
+				steamId: ensurePlayerP.steamId,
+				username: ensurePlayerP.username,
+				createdAt: ensurePlayerP.now,
+				modifiedAt: ensurePlayerP.now,
+			})
+			.onConflictDoNothing({ target: Schema.players.eosId }),
+	)
+	const insertTimeoutP = SQL.params({
+		id: Schema.timeouts.id,
+		playerId: Schema.timeouts.playerId,
+		expiresAt: Schema.timeouts.expiresAt,
+		createdAt: Schema.timeouts.createdAt,
+		appEventId: Schema.timeouts.appEventId,
+		issuedServerId: Schema.timeouts.issuedServerId,
+		reasonLabel: Schema.timeouts.reasonLabel,
+		reasonTemplate: Schema.timeouts.reasonTemplate,
+		reasonVars: Schema.timeouts.reasonVars,
+	})
+	export const insertTimeout = SQL.def(
+		'insertTimeout',
+		insertTimeoutP,
+		SQL.insert(Schema.timeouts).values({
+			id: insertTimeoutP.id,
+			playerId: insertTimeoutP.playerId,
+			expiresAt: insertTimeoutP.expiresAt,
+			cancelled: SQL.lit(false),
+			createdAt: insertTimeoutP.createdAt,
+			appEventId: insertTimeoutP.appEventId,
+			issuedServerId: insertTimeoutP.issuedServerId,
+			reasonLabel: insertTimeoutP.reasonLabel,
+			reasonTemplate: insertTimeoutP.reasonTemplate,
+			reasonVars: insertTimeoutP.reasonVars,
+		}),
+	)
+	const cancelP = SQL.params({ id: Schema.timeouts.id })
+	export const cancel = SQL.def(
+		'cancel',
+		cancelP,
+		SQL.update(Schema.timeouts)
+			.set({ cancelled: SQL.lit(true) })
+			.where(E.eq(Schema.timeouts.id, cancelP.id)),
+	)
+}
 
 export function getActiveTimeouts(ctx: C.Db, playerIds: SM.PlayerId[]): SchemaModels.Timeout[] {
 	if (playerIds.length === 0) return []
-	return DB.all(ctx, activeForPlayers({ now: new Date(), ids: playerIds }))
+	return DB.all(ctx, Q.activeForPlayers({ now: new Date(), ids: playerIds }))
 }
 
 export type ActiveTimeoutRow = SchemaModels.Timeout & {
@@ -167,7 +165,7 @@ function appliedReasonFromRow(t: SchemaModels.Timeout): AMS.AppliedReason | null
 }
 
 export function listActiveTimeouts(ctx: C.Db): ActiveTimeoutRow[] {
-	const rows = DB.all(ctx, listActive({ now: new Date() }))
+	const rows = DB.all(ctx, Q.listActive({ now: new Date() }))
 	return rows.map((row): ActiveTimeoutRow => {
 		let actor: AppEvents.Actor | null = null
 		if (row.actorType === 'slm-user' && row.actorUserId !== null) actor = { type: 'slm-user', userId: row.actorUserId }
@@ -227,7 +225,7 @@ export async function kickWithTimeout(
 	DB.transaction(ctx, {}, (ctx) => {
 		DB.run(
 			ctx,
-			ensurePlayer({
+			Q.ensurePlayer({
 				eosId: targetId,
 				steamId: opts.target.ids.steam ? BigInt(opts.target.ids.steam) : null,
 				username: opts.target.ids.username ?? targetId,
@@ -236,7 +234,7 @@ export async function kickWithTimeout(
 		)
 		DB.run(
 			ctx,
-			insertTimeout({
+			Q.insertTimeout({
 				id: timeoutId,
 				playerId: targetId,
 				expiresAt,
@@ -263,9 +261,9 @@ export async function cancelTimeout(
 	ctx: C.Db,
 	opts: { timeoutId: string; actor: AppEvents.Actor; serverCtx?: C.Db & SQS.Ctx & MH.Ctx & CS.AbortSignal },
 ): Promise<{ code: 'ok' } | { code: 'err:not-found'; msg: string }> {
-	const timeout = DB.get(ctx, activeById({ id: opts.timeoutId, now: new Date() }))
+	const timeout = DB.get(ctx, Q.activeById({ id: opts.timeoutId, now: new Date() }))
 	if (!timeout) return { code: 'err:not-found', msg: 'No active timeout found' }
-	DB.run(ctx, cancel({ id: opts.timeoutId }))
+	DB.run(ctx, Q.cancel({ id: opts.timeoutId }))
 	update$.next()
 	const appEvent = AppEvents.create<AppEvents.TimeoutCancelled>({
 		type: 'TIMEOUT_CANCELLED',
@@ -345,7 +343,7 @@ export const router = {
 		.handler(async ({ context: ctx, input }) => {
 			// which server's grant applies is a property of the timeout, so the row is read before the check rather
 			// than taken from the request
-			const timeout = DB.get(ctx, activeById({ id: input.timeoutId, now: new Date() }))
+			const timeout = DB.get(ctx, Q.activeById({ id: input.timeoutId, now: new Date() }))
 			if (!timeout) return { code: 'err:not-found' as const, msg: 'No active timeout found' }
 			const denyRes = await Rbac.tryDenyPermissionsForUser(ctx, SM.Grants.anyTimeout(timeout.issuedServerId))
 			if (denyRes) return denyRes

@@ -12,24 +12,28 @@ const module = initModule('persistedCache')
 const SQL = Sql.forModule(module)
 let log!: ReturnType<typeof module.getLogger>
 
-const cutoffP = SQL.params({ cutoff: Schema.persistedCache.updatedAt })
-const deleteRowsUpdatedBefore = SQL.def(
-	'deleteRowsUpdatedBefore',
-	cutoffP,
-	SQL.delete(Schema.persistedCache).where(E.lt(Schema.persistedCache.updatedAt, cutoffP.cutoff)),
-)
-
-const keyP = SQL.params({ key: Schema.persistedCache.key })
-const rowByKey = SQL.def('rowByKey', keyP, SQL.select().from(Schema.persistedCache).where(E.eq(Schema.persistedCache.key, keyP.key)))
-
-const rowP = SQL.params(E.getTableColumns(Schema.persistedCache))
-const upsertRow = SQL.def(
-	'upsertRow',
-	rowP,
-	SQL.insert(Schema.persistedCache)
-		.values(rowP)
-		.onConflictDoUpdate({ target: Schema.persistedCache.key, set: { value: rowP.value, updatedAt: rowP.updatedAt } }),
-)
+namespace Q {
+	const cutoffP = SQL.params({ cutoff: Schema.persistedCache.updatedAt })
+	export const deleteRowsUpdatedBefore = SQL.def(
+		'deleteRowsUpdatedBefore',
+		cutoffP,
+		SQL.delete(Schema.persistedCache).where(E.lt(Schema.persistedCache.updatedAt, cutoffP.cutoff)),
+	)
+	const keyP = SQL.params({ key: Schema.persistedCache.key })
+	export const rowByKey = SQL.def(
+		'rowByKey',
+		keyP,
+		SQL.select().from(Schema.persistedCache).where(E.eq(Schema.persistedCache.key, keyP.key)),
+	)
+	const rowP = SQL.params(E.getTableColumns(Schema.persistedCache))
+	export const upsertRow = SQL.def(
+		'upsertRow',
+		rowP,
+		SQL.insert(Schema.persistedCache)
+			.values(rowP)
+			.onConflictDoUpdate({ target: Schema.persistedCache.key, set: { value: rowP.value, updatedAt: rowP.updatedAt } }),
+	)
+}
 
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 
@@ -66,7 +70,7 @@ function deleteExpiredRows() {
 	// the signal: rows are upserted on every persist cycle, so a row that hasn't been
 	// touched in STALE_ROW_AGE_MS was never re-written (i.e. all its entries expired and
 	// the caller stopped persisting it).
-	return DB.run(ctx, deleteRowsUpdatedBefore({ cutoff: new Date(Date.now() - STALE_ROW_AGE_MS) }))
+	return DB.run(ctx, Q.deleteRowsUpdatedBefore({ cutoff: new Date(Date.now() - STALE_ROW_AGE_MS) }))
 }
 
 /** How long a row can go without being re-written before we consider it fully stale. */
@@ -74,12 +78,12 @@ const STALE_ROW_AGE_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 export function load<T>(key: string): T | null {
 	const ctx = DB.withDb(CS.init())
-	const row = DB.get(ctx, rowByKey({ key }))
+	const row = DB.get(ctx, Q.rowByKey({ key }))
 	if (!row) return null
 	return row.value as T
 }
 
 export function save(key: string, value: unknown): void {
 	const ctx = DB.withDb(CS.init())
-	DB.run(ctx, upsertRow({ key, value, updatedAt: new Date() }))
+	DB.run(ctx, Q.upsertRow({ key, value, updatedAt: new Date() }))
 }

@@ -47,141 +47,140 @@ type ToggleContributorInput = z.infer<typeof ToggleContributorInputSchema>
 
 const MAX_NAME_LOOKUPS = 200
 
-// -------- statements --------
-
-const idP = SQL.params({ id: T.id })
-const rotationById = SQL.def('rotationById', idP, SQL.select().from(T).where(E.eq(T.id, idP.id)))
-const rotationName = SQL.def('rotationName', idP, SQL.select({ name: T.name }).from(T).where(E.eq(T.id, idP.id)))
-const rotationOwner = SQL.def('rotationOwner', idP, SQL.select({ ownerUserId: T.ownerUserId }).from(T).where(E.eq(T.id, idP.id)))
-const deleteRotationRow = SQL.def('deleteRotationRow', idP, SQL.delete(T).where(E.eq(T.id, idP.id)))
-
-const rotationP = SQL.params(E.getTableColumns(T))
-const insertRotation = SQL.def('insertRotation', rotationP, SQL.insert(T).values(rotationP).onConflictDoNothing())
-const { id: _id, ...rotationSetP } = rotationP
-const updateRotationRow = SQL.def('updateRotationRow', rotationP, SQL.update(T).set(rotationSetP).where(E.eq(T.id, rotationP.id)))
-
-const rotationIdsP = SQL.params({ ids: SQL.list(T.id) })
-const rotationNames = SQL.def(
-	'rotationNames',
-	rotationIdsP,
-	SQL.select({ id: T.id, name: T.name }).from(T).where(SQL.inJson(T.id, rotationIdsP.ids)),
-)
-
-const cloneIdP = SQL.params({ base: T.id, needle: SQL.value<string>() })
-const cloneIdsTaken = SQL.def(
-	'cloneIdsTaken',
-	cloneIdP,
-	SQL.select({ id: T.id })
-		.from(T)
-		.where(E.or(E.eq(T.id, cloneIdP.base), E.sql`${T.id} LIKE ${cloneIdP.needle} ESCAPE '\\'`)),
-	{ scans: ['rotations'] },
-)
-
-const archivedCounts = SQL.def(
-	'archivedCounts',
-	SQL.params({}),
-	SQL.select({
-		unarchived: E.sql<number>`coalesce(sum(${T.archived} = 0), 0)`,
-		archived: E.sql<number>`coalesce(sum(${T.archived} = 1), 0)`,
-	}).from(T),
-	{ scans: ['rotations'] },
-)
-const tagCounts = SQL.def(
-	'tagCounts',
-	SQL.params({}),
-	SQL.select({ tag: E.sql<string>`j.value`, n: E.sql<number>`count(*)` })
-		.from(E.sql`${T}, json_each(${T.tags}, '$.json') AS j`)
-		.groupBy(E.sql`j.value`),
-	{ scans: ['rotations'] },
-)
-const rotationOwners = SQL.def(
-	'rotationOwners',
-	SQL.params({}),
-	SQL.selectDistinct({ ownerUserId: T.ownerUserId, ownerPluginId: T.ownerPluginId }).from(T),
-	{ scans: ['rotations'] },
-)
-const repeatRulesetIdsInUse = SQL.def(
-	'repeatRulesetIdsInUse',
-	SQL.params({}),
-	SQL.selectDistinct({ repeatRulesetId: T.repeatRulesetId }).from(T).where(E.isNotNull(T.repeatRulesetId)),
-	{ scans: ['rotations'] },
-)
-
-const userContributorsP = SQL.params({ rotationId: UserContributors.rotationId })
-const userContributorIds = SQL.def(
-	'userContributorIds',
-	userContributorsP,
-	SQL.select({ userId: UserContributors.userId })
-		.from(UserContributors)
-		.where(E.eq(UserContributors.rotationId, userContributorsP.rotationId)),
-)
-const roleContributorsP = SQL.params({ rotationId: RoleContributors.rotationId })
-const roleContributorIds = SQL.def(
-	'roleContributorIds',
-	roleContributorsP,
-	SQL.select({ roleId: RoleContributors.roleId })
-		.from(RoleContributors)
-		.where(E.eq(RoleContributors.rotationId, roleContributorsP.rotationId)),
-)
-
-const userContributorP = SQL.params({ rotationId: UserContributors.rotationId, userId: UserContributors.userId })
-const insertUserContributor = SQL.def(
-	'insertUserContributor',
-	userContributorP,
-	SQL.insert(UserContributors).values({ rotationId: userContributorP.rotationId, userId: userContributorP.userId }).onConflictDoNothing(),
-)
-const deleteUserContributor = SQL.def(
-	'deleteUserContributor',
-	userContributorP,
-	SQL.delete(UserContributors).where(
-		E.and(E.eq(UserContributors.rotationId, userContributorP.rotationId), E.eq(UserContributors.userId, userContributorP.userId)),
-	),
-)
-const roleContributorP = SQL.params({ rotationId: RoleContributors.rotationId, roleId: RoleContributors.roleId })
-const insertRoleContributor = SQL.def(
-	'insertRoleContributor',
-	roleContributorP,
-	SQL.insert(RoleContributors).values({ rotationId: roleContributorP.rotationId, roleId: roleContributorP.roleId }).onConflictDoNothing(),
-)
-const deleteRoleContributor = SQL.def(
-	'deleteRoleContributor',
-	roleContributorP,
-	SQL.delete(RoleContributors).where(
-		E.and(E.eq(RoleContributors.rotationId, roleContributorP.rotationId), E.eq(RoleContributors.roleId, roleContributorP.roleId)),
-	),
-)
-
-const userIdP = SQL.params({ userId: Schema.users.discordId })
-const userExists = SQL.def(
-	'userExists',
-	userIdP,
-	SQL.select({ id: Schema.users.discordId }).from(Schema.users).where(E.eq(Schema.users.discordId, userIdP.userId)),
-)
-
 // the columns Users.buildUsers reads
 const USER_COLUMNS = {
 	discordId: Schema.users.discordId,
 	nickname: Schema.users.nickname,
 	username: Schema.discordAccounts.username,
 }
-const userIdsP = SQL.params({ ids: SQL.list(Schema.users.discordId) })
-const usersByIds = SQL.def(
-	'usersByIds',
-	userIdsP,
-	SQL.select(USER_COLUMNS)
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
-		.where(SQL.inJson(Schema.users.discordId, userIdsP.ids)),
-)
-const contributingUsers = SQL.def(
-	'contributingUsers',
-	userContributorsP,
-	SQL.select(USER_COLUMNS)
-		.from(UserContributors)
-		.innerJoin(Schema.users, E.eq(Schema.users.discordId, UserContributors.userId))
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
-		.where(E.eq(UserContributors.rotationId, userContributorsP.rotationId)),
-)
+
+namespace Q {
+	// -------- statements --------
+
+	const idP = SQL.params({ id: T.id })
+	export const rotationById = SQL.def('rotationById', idP, SQL.select().from(T).where(E.eq(T.id, idP.id)))
+	export const rotationName = SQL.def('rotationName', idP, SQL.select({ name: T.name }).from(T).where(E.eq(T.id, idP.id)))
+	export const rotationOwner = SQL.def('rotationOwner', idP, SQL.select({ ownerUserId: T.ownerUserId }).from(T).where(E.eq(T.id, idP.id)))
+	export const deleteRotationRow = SQL.def('deleteRotationRow', idP, SQL.delete(T).where(E.eq(T.id, idP.id)))
+	const rotationP = SQL.params(E.getTableColumns(T))
+	export const insertRotation = SQL.def('insertRotation', rotationP, SQL.insert(T).values(rotationP).onConflictDoNothing())
+	const { id: _id, ...rotationSetP } = rotationP
+	export const updateRotationRow = SQL.def('updateRotationRow', rotationP, SQL.update(T).set(rotationSetP).where(E.eq(T.id, rotationP.id)))
+	const rotationIdsP = SQL.params({ ids: SQL.list(T.id) })
+	export const rotationNames = SQL.def(
+		'rotationNames',
+		rotationIdsP,
+		SQL.select({ id: T.id, name: T.name }).from(T).where(SQL.inJson(T.id, rotationIdsP.ids)),
+	)
+	const cloneIdP = SQL.params({ base: T.id, needle: SQL.value<string>() })
+	export const cloneIdsTaken = SQL.def(
+		'cloneIdsTaken',
+		cloneIdP,
+		SQL.select({ id: T.id })
+			.from(T)
+			.where(E.or(E.eq(T.id, cloneIdP.base), E.sql`${T.id} LIKE ${cloneIdP.needle} ESCAPE '\\'`)),
+		{ scans: ['rotations'] },
+	)
+	export const archivedCounts = SQL.def(
+		'archivedCounts',
+		SQL.params({}),
+		SQL.select({
+			unarchived: E.sql<number>`coalesce(sum(${T.archived} = 0), 0)`,
+			archived: E.sql<number>`coalesce(sum(${T.archived} = 1), 0)`,
+		}).from(T),
+		{ scans: ['rotations'] },
+	)
+	export const tagCounts = SQL.def(
+		'tagCounts',
+		SQL.params({}),
+		SQL.select({ tag: E.sql<string>`j.value`, n: E.sql<number>`count(*)` })
+			.from(E.sql`${T}, json_each(${T.tags}, '$.json') AS j`)
+			.groupBy(E.sql`j.value`),
+		{ scans: ['rotations'] },
+	)
+	export const rotationOwners = SQL.def(
+		'rotationOwners',
+		SQL.params({}),
+		SQL.selectDistinct({ ownerUserId: T.ownerUserId, ownerPluginId: T.ownerPluginId }).from(T),
+		{ scans: ['rotations'] },
+	)
+	export const repeatRulesetIdsInUse = SQL.def(
+		'repeatRulesetIdsInUse',
+		SQL.params({}),
+		SQL.selectDistinct({ repeatRulesetId: T.repeatRulesetId }).from(T).where(E.isNotNull(T.repeatRulesetId)),
+		{ scans: ['rotations'] },
+	)
+	const userContributorsP = SQL.params({ rotationId: UserContributors.rotationId })
+	export const userContributorIds = SQL.def(
+		'userContributorIds',
+		userContributorsP,
+		SQL.select({ userId: UserContributors.userId })
+			.from(UserContributors)
+			.where(E.eq(UserContributors.rotationId, userContributorsP.rotationId)),
+	)
+	const roleContributorsP = SQL.params({ rotationId: RoleContributors.rotationId })
+	export const roleContributorIds = SQL.def(
+		'roleContributorIds',
+		roleContributorsP,
+		SQL.select({ roleId: RoleContributors.roleId })
+			.from(RoleContributors)
+			.where(E.eq(RoleContributors.rotationId, roleContributorsP.rotationId)),
+	)
+	const userContributorP = SQL.params({ rotationId: UserContributors.rotationId, userId: UserContributors.userId })
+	export const insertUserContributor = SQL.def(
+		'insertUserContributor',
+		userContributorP,
+		SQL.insert(UserContributors)
+			.values({ rotationId: userContributorP.rotationId, userId: userContributorP.userId })
+			.onConflictDoNothing(),
+	)
+	export const deleteUserContributor = SQL.def(
+		'deleteUserContributor',
+		userContributorP,
+		SQL.delete(UserContributors).where(
+			E.and(E.eq(UserContributors.rotationId, userContributorP.rotationId), E.eq(UserContributors.userId, userContributorP.userId)),
+		),
+	)
+	const roleContributorP = SQL.params({ rotationId: RoleContributors.rotationId, roleId: RoleContributors.roleId })
+	export const insertRoleContributor = SQL.def(
+		'insertRoleContributor',
+		roleContributorP,
+		SQL.insert(RoleContributors)
+			.values({ rotationId: roleContributorP.rotationId, roleId: roleContributorP.roleId })
+			.onConflictDoNothing(),
+	)
+	export const deleteRoleContributor = SQL.def(
+		'deleteRoleContributor',
+		roleContributorP,
+		SQL.delete(RoleContributors).where(
+			E.and(E.eq(RoleContributors.rotationId, roleContributorP.rotationId), E.eq(RoleContributors.roleId, roleContributorP.roleId)),
+		),
+	)
+	const userIdP = SQL.params({ userId: Schema.users.discordId })
+	export const userExists = SQL.def(
+		'userExists',
+		userIdP,
+		SQL.select({ id: Schema.users.discordId }).from(Schema.users).where(E.eq(Schema.users.discordId, userIdP.userId)),
+	)
+	const userIdsP = SQL.params({ ids: SQL.list(Schema.users.discordId) })
+	export const usersByIds = SQL.def(
+		'usersByIds',
+		userIdsP,
+		SQL.select(USER_COLUMNS)
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
+			.where(SQL.inJson(Schema.users.discordId, userIdsP.ids)),
+	)
+	export const contributingUsers = SQL.def(
+		'contributingUsers',
+		userContributorsP,
+		SQL.select(USER_COLUMNS)
+			.from(UserContributors)
+			.innerJoin(Schema.users, E.eq(Schema.users.discordId, UserContributors.userId))
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
+			.where(E.eq(UserContributors.rotationId, userContributorsP.rotationId)),
+	)
+}
 
 // -------- helpers --------
 
@@ -216,7 +215,7 @@ function recordContributor(
 	contributor: RBAC.Contributor,
 	actor: AppEvents.Actor,
 ) {
-	const row = DB.get(ctx, rotationName({ id: rotationId }))
+	const row = DB.get(ctx, Q.rotationName({ id: rotationId }))
 	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.RotationContributorChanged>({
@@ -243,8 +242,8 @@ function invalidateContributor(contributor: RBAC.Contributor) {
 }
 
 export function listContributors(ctx: C.Db, rotationId: ROT.RotationId): RBAC.Contributor[] {
-	const users = DB.all(ctx, userContributorIds({ rotationId }))
-	const roles = DB.all(ctx, roleContributorIds({ rotationId }))
+	const users = DB.all(ctx, Q.userContributorIds({ rotationId }))
+	const roles = DB.all(ctx, Q.roleContributorIds({ rotationId }))
 	return [
 		...users.map((u): RBAC.Contributor => ({ type: 'user', userId: u.userId })),
 		...roles.map((r): RBAC.Contributor => ({ type: 'role', roleId: r.roleId })),
@@ -256,17 +255,17 @@ export const addContributor = DB.txOp(
 	'addContributor',
 	{ module },
 	(ctx: C.Db & C.Tx, rotationId: ROT.RotationId, contributor: RBAC.Contributor, actor: AppEvents.Actor) => {
-		if (!DB.get(ctx, rotationName({ id: rotationId }))) return { code: 'err:not-found' as const }
+		if (!DB.get(ctx, Q.rotationName({ id: rotationId }))) return { code: 'err:not-found' as const }
 		const changes = { changes: { atLeast: 1 }, otherwise: 'err:already-exists' as const }
 		let res
 		switch (contributor.type) {
 			case 'user': {
-				if (!DB.get(ctx, userExists({ userId: contributor.userId }))) return { code: 'err:unknown-user' as const }
-				res = DB.run(ctx, insertUserContributor({ rotationId, userId: contributor.userId }), changes)
+				if (!DB.get(ctx, Q.userExists({ userId: contributor.userId }))) return { code: 'err:unknown-user' as const }
+				res = DB.run(ctx, Q.insertUserContributor({ rotationId, userId: contributor.userId }), changes)
 				break
 			}
 			case 'role':
-				res = DB.run(ctx, insertRoleContributor({ rotationId, roleId: contributor.roleId }), changes)
+				res = DB.run(ctx, Q.insertRoleContributor({ rotationId, roleId: contributor.roleId }), changes)
 				break
 			default:
 				assertNever(contributor)
@@ -286,10 +285,10 @@ export const removeContributor = DB.txOp(
 		let res
 		switch (contributor.type) {
 			case 'user':
-				res = DB.run(ctx, deleteUserContributor({ rotationId, userId: contributor.userId }), changes)
+				res = DB.run(ctx, Q.deleteUserContributor({ rotationId, userId: contributor.userId }), changes)
 				break
 			case 'role':
-				res = DB.run(ctx, deleteRoleContributor({ rotationId, roleId: contributor.roleId }), changes)
+				res = DB.run(ctx, Q.deleteRoleContributor({ rotationId, roleId: contributor.roleId }), changes)
 				break
 			default:
 				assertNever(contributor)
@@ -327,7 +326,7 @@ function unknownTagsError(tags: readonly string[] | undefined) {
 // Managing who can contribute is an ownership concern, so it's restricted to the owner, or anyone with blanket write
 // access, rather than any contributor who merely has rotations:write for the rotation.
 async function denyUnlessOwner(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, rotationId: ROT.RotationId) {
-	const row = DB.get(ctx, rotationOwner({ id: rotationId }))
+	const row = DB.get(ctx, Q.rotationOwner({ id: rotationId }))
 	if (row && row.ownerUserId === ctx.user.discordId) return null
 	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('rotations:write-all'))
 }
@@ -338,7 +337,7 @@ function rotationRow(rotation: ROT.Rotation) {
 }
 
 export function getRotation(ctx: C.Db, id: ROT.RotationId): ROT.Rotation | undefined {
-	const row = DB.get(ctx, rotationById({ id }))
+	const row = DB.get(ctx, Q.rotationById({ id }))
 	return row ? ROT.fromRow(row) : undefined
 }
 
@@ -459,9 +458,9 @@ export function searchSummaries(ctx: C.Db, input: ROT.SearchInput): ROT.SearchPa
 }
 
 export function getFacets(ctx: C.Db): ROT.Facets {
-	const counts = DB.get(ctx, archivedCounts({}))!
-	const tagRows = DB.all(ctx, tagCounts({}))
-	const ownerRows = DB.all(ctx, rotationOwners({}))
+	const counts = DB.get(ctx, Q.archivedCounts({}))!
+	const tagRows = DB.all(ctx, Q.tagCounts({}))
+	const ownerRows = DB.all(ctx, Q.rotationOwners({}))
 	return {
 		unarchived: counts.unarchived,
 		archived: counts.archived,
@@ -476,7 +475,7 @@ async function usersOf(ctx: C.Db, owners: Iterable<ROT.Owner>, extra: Iterable<b
 		const userId = F.ownerUserId(owner)
 		if (userId !== null) ids.add(userId)
 	}
-	const dbUsers = ids.size > 0 ? DB.all(ctx, usersByIds({ ids: [...ids] })) : []
+	const dbUsers = ids.size > 0 ? DB.all(ctx, Q.usersByIds({ ids: [...ids] })) : []
 	return await Users.buildUsers(dbUsers)
 }
 
@@ -505,7 +504,7 @@ export const createRotation = DB.txOp(
 			createdAt: now,
 			updatedAt: now,
 		}
-		const res = DB.run(ctx, insertRotation(rotationRow(rotation)), { changes: { atLeast: 1 }, otherwise: 'err:already-exists' })
+		const res = DB.run(ctx, Q.insertRotation(rotationRow(rotation)), { changes: { atLeast: 1 }, otherwise: 'err:already-exists' })
 		if (res.code !== 'ok') return { code: res.code }
 		recordChange(ctx, actor, 'created', rotation, { clonedFrom: opts?.clonedFrom })
 		DB.afterCommit(ctx, () => {
@@ -538,7 +537,7 @@ export const updateRotation = DB.txOp(
 			(field) => patch[field] !== undefined && !Obj.deepEqual(prev[field], next[field]),
 		)
 		if (changedFields.length === 0) return { code: 'ok' as const, rotation: prev }
-		DB.run(ctx, updateRotationRow(rotationRow(next)))
+		DB.run(ctx, Q.updateRotationRow(rotationRow(next)))
 		recordChange(ctx, actor, 'updated', next, { changedFields })
 		DB.afterCommit(ctx, () => emit(ctx, { type: 'update', key: id, value: next }, actor))
 		return { code: 'ok' as const, rotation: next }
@@ -549,9 +548,9 @@ export const deleteRotation = DB.txOp('deleteRotation', { module }, (ctx: C.Db &
 	const rotation = getRotation(ctx, id)
 	if (!rotation) return { code: 'err:not-found' as const }
 	// captured before the delete so the affected inferred-role holders can be invalidated after commit
-	const userContributorIdList = DB.all(ctx, userContributorIds({ rotationId: id })).map((r) => r.userId)
-	const hasRoleContributors = DB.all(ctx, roleContributorIds({ rotationId: id })).length > 0
-	DB.run(ctx, deleteRotationRow({ id }))
+	const userContributorIdList = DB.all(ctx, Q.userContributorIds({ rotationId: id })).map((r) => r.userId)
+	const hasRoleContributors = DB.all(ctx, Q.roleContributorIds({ rotationId: id })).length > 0
+	DB.run(ctx, Q.deleteRotationRow({ id }))
 	recordChange(ctx, actor, 'deleted', rotation)
 	DB.afterCommit(ctx, () => {
 		if (hasRoleContributors) Rbac.invalidateAll()
@@ -596,7 +595,7 @@ export const copyContributors = DB.txOp(
 	'copyContributors',
 	{ module },
 	(ctx: C.Db & C.Tx, sourceId: ROT.RotationId, targetId: ROT.RotationId, actor: AppEvents.Actor) => {
-		const found = DB.all(ctx, rotationNames({ ids: [sourceId, targetId] }))
+		const found = DB.all(ctx, Q.rotationNames({ ids: [sourceId, targetId] }))
 		if (!found.some((r) => r.id === sourceId) || !found.some((r) => r.id === targetId)) return { code: 'err:not-found' as const }
 		insertContributorsFrom(ctx, sourceId, targetId, actor)
 		return { code: 'ok' as const }
@@ -606,11 +605,11 @@ export const copyContributors = DB.txOp(
 // records an event only for the contributors it actually added
 function insertContributorsFrom(ctx: C.Db, sourceId: ROT.RotationId, targetId: ROT.RotationId, actor: AppEvents.Actor) {
 	const added: RBAC.Contributor[] = []
-	for (const { userId } of DB.all(ctx, userContributorIds({ rotationId: sourceId }))) {
-		if (DB.run(ctx, insertUserContributor({ rotationId: targetId, userId })).changes > 0) added.push({ type: 'user', userId })
+	for (const { userId } of DB.all(ctx, Q.userContributorIds({ rotationId: sourceId }))) {
+		if (DB.run(ctx, Q.insertUserContributor({ rotationId: targetId, userId })).changes > 0) added.push({ type: 'user', userId })
 	}
-	for (const { roleId } of DB.all(ctx, roleContributorIds({ rotationId: sourceId }))) {
-		if (DB.run(ctx, insertRoleContributor({ rotationId: targetId, roleId })).changes > 0) added.push({ type: 'role', roleId })
+	for (const { roleId } of DB.all(ctx, Q.roleContributorIds({ rotationId: sourceId }))) {
+		if (DB.run(ctx, Q.insertRoleContributor({ rotationId: targetId, roleId })).changes > 0) added.push({ type: 'role', roleId })
 	}
 	for (const contributor of added) {
 		recordContributor(ctx, 'added', targetId, contributor, actor)
@@ -657,7 +656,7 @@ export const orpcRouter = {
 	// the names of the rotations that exist among `ids`
 	getNames: orpcBase.input(z.array(ROT.RotationIdSchema).max(MAX_NAME_LOOKUPS)).handler(({ input, context: ctx }) => {
 		if (input.length === 0) return {}
-		const rows = DB.all(ctx, rotationNames({ ids: input }))
+		const rows = DB.all(ctx, Q.rotationNames({ ids: input }))
 		return Object.fromEntries(rows.map((r) => [r.id, r.name])) as Record<ROT.RotationId, string>
 	}),
 
@@ -665,7 +664,7 @@ export const orpcRouter = {
 	suggestCloneId: orpcBase.input(ROT.RotationIdSchema).handler(({ input, context: ctx }) => {
 		const base = F.cloneId(new Set(), input)
 		const needle = `${base.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}-%`
-		const rows = DB.all(ctx, cloneIdsTaken({ base, needle }))
+		const rows = DB.all(ctx, Q.cloneIdsTaken({ base, needle }))
 		return F.cloneId(new Set(rows.map((r) => r.id)), input)
 	}),
 
@@ -699,8 +698,8 @@ export const orpcRouter = {
 
 	// users and roles are read separately: joining both onto the rotation crosses them
 	getContributors: orpcBase.input(ROT.RotationIdSchema).handler(async ({ input, context: ctx }) => {
-		const userRows = DB.all(ctx, contributingUsers({ rotationId: input }))
-		const roleRows = DB.all(ctx, roleContributorIds({ rotationId: input }))
+		const userRows = DB.all(ctx, Q.contributingUsers({ rotationId: input }))
+		const roleRows = DB.all(ctx, Q.roleContributorIds({ rotationId: input }))
 		return { users: await Users.buildUsers(userRows), roles: roleRows.map((row) => row.roleId) }
 	}),
 
@@ -775,5 +774,5 @@ export async function* watchRotation(
 
 export function setup() {
 	log = module.getLogger()
-	Settings.registerRepeatRulesetUsers((ctx) => DB.all(ctx, repeatRulesetIdsInUse({})).flatMap((r) => r.repeatRulesetId ?? []))
+	Settings.registerRepeatRulesetUsers((ctx) => DB.all(ctx, Q.repeatRulesetIdsInUse({})).flatMap((r) => r.repeatRulesetId ?? []))
 }

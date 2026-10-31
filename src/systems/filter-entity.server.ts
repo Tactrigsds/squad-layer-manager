@@ -43,144 +43,148 @@ const ToggleFilterContributorInputSchema = z
 	})
 export type ToggleFilterContributorInput = z.infer<typeof ToggleFilterContributorInputSchema>
 
-// -------- statements --------
-
-const idP = SQL.params({ id: Schema.filters.id })
-const filterById = SQL.def('filterById', idP, SQL.select().from(Schema.filters).where(E.eq(Schema.filters.id, idP.id)))
-const filterName = SQL.def(
-	'filterName',
-	idP,
-	SQL.select({ name: Schema.filters.name }).from(Schema.filters).where(E.eq(Schema.filters.id, idP.id)),
-)
-const filterOwner = SQL.def(
-	'filterOwner',
-	idP,
-	SQL.select({ ownerUserId: Schema.filters.ownerUserId }).from(Schema.filters).where(E.eq(Schema.filters.id, idP.id)),
-)
-const deleteFilterRow = SQL.def('deleteFilterRow', idP, SQL.delete(Schema.filters).where(E.eq(Schema.filters.id, idP.id)))
-const allFilters = SQL.def('allFilters', SQL.params({}), SQL.select().from(Schema.filters), { scans: ['filters'] })
-
-const filterP = SQL.params(E.getTableColumns(Schema.filters))
-const insertFilter = SQL.def('insertFilter', filterP, SQL.insert(Schema.filters).values(filterP))
-const insertFilterIfAbsent = SQL.def('insertFilterIfAbsent', filterP, SQL.insert(Schema.filters).values(filterP).onConflictDoNothing())
-
-// every column an update may change: the filter's own fields, never its id or owner
-const contentP = SQL.params({
-	id: Schema.filters.id,
-	name: Schema.filters.name,
-	description: Schema.filters.description,
-	filter: Schema.filters.filter,
-	alertMessage: Schema.filters.alertMessage,
-	emoji: Schema.filters.emoji,
-	invertedAlertMessage: Schema.filters.invertedAlertMessage,
-	invertedEmoji: Schema.filters.invertedEmoji,
-	missExemption: Schema.filters.missExemption,
-})
-const { id: _contentId, ...contentSetP } = contentP
-const updateFilterContent = SQL.def(
-	'updateFilterContent',
-	contentP,
-	SQL.update(Schema.filters).set(contentSetP).where(E.eq(Schema.filters.id, contentP.id)),
-)
-const ownerP = SQL.params({ id: Schema.filters.id, ownerUserId: Schema.filters.ownerUserId, ownerPluginId: Schema.filters.ownerPluginId })
-const setFilterOwner = SQL.def(
-	'setFilterOwner',
-	ownerP,
-	SQL.update(Schema.filters)
-		.set({ ownerUserId: ownerP.ownerUserId, ownerPluginId: ownerP.ownerPluginId })
-		.where(E.eq(Schema.filters.id, ownerP.id)),
-)
-
-const filterIdsP = SQL.params({ ids: SQL.list(Schema.filters.id) })
-const filtersByIds = SQL.def(
-	'filtersByIds',
-	filterIdsP,
-	SQL.select().from(Schema.filters).where(SQL.inJson(Schema.filters.id, filterIdsP.ids)),
-)
-const deleteFiltersByIds = SQL.def(
-	'deleteFiltersByIds',
-	filterIdsP,
-	SQL.delete(Schema.filters).where(SQL.inJson(Schema.filters.id, filterIdsP.ids)),
-)
-
-const userContributorsP = SQL.params({ filterId: UserContributors.filterId })
-const userContributorIds = SQL.def(
-	'userContributorIds',
-	userContributorsP,
-	SQL.select({ userId: UserContributors.userId })
-		.from(UserContributors)
-		.where(E.eq(UserContributors.filterId, userContributorsP.filterId)),
-)
-const roleContributorsP = SQL.params({ filterId: RoleContributors.filterId })
-const roleContributorIds = SQL.def(
-	'roleContributorIds',
-	roleContributorsP,
-	SQL.select({ roleId: RoleContributors.roleId })
-		.from(RoleContributors)
-		.where(E.eq(RoleContributors.filterId, roleContributorsP.filterId)),
-)
-const allRoleContributors = SQL.def('allRoleContributors', SQL.params({}), SQL.select().from(RoleContributors), {
-	scans: ['filterRoleContributors'],
-})
-
-const userContributorP = SQL.params({ filterId: UserContributors.filterId, userId: UserContributors.userId })
-const insertUserContributor = SQL.def(
-	'insertUserContributor',
-	userContributorP,
-	SQL.insert(UserContributors).values({ filterId: userContributorP.filterId, userId: userContributorP.userId }).onConflictDoNothing(),
-)
-const deleteUserContributor = SQL.def(
-	'deleteUserContributor',
-	userContributorP,
-	SQL.delete(UserContributors).where(
-		E.and(E.eq(UserContributors.filterId, userContributorP.filterId), E.eq(UserContributors.userId, userContributorP.userId)),
-	),
-)
-const roleContributorP = SQL.params({ filterId: RoleContributors.filterId, roleId: RoleContributors.roleId })
-const insertRoleContributor = SQL.def(
-	'insertRoleContributor',
-	roleContributorP,
-	SQL.insert(RoleContributors).values({ filterId: roleContributorP.filterId, roleId: roleContributorP.roleId }).onConflictDoNothing(),
-)
-const deleteRoleContributor = SQL.def(
-	'deleteRoleContributor',
-	roleContributorP,
-	SQL.delete(RoleContributors).where(
-		E.and(E.eq(RoleContributors.filterId, roleContributorP.filterId), E.eq(RoleContributors.roleId, roleContributorP.roleId)),
-	),
-)
-
-const userIdP = SQL.params({ userId: Schema.users.discordId })
-const userExists = SQL.def(
-	'userExists',
-	userIdP,
-	SQL.select({ id: Schema.users.discordId }).from(Schema.users).where(E.eq(Schema.users.discordId, userIdP.userId)),
-)
-
 // the columns Users.buildUsers reads
 const USER_COLUMNS = {
 	discordId: Schema.users.discordId,
 	nickname: Schema.users.nickname,
 	username: Schema.discordAccounts.username,
 }
-const userIdsP = SQL.params({ ids: SQL.list(Schema.users.discordId) })
-const usersByIds = SQL.def(
-	'usersByIds',
-	userIdsP,
-	SQL.select(USER_COLUMNS)
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
-		.where(SQL.inJson(Schema.users.discordId, userIdsP.ids)),
-)
-const contributingUsers = SQL.def(
-	'contributingUsers',
-	userContributorsP,
-	SQL.select(USER_COLUMNS)
-		.from(UserContributors)
-		.innerJoin(Schema.users, E.eq(Schema.users.discordId, UserContributors.userId))
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
-		.where(E.eq(UserContributors.filterId, userContributorsP.filterId)),
-)
+
+namespace Q {
+	// -------- statements --------
+
+	const idP = SQL.params({ id: Schema.filters.id })
+	export const filterById = SQL.def('filterById', idP, SQL.select().from(Schema.filters).where(E.eq(Schema.filters.id, idP.id)))
+	export const filterName = SQL.def(
+		'filterName',
+		idP,
+		SQL.select({ name: Schema.filters.name }).from(Schema.filters).where(E.eq(Schema.filters.id, idP.id)),
+	)
+	export const filterOwner = SQL.def(
+		'filterOwner',
+		idP,
+		SQL.select({ ownerUserId: Schema.filters.ownerUserId }).from(Schema.filters).where(E.eq(Schema.filters.id, idP.id)),
+	)
+	export const deleteFilterRow = SQL.def('deleteFilterRow', idP, SQL.delete(Schema.filters).where(E.eq(Schema.filters.id, idP.id)))
+	export const allFilters = SQL.def('allFilters', SQL.params({}), SQL.select().from(Schema.filters), { scans: ['filters'] })
+	const filterP = SQL.params(E.getTableColumns(Schema.filters))
+	export const insertFilter = SQL.def('insertFilter', filterP, SQL.insert(Schema.filters).values(filterP))
+	export const insertFilterIfAbsent = SQL.def(
+		'insertFilterIfAbsent',
+		filterP,
+		SQL.insert(Schema.filters).values(filterP).onConflictDoNothing(),
+	)
+	// every column an update may change: the filter's own fields, never its id or owner
+	const contentP = SQL.params({
+		id: Schema.filters.id,
+		name: Schema.filters.name,
+		description: Schema.filters.description,
+		filter: Schema.filters.filter,
+		alertMessage: Schema.filters.alertMessage,
+		emoji: Schema.filters.emoji,
+		invertedAlertMessage: Schema.filters.invertedAlertMessage,
+		invertedEmoji: Schema.filters.invertedEmoji,
+		missExemption: Schema.filters.missExemption,
+	})
+	const { id: _contentId, ...contentSetP } = contentP
+	export const updateFilterContent = SQL.def(
+		'updateFilterContent',
+		contentP,
+		SQL.update(Schema.filters).set(contentSetP).where(E.eq(Schema.filters.id, contentP.id)),
+	)
+	const ownerP = SQL.params({
+		id: Schema.filters.id,
+		ownerUserId: Schema.filters.ownerUserId,
+		ownerPluginId: Schema.filters.ownerPluginId,
+	})
+	export const setFilterOwner = SQL.def(
+		'setFilterOwner',
+		ownerP,
+		SQL.update(Schema.filters)
+			.set({ ownerUserId: ownerP.ownerUserId, ownerPluginId: ownerP.ownerPluginId })
+			.where(E.eq(Schema.filters.id, ownerP.id)),
+	)
+	const filterIdsP = SQL.params({ ids: SQL.list(Schema.filters.id) })
+	export const filtersByIds = SQL.def(
+		'filtersByIds',
+		filterIdsP,
+		SQL.select().from(Schema.filters).where(SQL.inJson(Schema.filters.id, filterIdsP.ids)),
+	)
+	export const deleteFiltersByIds = SQL.def(
+		'deleteFiltersByIds',
+		filterIdsP,
+		SQL.delete(Schema.filters).where(SQL.inJson(Schema.filters.id, filterIdsP.ids)),
+	)
+	const userContributorsP = SQL.params({ filterId: UserContributors.filterId })
+	export const userContributorIds = SQL.def(
+		'userContributorIds',
+		userContributorsP,
+		SQL.select({ userId: UserContributors.userId })
+			.from(UserContributors)
+			.where(E.eq(UserContributors.filterId, userContributorsP.filterId)),
+	)
+	const roleContributorsP = SQL.params({ filterId: RoleContributors.filterId })
+	export const roleContributorIds = SQL.def(
+		'roleContributorIds',
+		roleContributorsP,
+		SQL.select({ roleId: RoleContributors.roleId })
+			.from(RoleContributors)
+			.where(E.eq(RoleContributors.filterId, roleContributorsP.filterId)),
+	)
+	export const allRoleContributors = SQL.def('allRoleContributors', SQL.params({}), SQL.select().from(RoleContributors), {
+		scans: ['filterRoleContributors'],
+	})
+	const userContributorP = SQL.params({ filterId: UserContributors.filterId, userId: UserContributors.userId })
+	export const insertUserContributor = SQL.def(
+		'insertUserContributor',
+		userContributorP,
+		SQL.insert(UserContributors).values({ filterId: userContributorP.filterId, userId: userContributorP.userId }).onConflictDoNothing(),
+	)
+	export const deleteUserContributor = SQL.def(
+		'deleteUserContributor',
+		userContributorP,
+		SQL.delete(UserContributors).where(
+			E.and(E.eq(UserContributors.filterId, userContributorP.filterId), E.eq(UserContributors.userId, userContributorP.userId)),
+		),
+	)
+	const roleContributorP = SQL.params({ filterId: RoleContributors.filterId, roleId: RoleContributors.roleId })
+	export const insertRoleContributor = SQL.def(
+		'insertRoleContributor',
+		roleContributorP,
+		SQL.insert(RoleContributors).values({ filterId: roleContributorP.filterId, roleId: roleContributorP.roleId }).onConflictDoNothing(),
+	)
+	export const deleteRoleContributor = SQL.def(
+		'deleteRoleContributor',
+		roleContributorP,
+		SQL.delete(RoleContributors).where(
+			E.and(E.eq(RoleContributors.filterId, roleContributorP.filterId), E.eq(RoleContributors.roleId, roleContributorP.roleId)),
+		),
+	)
+	const userIdP = SQL.params({ userId: Schema.users.discordId })
+	export const userExists = SQL.def(
+		'userExists',
+		userIdP,
+		SQL.select({ id: Schema.users.discordId }).from(Schema.users).where(E.eq(Schema.users.discordId, userIdP.userId)),
+	)
+	const userIdsP = SQL.params({ ids: SQL.list(Schema.users.discordId) })
+	export const usersByIds = SQL.def(
+		'usersByIds',
+		userIdsP,
+		SQL.select(USER_COLUMNS)
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
+			.where(SQL.inJson(Schema.users.discordId, userIdsP.ids)),
+	)
+	export const contributingUsers = SQL.def(
+		'contributingUsers',
+		userContributorsP,
+		SQL.select(USER_COLUMNS)
+			.from(UserContributors)
+			.innerJoin(Schema.users, E.eq(Schema.users.discordId, UserContributors.userId))
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
+			.where(E.eq(UserContributors.filterId, userContributorsP.filterId)),
+	)
+}
 
 // -------- helpers --------
 
@@ -210,7 +214,7 @@ function recordFilterChange(
 // managing who can contribute to a filter is an ownership concern, so it's restricted to the filter owner (or
 // anyone with blanket write access), rather than any contributor who merely has filters:write for the filter.
 async function denyUnlessFilterOwner(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal, filterId: F.FilterEntityId) {
-	const filter = DB.get(ctx, filterOwner({ id: filterId }))
+	const filter = DB.get(ctx, Q.filterOwner({ id: filterId }))
 	if (filter && filter.ownerUserId === ctx.user.discordId) return null
 	return Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('filters:write-all'))
 }
@@ -222,7 +226,7 @@ function recordFilterContributor(
 	contributor: RBAC.Contributor,
 	actor: AppEvents.Actor,
 ) {
-	const filter = DB.get(ctx, filterName({ id: filterId }))
+	const filter = DB.get(ctx, Q.filterName({ id: filterId }))
 	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.FilterContributorChanged>({
@@ -261,12 +265,12 @@ function emit(ctx: C.Db, mutation: F.FilterEntityMutation) {
 }
 
 function filterExists(ctx: C.Db, filterId: F.FilterEntityId) {
-	return !!DB.get(ctx, filterName({ id: filterId }))
+	return !!DB.get(ctx, Q.filterName({ id: filterId }))
 }
 
 export function listFilterContributors(ctx: C.Db, filterId: F.FilterEntityId): RBAC.Contributor[] {
-	const users = DB.all(ctx, userContributorIds({ filterId }))
-	const roles = DB.all(ctx, roleContributorIds({ filterId }))
+	const users = DB.all(ctx, Q.userContributorIds({ filterId }))
+	const roles = DB.all(ctx, Q.roleContributorIds({ filterId }))
 	return [
 		...users.map((u): RBAC.Contributor => ({ type: 'user', userId: u.userId })),
 		...roles.map((r): RBAC.Contributor => ({ type: 'role', roleId: r.roleId })),
@@ -283,12 +287,12 @@ export const addFilterContributor = DB.txOp(
 		let res
 		switch (contributor.type) {
 			case 'user': {
-				if (!DB.get(ctx, userExists({ userId: contributor.userId }))) return { code: 'err:unknown-user' as const }
-				res = DB.run(ctx, insertUserContributor({ filterId, userId: contributor.userId }), changes)
+				if (!DB.get(ctx, Q.userExists({ userId: contributor.userId }))) return { code: 'err:unknown-user' as const }
+				res = DB.run(ctx, Q.insertUserContributor({ filterId, userId: contributor.userId }), changes)
 				break
 			}
 			case 'role':
-				res = DB.run(ctx, insertRoleContributor({ filterId, roleId: contributor.roleId }), changes)
+				res = DB.run(ctx, Q.insertRoleContributor({ filterId, roleId: contributor.roleId }), changes)
 				break
 			default:
 				assertNever(contributor)
@@ -308,10 +312,10 @@ export const removeFilterContributor = DB.txOp(
 		let res
 		switch (contributor.type) {
 			case 'user':
-				res = DB.run(ctx, deleteUserContributor({ filterId, userId: contributor.userId }), changes)
+				res = DB.run(ctx, Q.deleteUserContributor({ filterId, userId: contributor.userId }), changes)
 				break
 			case 'role':
-				res = DB.run(ctx, deleteRoleContributor({ filterId, roleId: contributor.roleId }), changes)
+				res = DB.run(ctx, Q.deleteRoleContributor({ filterId, roleId: contributor.roleId }), changes)
 				break
 			default:
 				assertNever(contributor)
@@ -333,11 +337,11 @@ export const copyFilterContributors = DB.txOp(
 	(ctx: C.Db & C.Tx, sourceId: F.FilterEntityId, targetId: F.FilterEntityId, actor: AppEvents.Actor) => {
 		if (!filterExists(ctx, sourceId) || !filterExists(ctx, targetId)) return { code: 'err:not-found' as const }
 		const added: RBAC.Contributor[] = []
-		for (const { userId } of DB.all(ctx, userContributorIds({ filterId: sourceId }))) {
-			if (DB.run(ctx, insertUserContributor({ filterId: targetId, userId })).changes > 0) added.push({ type: 'user', userId })
+		for (const { userId } of DB.all(ctx, Q.userContributorIds({ filterId: sourceId }))) {
+			if (DB.run(ctx, Q.insertUserContributor({ filterId: targetId, userId })).changes > 0) added.push({ type: 'user', userId })
 		}
-		for (const { roleId } of DB.all(ctx, roleContributorIds({ filterId: sourceId }))) {
-			if (DB.run(ctx, insertRoleContributor({ filterId: targetId, roleId })).changes > 0) added.push({ type: 'role', roleId })
+		for (const { roleId } of DB.all(ctx, Q.roleContributorIds({ filterId: sourceId }))) {
+			if (DB.run(ctx, Q.insertRoleContributor({ filterId: targetId, roleId })).changes > 0) added.push({ type: 'role', roleId })
 		}
 		for (const contributor of added) {
 			recordFilterContributor(ctx, 'added', targetId, contributor, actor)
@@ -356,7 +360,7 @@ export function putRuntimeFilters(ctx: C.Db, filters: F.FilterEntity[]) {
 	if (filters.length === 0) return
 	DB.transaction(ctx, {}, (ctx) => {
 		for (const filter of filters) {
-			DB.run(ctx, insertFilter(filterRow(filter)))
+			DB.run(ctx, Q.insertFilter(filterRow(filter)))
 			emit(ctx, { type: 'add', key: filter.id, actor: { type: 'system' }, value: filter })
 		}
 	})
@@ -368,8 +372,8 @@ export function putRuntimeFilters(ctx: C.Db, filters: F.FilterEntity[]) {
 export function deleteRuntimeFilters(ctx: C.Db, ids: F.FilterEntityId[]) {
 	if (ids.length === 0) return 0
 	const { deleted } = DB.transaction(ctx, {}, (ctx) => {
-		const rows = DB.all(ctx, filtersByIds({ ids }))
-		if (rows.length > 0) DB.run(ctx, deleteFiltersByIds({ ids: rows.map((row) => row.id) }))
+		const rows = DB.all(ctx, Q.filtersByIds({ ids }))
+		if (rows.length > 0) DB.run(ctx, Q.deleteFiltersByIds({ ids: rows.map((row) => row.id) }))
 		for (const row of rows) {
 			const filter = F.fromRow(row)
 			emit(ctx, { type: 'delete', key: filter.id, actor: { type: 'system' }, value: filter })
@@ -385,7 +389,7 @@ function filterRow(filter: F.FilterEntity) {
 }
 
 function selectFilters(ctx: C.Db) {
-	return DB.all(ctx, allFilters({})).map(F.fromRow)
+	return DB.all(ctx, Q.allFilters({})).map(F.fromRow)
 }
 
 // Recomputed rather than maintained incrementally: it is read when a filter page is opened or something changes,
@@ -417,7 +421,7 @@ export let filterReferences$!: Rx.Observable<FR.Index>
 // (filter-edit.server.ts) and a plugin all go through here, so a filter is only ever written one way.
 export function updateFilter(ctx: C.Db, id: F.FilterEntityId, update: Partial<F.FilterEntityUpdate>, actor: AppEvents.Actor) {
 	const res = DB.transaction(ctx, {}, (ctx) => {
-		const rawFilter = DB.get(ctx, filterById({ id }))
+		const rawFilter = DB.get(ctx, Q.filterById({ id }))
 		if (!rawFilter) {
 			return { code: 'err:not-found' as const }
 		}
@@ -429,7 +433,7 @@ export function updateFilter(ctx: C.Db, id: F.FilterEntityId, update: Partial<F.
 			if (cycle) return { code: 'err:cyclical-reference' as const, cycle }
 		}
 		const { ownerUserId: _ownerUserId, ownerPluginId: _ownerPluginId, ...content } = rawFilter
-		const updateResult = DB.run(ctx, updateFilterContent({ ...content, ...Obj.trimUndefined(update) }))
+		const updateResult = DB.run(ctx, Q.updateFilterContent({ ...content, ...Obj.trimUndefined(update) }))
 
 		if (updateResult.changes === 0) {
 			throw new Orpc.ORPCError('INTERNAL_SERVER_ERROR', {
@@ -458,7 +462,7 @@ export const createFilter = DB.txOp('createFilter', { module }, (ctx: C.Db & C.T
 	// a filter can name one that doesn't exist yet, so creating that filter is a way to close a loop
 	const cycle = FR.findCycle([...selectFilters(ctx), filter], filter.id)
 	if (cycle) return { code: 'err:cyclical-reference' as const, cycle }
-	const res = DB.run(ctx, insertFilterIfAbsent(filterRow(filter)), { changes: { atLeast: 1 }, otherwise: 'err:already-exists' })
+	const res = DB.run(ctx, Q.insertFilterIfAbsent(filterRow(filter)), { changes: { atLeast: 1 }, otherwise: 'err:already-exists' })
 	if (res.code !== 'ok') return { code: res.code }
 	emit(ctx, { type: 'add', key: filter.id, value: filter, actor })
 	recordFilterChange(ctx, actor, 'created', filter.id, { filterName: filter.name })
@@ -478,15 +482,15 @@ export const deleteFilter = DB.txOp(
 		if (references.length > 0) {
 			return { code: 'err:filter-in-use' as const, references }
 		}
-		const rawFilter = DB.get(ctx, filterById({ id: idToDelete }))
+		const rawFilter = DB.get(ctx, Q.filterById({ id: idToDelete }))
 		if (!rawFilter) {
 			return { code: 'err:filter-not-found' as const }
 		}
 		const filter = F.fromRow(rawFilter)
 		// captured before the delete so the affected inferred-role holders can be invalidated after commit
-		const userContributorIdList = DB.all(ctx, userContributorIds({ filterId: idToDelete })).map((r) => r.userId)
-		const hasRoleContributors = DB.all(ctx, roleContributorIds({ filterId: idToDelete })).length > 0
-		DB.run(ctx, deleteFilterRow({ id: idToDelete }))
+		const userContributorIdList = DB.all(ctx, Q.userContributorIds({ filterId: idToDelete })).map((r) => r.userId)
+		const hasRoleContributors = DB.all(ctx, Q.roleContributorIds({ filterId: idToDelete })).length > 0
+		DB.run(ctx, Q.deleteFilterRow({ id: idToDelete }))
 		// owner + user contributors lose their inferred roles; a role contributor affects every holder of that role
 		DB.afterCommit(ctx, () => {
 			if (hasRoleContributors) Rbac.invalidateAll()
@@ -506,8 +510,8 @@ export const filtersRouter = {
 	// users and roles are read separately: joining both onto the filter crosses them, so each user came back
 	// once per role and each role once per user
 	getFilterContributors: orpcBase.input(F.FilterEntityIdSchema).handler(async ({ input, context: ctx }) => {
-		const userRows = DB.all(ctx, contributingUsers({ filterId: input }))
-		const roleRows = DB.all(ctx, roleContributorIds({ filterId: input }))
+		const userRows = DB.all(ctx, Q.contributingUsers({ filterId: input }))
+		const roleRows = DB.all(ctx, Q.roleContributorIds({ filterId: input }))
 
 		return {
 			users: await Users.buildUsers(userRows),
@@ -515,7 +519,7 @@ export const filtersRouter = {
 		}
 	}),
 
-	getAllFilterRoleContributors: orpcBase.handler(({ context: ctx }) => DB.all(ctx, allRoleContributors({}))),
+	getAllFilterRoleContributors: orpcBase.handler(({ context: ctx }) => DB.all(ctx, Q.allRoleContributors({}))),
 
 	addFilterContributor: orpcBase
 		.meta({ type: 'mutation' })
@@ -579,7 +583,7 @@ export const filtersRouter = {
 		)
 		.handler(({ input, context: ctx }) =>
 			DB.transaction(ctx, {}, (ctx) => {
-				const rawFilter = DB.get(ctx, filterById({ id: input.filterId }))
+				const rawFilter = DB.get(ctx, Q.filterById({ id: input.filterId }))
 				if (!rawFilter) {
 					return { code: 'err:filter-not-found' as const }
 				}
@@ -588,7 +592,7 @@ export const filtersRouter = {
 					return { code: 'err:already-owns-filter' as const }
 				}
 				const owner = F.ownerColumns(input.newOwner) as Pick<SchemaModels.Filter, 'ownerUserId' | 'ownerPluginId'>
-				DB.run(ctx, setFilterOwner({ id: input.filterId, ...owner }))
+				DB.run(ctx, Q.setFilterOwner({ id: input.filterId, ...owner }))
 				const filter = { ...prevFilter, owner: input.newOwner }
 				// filter-owner moved: the old owner loses the inferred role, the new owner gains it
 				DB.afterCommit(ctx, () => {
@@ -618,7 +622,7 @@ export async function* watchFilters({
 }): AsyncGenerator<FilterEntityChange & Parts<USR.UserPart>, void, unknown> {
 	const ids = [...new Set(Array.from(state.filters.values()).flatMap((f) => F.ownerUserId(f.owner) ?? []))]
 
-	const dbUsers = ids.length > 0 ? DB.all(ctx, usersByIds({ ids })) : []
+	const dbUsers = ids.length > 0 ? DB.all(ctx, Q.usersByIds({ ids })) : []
 
 	yield {
 		code: 'initial-value' as const,
@@ -637,7 +641,7 @@ const mutationWithParts$ = filterMutation$.pipe(
 		const ownerUserId = F.ownerUserId(mutation.value.owner)
 		if (ownerUserId !== null) userIds.add(ownerUserId)
 		if (mutation.actor.type === 'slm-user') userIds.add(mutation.actor.userId)
-		const dbUsers = userIds.size > 0 ? DB.all(ctx, usersByIds({ ids: [...userIds] })) : []
+		const dbUsers = userIds.size > 0 ? DB.all(ctx, Q.usersByIds({ ids: [...userIds] })) : []
 		return { code: 'mutation' as const, mutation, parts: { users: await Users.buildUsers(dbUsers) } }
 	}),
 	Rx.share(),
