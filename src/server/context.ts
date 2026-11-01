@@ -19,19 +19,15 @@ import * as V from '@/models/vote.models'
 
 import type * as DB from './db.ts'
 
+// the connection statements run on (see DB.all, DB.get, DB.run)
 export type Db = CS.Ctx & {
-	db(opts?: { redactParams?: boolean }): DB.Db
-} & Partial<Tx>
-export const DbDef = CD.defCtx<Db>()(['db', 'tx'], { name: 'db' })
+	db: DB.Conn
+}
+export const DbDef = CD.defCtx<Db>()(['db'], { name: 'db' })
 
-// indicates the context is in a db transaction
-export type Tx = CS.Ctx & {
-	tx: {
-		rollback: () => void
-
-		// tasks which will be executed after the transaction is committed
-		unlockTasks: (() => void | Promise<void>)[]
-	}
+// the context is inside DB.transaction(). An interface, so the plugin api report names it rather than expanding it.
+export interface Tx extends CS.Ctx {
+	tx: DB.TxHandle
 }
 export const TxDef = CD.defCtx<Tx>()(['tx'], { name: 'tx' })
 

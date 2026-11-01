@@ -94,9 +94,9 @@ async function resolveSourceName(ctx: C.Db, source: TSW.Teamswap['source'], play
 
 // Whether a swap tells the whole admin team about itself. An in-game command never does: every admin has already
 // read it in admin chat. A dashboard one does only where the server asks for it.
-async function notifiesAdmins(ctx: C.Db & SQS.Ctx & CS.AbortSignal, source: TSW.Teamswap['source']) {
+function notifiesAdmins(ctx: C.Db & SQS.Ctx & CS.AbortSignal, source: TSW.Teamswap['source']) {
 	if (USR.isFromChat(source)) return false
-	const serverState = await SquadServer.getServerState(ctx)
+	const serverState = SquadServer.getServerState(ctx)
 	return serverState.settings.warnOnGuiTeamswaps
 }
 
@@ -182,7 +182,7 @@ export function initContext(ctx: SQS.Ctx & C.Db & C.ManagedServerCleanup) {
 							tryEndSwapping()
 							restoreSavedBlock: if (!ctx.teamswaps.haveReadSavedSwapsFromDb) {
 								ctx.teamswaps.haveReadSavedSwapsFromDb = true
-								const serverState = await SquadServer.getServerState(ctx)
+								const serverState = SquadServer.getServerState(ctx)
 								if (!serverState.teamswaps) break restoreSavedBlock
 								const { matchHistoryEntryId, swaps } = serverState.teamswaps
 								if (matchHistoryEntryId === match.historyEntryId) {
@@ -717,7 +717,7 @@ const dispatchOp = Instr.spanOp(
 							).catch((error) => {
 								if (!Prom.isAbortError(error)) log.error(error)
 							})
-							if (isManual && (await notifiesAdmins(ctx, isManual.source))) {
+							if (isManual && notifiesAdmins(ctx, isManual.source)) {
 								const name = await resolveSourceName(ctx, isManual.source, teamsRes.players)
 								const excludeSteamIds = isManual.source.steamId ? new Set([isManual.source.steamId]) : undefined
 								const current = L.toLayer(currentMatch.layerId)
@@ -736,8 +736,8 @@ const dispatchOp = Instr.spanOp(
 								})
 							}
 
-							await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-								await SquadServer.updateServerState(ctx, { teamswaps: null }, { type: 'system', event: 'teamswaps-saved' })
+							DB.transaction(ctx, {}, (ctx) => {
+								SquadServer.updateServerState(ctx, { teamswaps: null }, { type: 'system', event: 'teamswaps-saved' })
 							})
 
 							return { code: 'ok' as const }
@@ -773,8 +773,8 @@ const dispatchOp = Instr.spanOp(
 					case 'save': {
 						const currentMatch = await MatchHistory.requireCurrentMatch(ctx)
 						const saved = se.swaps.size > 0 ? { swaps: se.swaps, matchHistoryEntryId: currentMatch.historyEntryId } : null
-						await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-							await SquadServer.updateServerState(ctx, { teamswaps: saved }, { type: 'system', event: 'teamswaps-saved' })
+						DB.transaction(ctx, {}, (ctx) => {
+							SquadServer.updateServerState(ctx, { teamswaps: saved }, { type: 'system', event: 'teamswaps-saved' })
 						})
 
 						// an immediate swap is already recorded as a TEAM_CHANGE_FORCED; the queue losing that player is
@@ -787,12 +787,7 @@ const dispatchOp = Instr.spanOp(
 						// only an edit to the queue is announced as one. an execution empties the saved swaps too, but it
 						// has its own admin warn (notifyAdminManualSwap) and would otherwise report itself as a clear
 						const { added, removed } = TSW.getTeamswapChanges(se.swaps, se.prevSaved)
-						if (
-							se.source &&
-							se.trigger === 'user-edit' &&
-							added.length + removed.length > 0 &&
-							(await notifiesAdmins(ctx, se.source))
-						) {
+						if (se.source && se.trigger === 'user-edit' && added.length + removed.length > 0 && notifiesAdmins(ctx, se.source)) {
 							const name = await resolveSourceName(ctx, se.source)
 							const excludeSteamIds = se.source.steamId ? new Set([se.source.steamId]) : undefined
 							const current = L.toLayer(currentMatch.layerId)

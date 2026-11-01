@@ -39,7 +39,7 @@ export async function announce(ctx: C.Db & CS.Log & CS.AbortSignal, message: str
 	const announcement: Announcement = { id: createId(8), message, segments, sentAt, expiresAt: sentAt + durationMs }
 	setCurrent(announcement)
 
-	await AppEventsSys.persistAppEvent(
+	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.AnnouncementSent>({
 			type: 'ANNOUNCEMENT_SENT',

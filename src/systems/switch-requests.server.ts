@@ -131,7 +131,7 @@ export function initContext(ctx: SQS.Ctx & SR.Ctx & C.Db & C.ManagedServerCleanu
 						if (!sr.haveReadFromDb) {
 							sr.haveReadFromDb = true
 							const match = await MatchHistory.getMatchById(ctx, e.matchId)
-							const saved = (await SquadServer.getServerState(ctx)).switchRequests
+							const saved = SquadServer.getServerState(ctx).switchRequests
 							if (saved && match && saved.matchHistoryEntryId === match.historyEntryId) {
 								await pass(ctx, {
 									mutate: (state) => {
@@ -189,8 +189,8 @@ async function persist(ctx: PassCtx) {
 				disconnected: [...state.disconnectedThisMatch],
 				matchHistoryEntryId: (await MatchHistory.requireCurrentMatch(ctx)).historyEntryId,
 			}
-	await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-		await SquadServer.updateServerState(ctx, { switchRequests: saved }, { type: 'system', event: 'switch-requests-saved' })
+	DB.transaction(ctx, {}, (ctx) => {
+		SquadServer.updateServerState(ctx, { switchRequests: saved }, { type: 'system', event: 'switch-requests-saved' })
 	})
 }
 
@@ -361,8 +361,8 @@ const clearForNewGame = Instr.spanOp('clearForNewGame', { module, mutexes: (ctx)
 	sr.swapping.clear()
 	sr.pendingPlacement.clear()
 	if (hadState) {
-		await DB.runTransaction(ctx, { redactParams: true }, async (ctx) => {
-			await SquadServer.updateServerState(ctx, { switchRequests: null }, { type: 'system', event: 'switch-requests-saved' })
+		DB.transaction(ctx, {}, (ctx) => {
+			SquadServer.updateServerState(ctx, { switchRequests: null }, { type: 'system', event: 'switch-requests-saved' })
 		})
 	}
 	emitUpdate(ctx)

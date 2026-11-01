@@ -8,7 +8,6 @@ import * as E from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema'
 import * as AR from '@/app-routes'
-import { superjsonify } from '@/lib/drizzle'
 import * as Gen from '@/lib/generator-utils'
 import { IsolatedSubject } from '@/lib/isolated-subject'
 import * as Prom from '@/lib/promise-utils'
@@ -25,11 +24,13 @@ import type * as USR from '@/models/users.models'
 import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Settings from '@/systems/settings.server'
 import * as WsSessionSys from '@/systems/ws-session.server'
 
 const module = initModule('squad-server')
+const SQL = Sql.forModule(module)
 
 export let log!: CS.Logger
 
@@ -52,8 +53,49 @@ export type MatchHistoryState = {
 	recentMatches: MH.MatchDetails[]
 } & Parts<USR.UserPart>
 
+const STATE_COLUMNS = [
+	'displayName',
+	'enabled',
+	'defaultServer',
+	'layerQueue',
+	'teamswaps',
+	'backburner',
+	'switchRequests',
+	'visibility',
+	'ownerDiscordId',
+] as const
+type StateColumn = (typeof STATE_COLUMNS)[number]
+
+namespace Q {
+	export const lastSquadId = SQL.def('lastSquadId', SQL.params({}), SQL.select({ id: E.max(Schema.squads.id) }).from(Schema.squads))
+	const serverByIdP = SQL.params({ id: Schema.servers.id })
+	export const serverById = SQL.def(
+		'serverById',
+		serverByIdP,
+		SQL.select().from(Schema.servers).where(E.eq(Schema.servers.id, serverByIdP.id)),
+	)
+	const stateP = SQL.params({
+		id: Schema.servers.id,
+		displayName: Schema.servers.displayName,
+		enabled: Schema.servers.enabled,
+		defaultServer: Schema.servers.defaultServer,
+		layerQueue: Schema.servers.layerQueue,
+		teamswaps: Schema.servers.teamswaps,
+		backburner: Schema.servers.backburner,
+		switchRequests: Schema.servers.switchRequests,
+		visibility: Schema.servers.visibility,
+		ownerDiscordId: Schema.servers.ownerDiscordId,
+	})
+	// the columns given, in STATE_COLUMNS order
+	export const updateStateColumns = SQL.def('updateStateColumns', stateP, (...columns: StateColumn[]) =>
+		SQL.update(Schema.servers)
+			.set(Object.fromEntries(columns.map((c) => [c, stateP[c]])))
+			.where(E.eq(Schema.servers.id, stateP.id)),
+	)
+}
+
 // state every squad-server module reads; runs before any managed server boots
-export async function init() {
+export function init() {
 	log = module.getLogger()
 	const ctx = getBaseCtx()
 
@@ -64,15 +106,13 @@ export async function init() {
 		lifecycleMtxs: new Map(),
 	}
 
-	const lastSquadRes = await ctx.db().select({ id: Schema.squads.id }).from(Schema.squads).orderBy(E.desc(Schema.squads.id)).limit(1)
-	const nextSquadId = lastSquadRes.length > 0 ? lastSquadRes[0].id + 1 : 0
+	const lastSquad = DB.get(ctx, Q.lastSquadId({}))
+	const nextSquadId = lastSquad?.id != null ? lastSquad.id + 1 : 0
 	globalState.squadIdCounter = Gen.counter(nextSquadId)
 }
 
-export async function getFullServerState(ctx: C.Db & LQ.Ctx) {
-	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
-	const [serverRaw] = await query
-	return Settings.parseServerStateRow(serverRaw)
+export function getFullServerState(ctx: C.Db & LQ.Ctx) {
+	return Settings.parseServerStateRow(DB.get(ctx, Q.serverById({ id: ctx.serverId })))
 }
 
 /** The current teams on the server, as tracked by the server event state */
@@ -237,31 +277,43 @@ export function stream$<T>(
 }
 
 export function getBaseCtx() {
-	return DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
+	return DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 }
 
-export async function getServerState(ctx: C.Db & CS.ServerId) {
-	const query = ctx.db().select().from(Schema.servers).where(E.eq(Schema.servers.id, ctx.serverId))
-	const [serverRaw] = await query
-	return Settings.parseServerStateRow(serverRaw)
+export function getServerState(ctx: C.Db & CS.ServerId) {
+	return Settings.parseServerStateRow(DB.get(ctx, Q.serverById({ id: ctx.serverId })))
 }
 
 // settings changes go through Settings.updateServerSettings instead — that's the one source of truth for reading/writing/broadcasting settings
-export async function updateServerState(
+export function updateServerState(
 	ctx: C.Db & C.Tx & LQ.Ctx,
 	changes: Partial<Omit<SS.ServerState, 'settings'>>,
 	source: SS.LQStateUpdate['source'],
 ) {
-	const serverState = await getServerState(ctx)
+	const serverState = getServerState(ctx)
 	const newServerState = { ...serverState, ...changes }
-	await ctx
-		.db()
-		.update(Schema.servers)
-		.set(superjsonify(Schema.servers, SS.toStoredChanges(changes)))
-		.where(E.eq(Schema.servers.id, ctx.serverId))
+	const stored = SS.toStoredChanges(changes)
+	const columns = STATE_COLUMNS.filter((c) => stored[c] !== undefined)
+	if (columns.length > 0) {
+		DB.run(
+			ctx,
+			Q.updateStateColumns(...columns)({
+				id: ctx.serverId,
+				displayName: stored.displayName,
+				enabled: stored.enabled,
+				defaultServer: stored.defaultServer,
+				layerQueue: stored.layerQueue,
+				teamswaps: stored.teamswaps,
+				backburner: stored.backburner,
+				switchRequests: stored.switchRequests,
+				visibility: stored.visibility,
+				ownerDiscordId: stored.ownerDiscordId,
+			}),
+		)
+	}
 	const update: SS.LQStateUpdate = { state: newServerState, source }
 
-	ctx.tx.unlockTasks.push(() => ctx.layerQueue.update$.next(update))
+	DB.afterCommit(ctx, () => ctx.layerQueue.update$.next(update))
 	return newServerState
 }
 

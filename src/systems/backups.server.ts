@@ -14,10 +14,12 @@ import * as DbBackup from '@/server/db-backup'
 import * as Env from '@/server/env'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 
 const module = initModule('backups')
+const SQL = Sql.forModule(module)
 let log!: CS.Logger
 
 const buildEnv = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db, ...Env.groups.backups })
@@ -35,7 +37,7 @@ export function setup() {
 }
 
 async function run() {
-	const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+	const ctx = DB.withDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
 
 	// before anything else, and whether or not the periodic schedule is even on: a pre-migration backup may have just
 	// been taken, and until it's adopted this system doesn't know it exists.
@@ -69,7 +71,7 @@ async function run() {
 // equally covers a snapshot taken by an out-of-band `pnpm db:migrate:prod` days before this boot.
 const adoptUnrecordedBackups = Instr.spanOp('adoptUnrecordedBackups', { module }, async (ctx: C.Db & CS.AbortSignal) => {
 	if (!fs.existsSync(ENV.BACKUPS_DIR)) return
-	const loggedAt = await getLastBackupEventTime(ctx)
+	const loggedAt = getLastBackupEventTime(ctx)
 	// only pre-migration backups: a periodic one is written by the loop below, which records its own event, so an
 	// unrecorded periodic file means the event failed to write and re-adopting it would say it happened twice.
 	const unrecorded = DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH)
@@ -81,7 +83,7 @@ const adoptUnrecordedBackups = Instr.spanOp('adoptUnrecordedBackups', { module }
 	for (const { fileName, stat } of unrecorded) {
 		ctx.signal.throwIfAborted()
 		const uploaded = await uploadBackup(ctx, path.join(ENV.BACKUPS_DIR, fileName), fileName)
-		await AppEventsSys.persistAppEvent(
+		AppEventsSys.persistAppEvent(
 			ctx,
 			AppEvents.create<AppEvents.BackupCreated>({
 				type: 'BACKUP_CREATED',
@@ -138,15 +140,21 @@ async function runBackupLoop(interval: number, ctx: C.Db & CS.AbortSignal) {
 	}
 }
 
-async function getLastBackupEventTime(ctx: C.Db) {
-	const [row] = await ctx
-		.db()
-		.select({ time: Schema.appEvents.time })
-		.from(Schema.appEvents)
-		.where(E.eq(Schema.appEvents.type, 'BACKUP_CREATED'))
-		.orderBy(E.desc(Schema.appEvents.time))
-		.limit(1)
-	return row?.time.getTime()
+namespace Q {
+	const lastEventOfTypeP = SQL.params({ type: Schema.appEvents.type })
+	export const lastEventOfType = SQL.def(
+		'lastEventOfType',
+		lastEventOfTypeP,
+		SQL.select({ time: Schema.appEvents.time })
+			.from(Schema.appEvents)
+			.where(E.eq(Schema.appEvents.type, lastEventOfTypeP.type))
+			.orderBy(E.desc(Schema.appEvents.time))
+			.limit(1),
+	)
+}
+
+function getLastBackupEventTime(ctx: C.Db) {
+	return DB.get(ctx, Q.lastEventOfType({ type: 'BACKUP_CREATED' }))?.time.getTime()
 }
 
 // when the last backup was taken, or null if we can't account for one. The audit log records every backup this app
@@ -159,7 +167,7 @@ async function getLastBackupEventTime(ctx: C.Db) {
 // per upgrade. This is only safe because adoption uploads what it adopts -- anchoring on a local-only file would
 // quietly mean nothing reaches the sftp target for a whole interval, which is the one thing offsite exists to prevent.
 async function getLastBackupTime(ctx: C.Db) {
-	const loggedAt = await getLastBackupEventTime(ctx)
+	const loggedAt = getLastBackupEventTime(ctx)
 
 	const files = fs.existsSync(ENV.BACKUPS_DIR) ? DbBackup.backupFiles(fs.readdirSync(ENV.BACKUPS_DIR), ENV.DB_PATH) : []
 	const writtenAt = files.length === 0 ? undefined : Math.max(...files.map((f) => fs.statSync(path.join(ENV.BACKUPS_DIR, f.name)).mtimeMs))
@@ -190,7 +198,7 @@ export const runBackup = Instr.spanOp('runBackup', { module }, async (ctx: C.Db 
 	const uploaded = await uploadBackup(ctx, destPath, fileName)
 	pruneOldBackups(fileName)
 
-	await AppEventsSys.persistAppEvent(
+	AppEventsSys.persistAppEvent(
 		ctx,
 		AppEvents.create<AppEvents.BackupCreated>({
 			type: 'BACKUP_CREATED',

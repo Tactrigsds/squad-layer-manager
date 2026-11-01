@@ -191,7 +191,7 @@ async function handleSideEffect(ctx: DispatchCtx, se: FE.SideEffect) {
 			// the reducer already moved every replica's saved baseline, so a refused write leaves them
 			// believing the save landed. The client blocks the cases it can see (an invalid tree is rejected by
 			// the reducer, a reference cycle disables the button), and the next successful save reconciles the rest.
-			const res = await FilterEntity.updateFilter(
+			const res = FilterEntity.updateFilter(
 				ctx,
 				se.filterId,
 				{ ...se.meta, filter: se.filter as F.FilterNode },

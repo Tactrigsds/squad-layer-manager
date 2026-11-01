@@ -5,12 +5,14 @@ import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
-import type * as CS from '@/models/context-shared.models'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
 import * as L from '@/models/layer.models'
 import * as VEH from '@/models/vehicles.models'
 import type * as C from '@/server/context'
+import * as DB from '@/server/db'
+import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 
 // Compiles a history query's node tree to sql. The whole vocabulary is projected -- serverEventIndex,
 // playerEventIndex, chatSearch and matchHistory hold every filterable dimension -- so no query ever unpacks an
@@ -38,6 +40,9 @@ export const aea = Schema.appEventAssociations
 export const mh = Schema.matchHistory
 export const cs = Schema.Virtual.chatSearch
 export const us = Schema.Virtual.usernameSearch
+
+const module = initModule('history-query-shared')
+const SQL = Sql.forModule(module)
 
 // user text as a single fts5 phrase, so operators and punctuation in it (`!`, `-`, `"`, `NOT`, `*`) are matched
 // as text rather than parsed as query syntax
@@ -123,96 +128,142 @@ export type ResolvedArtifacts = {
 // thousands of players, so a LIKE over both name columns is already an insignificant scan.
 const DISCORD_ID_RE = /^\d{17,20}$/
 
-export async function resolveUserRefs(ctx: C.Db, refs: string[]): Promise<string[]> {
+export namespace Q {
+	const needleP = SQL.params({ needle: SQL.value<string>() })
+	export const usersNamed = SQL.def(
+		'usersNamed',
+		needleP,
+		SQL.select({ discordId: Schema.users.discordId })
+			.from(Schema.users)
+			.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
+			.where(
+				E.or(
+					sql`${Schema.users.nickname} LIKE ${needleP.needle} ESCAPE '\\'`,
+					sql`${Schema.discordAccounts.username} LIKE ${needleP.needle} ESCAPE '\\'`,
+				),
+			)
+			.limit(MAX_NAME_MATCHES),
+		{ scans: ['users', 'discordAccounts'] },
+	)
+	const playerIdRefsP = SQL.params({ steamIds: SQL.list(Schema.players.steamId), epicIds: SQL.list(Schema.players.epicId) })
+	export const playersByIdRefs = SQL.def(
+		'playersByIdRefs',
+		playerIdRefsP,
+		SQL.select({ eosId: Schema.players.eosId })
+			.from(Schema.players)
+			.where(E.or(SQL.inJson(Schema.players.steamId, playerIdRefsP.steamIds), SQL.inJson(Schema.players.epicId, playerIdRefsP.epicIds))),
+	)
+	const phraseP = SQL.params({ phrase: SQL.value<string>() })
+	export const playersByNameTrigram = SQL.def(
+		'playersByNameTrigram',
+		phraseP,
+		SQL.selectDistinct({ eosId: us.eosId })
+			.from(us)
+			.where(sql`${us} MATCH ${phraseP.phrase}`)
+			.limit(MAX_NAME_MATCHES),
+	)
+	export const playersByNameScan = SQL.def(
+		'playersByNameScan',
+		needleP,
+		SQL.selectDistinct({ eosId: Schema.playerUsernames.playerId })
+			.from(Schema.playerUsernames)
+			.where(sql`${Schema.playerUsernames.username} LIKE ${needleP.needle} ESCAPE '\\'`)
+			.limit(MAX_NAME_MATCHES),
+		{ scans: ['playerUsernames'] },
+	)
+	const eosIdsP = SQL.params({ ids: SQL.list(Schema.players.eosId) })
+	export const steamIdsOfPlayers = SQL.def(
+		'steamIdsOfPlayers',
+		eosIdsP,
+		SQL.select({ steamId: Schema.players.steamId }).from(Schema.players).where(SQL.inJson(Schema.players.eosId, eosIdsP.ids)),
+	)
+	const namesP = SQL.params({ names: SQL.list(Schema.damageSources.name) })
+	export const damageSourcesNamed = SQL.def(
+		'damageSourcesNamed',
+		namesP,
+		SQL.select({ id: Schema.damageSources.id }).from(Schema.damageSources).where(SQL.inJson(Schema.damageSources.name, namesP.names)),
+	)
+	// -------- the engine's fixed-shape reads (history-query.worker.ts) --------
+
+	export const playerNamesByEosIds = SQL.def(
+		'playerNamesByEosIds',
+		eosIdsP,
+		SQL.select({ eosId: Schema.players.eosId, username: Schema.players.username, steamId: Schema.players.steamId })
+			.from(Schema.players)
+			.where(SQL.inJson(Schema.players.eosId, eosIdsP.ids)),
+	)
+	const matchIdsP = SQL.params({ ids: SQL.list(mh.id) })
+	export const matchesByIds = SQL.def('matchesByIds', matchIdsP, SQL.select().from(mh).where(SQL.inJson(mh.id, matchIdsP.ids)))
+	const serverIdsP = SQL.params({ ids: SQL.list(mh.serverId) })
+	export const newestOrdinalByServer = SQL.def(
+		'newestOrdinalByServer',
+		serverIdsP,
+		SQL.select({ serverId: mh.serverId, ordinal: sql<number>`max(${mh.ordinal})` })
+			.from(mh)
+			.where(SQL.inJson(mh.serverId, serverIdsP.ids))
+			.groupBy(mh.serverId),
+	)
+}
+
+export function resolveUserRefs(ctx: C.Db, refs: string[]): string[] {
 	const userIds: string[] = []
 	for (const ref of refs) {
 		if (DISCORD_ID_RE.test(ref)) userIds.push(ref)
-		else userIds.push(...(await resolveNamedUserIds(ctx, ref)))
+		else userIds.push(...resolveNamedUserIds(ctx, ref))
 	}
 	return userIds
 }
 
-export async function resolveNamedUserIds(ctx: C.Db, name: string): Promise<string[]> {
+export function resolveNamedUserIds(ctx: C.Db, name: string): string[] {
 	const trimmed = name.trim()
 	if (trimmed === '') return []
-	const needle = likeContains(trimmed)
 	// the nickname is the display name when set, so it is searched alongside the discord username the account
 	// carries; either matching is a hit, since the searcher does not know which the user goes by here
-	const rows = await ctx
-		.db()
-		.select({ discordId: Schema.users.discordId })
-		.from(Schema.users)
-		.innerJoin(Schema.discordAccounts, E.eq(Schema.discordAccounts.discordId, Schema.users.discordId))
-		.where(
-			E.or(sql`${Schema.users.nickname} LIKE ${needle} ESCAPE '\\'`, sql`${Schema.discordAccounts.username} LIKE ${needle} ESCAPE '\\'`),
-		)
-		.limit(MAX_NAME_MATCHES)
+	const rows = DB.all(ctx, Q.usersNamed({ needle: likeContains(trimmed) }))
 	return rows.map((r) => r.discordId.toString())
 }
 
 // a ref is a steam64, a 32-hex id, or anything else, which reads as a name substring. Eos and epic ids share the
 // 32-hex shape, so a hex ref is kept as an eos id and also resolved as an epic id.
-export async function resolvePlayerRefs(ctx: C.Db, refs: string[]): Promise<string[]> {
+export function resolvePlayerRefs(ctx: C.Db, refs: string[]): string[] {
 	const eosIds = new Set<string>()
 	const steam64s: bigint[] = []
 	const hexIds: string[] = []
 	for (const ref of refs) {
 		if (HQ.STEAM64_RE.test(ref)) steam64s.push(BigInt(ref))
 		else if (HQ.EOS_ID_RE.test(ref)) hexIds.push(ref.toLowerCase())
-		else for (const id of await resolveNamedPlayerIds(ctx, ref)) eosIds.add(id)
+		else for (const id of resolveNamedPlayerIds(ctx, ref)) eosIds.add(id)
 	}
 	for (const id of hexIds) eosIds.add(id)
 	if (steam64s.length > 0 || hexIds.length > 0) {
-		const conds: E.SQL[] = []
-		if (steam64s.length > 0) conds.push(E.inArray(Schema.players.steamId, steam64s))
-		if (hexIds.length > 0) conds.push(E.inArray(Schema.players.epicId, hexIds))
-		const rows = await ctx
-			.db()
-			.select({ eosId: Schema.players.eosId })
-			.from(Schema.players)
-			.where(E.or(...conds))
-		for (const r of rows) eosIds.add(r.eosId)
+		for (const r of DB.all(ctx, Q.playersByIdRefs({ steamIds: steam64s, epicIds: hexIds }))) eosIds.add(r.eosId)
 	}
 	return [...eosIds]
 }
 
-export async function resolveNamedPlayerIds(ctx: C.Db, name: string): Promise<string[]> {
+export function resolveNamedPlayerIds(ctx: C.Db, name: string): string[] {
 	const trimmed = name.trim()
 	if (trimmed === '') return []
 	// Matches previous names as well as current ones. The trigram index answers substring matches of three or
 	// more code points (see migration 0139); a shorter needle falls back to scanning every recorded name.
 	if (Str.codePointLength(trimmed) >= 3) {
-		const rows = ctx.db().all<{
-			eosId: string
-		}>(sql`SELECT DISTINCT ${us.eosId} FROM ${us} WHERE ${us} MATCH ${ftsPhrase(trimmed)} LIMIT ${MAX_NAME_MATCHES}`)
-		return rows.map((r) => r.eosId)
+		return DB.all(ctx, Q.playersByNameTrigram({ phrase: ftsPhrase(trimmed) })).map((r) => r.eosId)
 	}
-	const rows = await ctx
-		.db()
-		.selectDistinct({ eosId: Schema.playerUsernames.playerId })
-		.from(Schema.playerUsernames)
-		.where(sql`${Schema.playerUsernames.username} LIKE ${likeContains(trimmed)} ESCAPE '\\'`)
-		.limit(MAX_NAME_MATCHES)
-	return rows.map((r) => r.eosId)
+	return DB.all(ctx, Q.playersByNameScan({ needle: likeContains(trimmed) })).map((r) => r.eosId)
 }
 
 // A steam64 ref is kept as-is, so a requester who never joined a server we record can still be found. Anything
 // else goes through resolvePlayerRefs and then to the steam ids those players carry.
-async function resolvePlayerSteamIds(ctx: C.Db, refs: string[]): Promise<string[]> {
+function resolvePlayerSteamIds(ctx: C.Db, refs: string[]): string[] {
 	const steamIds = new Set<string>()
 	const other: string[] = []
 	for (const ref of refs) {
 		if (HQ.STEAM64_RE.test(ref)) steamIds.add(ref)
 		else other.push(ref)
 	}
-	const eosIds = other.length > 0 ? await resolvePlayerRefs(ctx, other) : []
+	const eosIds = other.length > 0 ? resolvePlayerRefs(ctx, other) : []
 	if (eosIds.length > 0) {
-		const rows = await ctx
-			.db()
-			.select({ steamId: Schema.players.steamId })
-			.from(Schema.players)
-			.where(inJsonSet(Schema.players.eosId, eosIds))
-		for (const r of rows) if (r.steamId !== null) steamIds.add(r.steamId.toString())
+		for (const r of DB.all(ctx, Q.steamIdsOfPlayers({ ids: eosIds }))) if (r.steamId !== null) steamIds.add(r.steamId.toString())
 	}
 	return [...steamIds]
 }
@@ -242,8 +293,8 @@ type PlayedLayer = { layerId: string; layer: L.UnvalidatedLayer }
  * largest install) rather than by the combinatorial layer universe, so this is a scan of matchHistory's
  * layerId index and a parse per distinct id.
  */
-async function playedLayers(ctx: C.Db & CS.AbortSignal, bounds: Bounds): Promise<PlayedLayer[]> {
-	const rows = await ctx.db().selectDistinct({ layerId: mh.layerId }).from(mh).where(matchBoundsCond(bounds))
+function playedLayers(ctx: C.Db, bounds: Bounds): PlayedLayer[] {
+	const rows = DB.all(ctx, SQL.selectDistinct({ layerId: mh.layerId }).from(mh).where(matchBoundsCond(bounds)))
 	const out: PlayedLayer[] = []
 	for (const { layerId } of rows) {
 		// a layer retired from the layer data still parses from its text, with whatever parts the data still names
@@ -326,12 +377,12 @@ function compValueList(node: F.CompNode): F.Value[] {
 	}
 }
 
-export async function resolveArtifacts(
-	ctx: C.Db & CS.AbortSignal,
+export function resolveArtifacts(
+	ctx: C.Db,
 	root: HQ.Node,
 	bounds: Bounds,
 	depth = 0,
-): Promise<{ code: 'ok'; artifacts: ResolvedArtifacts } | QueryError> {
+): { code: 'ok'; artifacts: ResolvedArtifacts } | QueryError {
 	const artifacts: ResolvedArtifacts = {
 		matchSets: new Map(),
 		playerSets: new Map(),
@@ -356,16 +407,17 @@ export async function resolveArtifacts(
 			continue
 		}
 		if (node.type === 'subquery') {
-			const inner = await resolveArtifacts(ctx, node.filter, bounds, depth + 1)
+			const inner = resolveArtifacts(ctx, node.filter, bounds, depth + 1)
 			if (inner.code !== 'ok') return inner
 			if (node.target === 'matches') {
 				const cond = compileMatchCond(node.filter, inner.artifacts, bounds)
-				const rows = await ctx
-					.db()
-					.select({ id: mh.id })
-					.from(mh)
-					.where(E.and(matchBoundsCond(bounds), cond))
-					.limit(MAX_SUBQUERY_MATCHES + 1)
+				const rows = DB.all(
+					ctx,
+					SQL.select({ id: mh.id })
+						.from(mh)
+						.where(E.and(matchBoundsCond(bounds), cond))
+						.limit(MAX_SUBQUERY_MATCHES + 1),
+				)
 				if (rows.length > MAX_SUBQUERY_MATCHES)
 					return { code: 'err:too-broad', message: 'a matches sub-query matched too many matches' }
 				artifacts.matchSets.set(
@@ -374,12 +426,13 @@ export async function resolveArtifacts(
 				)
 			} else if (node.target === 'players') {
 				const cond = compileEventCond(node.filter, inner.artifacts, pei)
-				const rows = await ctx
-					.db()
-					.selectDistinct({ playerId: pei.playerId })
-					.from(pei)
-					.where(E.and(E.ne(pei.assocType, GAME_PARTICIPANT), eventBoundsCond(bounds, pei), cond))
-					.limit(MAX_SUBQUERY_PLAYERS + 1)
+				const rows = DB.all(
+					ctx,
+					SQL.selectDistinct({ playerId: pei.playerId })
+						.from(pei)
+						.where(E.and(E.ne(pei.assocType, GAME_PARTICIPANT), eventBoundsCond(bounds, pei), cond))
+						.limit(MAX_SUBQUERY_PLAYERS + 1),
+				)
 				if (rows.length > MAX_SUBQUERY_PLAYERS)
 					return { code: 'err:too-broad', message: 'a players sub-query matched too many players' }
 				artifacts.playerSets.set(
@@ -399,18 +452,18 @@ export async function resolveArtifacts(
 		}
 		if (HQ.isPlayerColumn(column)) {
 			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
-			artifacts.playerValues.set(node, await resolvePlayerRefs(ctx, refs))
+			artifacts.playerValues.set(node, resolvePlayerRefs(ctx, refs))
 		}
 		if (column === 'user' || column === 'match.setByUser') {
 			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
-			artifacts.userValues.set(node, await resolveUserRefs(ctx, refs))
+			artifacts.userValues.set(node, resolveUserRefs(ctx, refs))
 		}
 		if (column === 'match.setByPlayer') {
 			const refs = compValueList(comp).filter((v): v is string => typeof v === 'string')
-			artifacts.setBySteamIds.set(node, await resolvePlayerSteamIds(ctx, refs))
+			artifacts.setBySteamIds.set(node, resolvePlayerSteamIds(ctx, refs))
 		}
 		if (HQ.isLayerColumn(column)) {
-			played ??= await playedLayers(ctx, bounds)
+			played ??= playedLayers(ctx, bounds)
 			artifacts.layerSets.set(node, layerIdsMatching(comp, column, played))
 		}
 		if (column === 'event.damageSource' || column === 'event.target' || column === 'event.vehicle') {
@@ -419,8 +472,7 @@ export async function resolveArtifacts(
 				const classes = VEH.classesByVehicle(VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents))
 				names = names.flatMap((vehicle) => classes.get(vehicle) ?? [])
 			}
-			const rows =
-				names.length > 0 ? await ctx.db().select().from(Schema.damageSources).where(E.inArray(Schema.damageSources.name, names)) : []
+			const rows = names.length > 0 ? DB.all(ctx, Q.damageSourcesNamed({ names })) : []
 			artifacts.damageSourceIds.set(
 				node,
 				rows.map((r) => r.id),

@@ -5,7 +5,6 @@ import { pathToFileURL } from 'node:url'
 
 import * as Schema from '$root/drizzle/schema'
 import * as Cleanup from '@/lib/cleanup'
-import { superjsonify, unsuperjsonify } from '@/lib/drizzle'
 import type { OtelModule } from '@/lib/otel'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
@@ -30,6 +29,7 @@ import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
+import * as Sql from '@/server/sql'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
@@ -53,6 +53,36 @@ import * as SquadServer from '@/systems/squad-server.server'
 const module = initModule('plugins')
 let log!: CS.Logger
 const orpcBase = getOrpcBase(module)
+const SQL = Sql.forModule(module)
+
+namespace Q {
+	export const pluginRows = SQL.def('pluginRows', SQL.params({}), SQL.select({ id: Schema.plugins.id }).from(Schema.plugins), {
+		scans: ['plugins'],
+	})
+	const pluginIdP = SQL.params({ id: Schema.plugins.id })
+	export const pluginRow = SQL.def('pluginRow', pluginIdP, SQL.select().from(Schema.plugins).where(eq(Schema.plugins.id, pluginIdP.id)))
+	export const insertPluginRow = SQL.def('insertPluginRow', pluginIdP, SQL.insert(Schema.plugins).values({ id: pluginIdP.id }))
+	const pluginStateP = SQL.params({
+		id: Schema.plugins.id,
+		enabled: Schema.plugins.enabled,
+		config: Schema.plugins.config,
+		commands: Schema.plugins.commands,
+	})
+	export const updatePluginRow = SQL.def(
+		'updatePluginRow',
+		pluginStateP,
+		SQL.update(Schema.plugins)
+			.set({ enabled: pluginStateP.enabled, config: pluginStateP.config, commands: pluginStateP.commands })
+			.where(eq(Schema.plugins.id, pluginStateP.id)),
+	)
+	export const disablePlugin = SQL.def(
+		'disablePlugin',
+		pluginIdP,
+		SQL.update(Schema.plugins)
+			.set({ enabled: SQL.lit(false) })
+			.where(eq(Schema.plugins.id, pluginIdP.id)),
+	)
+}
 
 // ---- ctx types (the P.Ctx / P.ServerCtx the plugin API exposes) ----
 
@@ -211,8 +241,7 @@ export async function setup(ctx: C.Db, builtins: BuiltinPlugin[]) {
 	await loadPackages(ctx)
 
 	const known = new Set(plugins.keys())
-	for (const raw of await ctx.db().select().from(Schema.plugins)) {
-		const row = unsuperjsonify(Schema.plugins, raw) as { id: string }
+	for (const row of DB.all(ctx, Q.pluginRows({}))) {
 		if (!known.has(row.id)) {
 			log.warn({ [ATTRS.Plugin.ID]: row.id }, 'plugin %s has a db row but is not installed; leaving its state alone', row.id)
 		}
@@ -234,15 +263,10 @@ export async function setup(ctx: C.Db, builtins: BuiltinPlugin[]) {
 async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 	const id = entry.manifest.id
 	if (plugins.has(id)) throw new Error(`duplicate plugin id: ${id}`)
-	const [raw] = await ctx.db().select().from(Schema.plugins).where(eq(Schema.plugins.id, id))
-	type Row = { id: string; enabled: boolean; config: Record<string, unknown>; commands: unknown }
-	let row = raw ? (unsuperjsonify(Schema.plugins, raw) as Row) : undefined
+	let row = DB.get(ctx, Q.pluginRow({ id }))
 	if (!row) {
+		DB.run(ctx, Q.insertPluginRow({ id }))
 		row = { id, enabled: false, config: {}, commands: {} }
-		await ctx
-			.db()
-			.insert(Schema.plugins)
-			.values(superjsonify(Schema.plugins, { id, enabled: false, config: {}, commands: {} }))
 	}
 	const mod = pluginModule(entry)
 	const commandConfigs = CMD.PluginCommandConfigsSchema.safeParse(row.commands ?? {})
@@ -449,7 +473,7 @@ async function teardownLocked(rt: Runtime) {
 
 function mkCtx(rt: Runtime): Ctx<any> {
 	return {
-		...DB.addPooledDb({ ...CS.init() }),
+		...DB.withDb({ ...CS.init() }),
 		log: rt.log,
 		signal: Prom.anySignal(CleanupSys.shutdownSignal, rt.abort!.signal)!,
 		plugin: rt.ref,
@@ -465,7 +489,7 @@ function ensureInstance(rt: Runtime, managedServer: C.ManagedServer): Instance {
 	if (existing) return existing
 	const cleanup: Cleanup.Tasks = []
 	const sctx: ServerCtx<any> = {
-		...DB.addPooledDb({ ...CS.init() }),
+		...DB.withDb({ ...CS.init() }),
 		...managedServer,
 		log: rt.log.child({ serverId: managedServer.serverId }),
 		signal: Prom.anySignal(managedServer.signal, rt.abort!.signal)!,
@@ -519,7 +543,7 @@ function schedulerHost(rt: Runtime): SchedJobs.Host {
 			if (serverId === null) return mkCtx(rt)
 			const managedServer = SquadServer.globalState.managedServers.get(serverId)
 			if (!managedServer) return null
-			return serverScopedCtx(rt, { ...DB.addPooledDb({ ...CS.init() }), ...managedServer }, serverId)
+			return serverScopedCtx(rt, { ...DB.withDb({ ...CS.init() }), ...managedServer }, serverId)
 		},
 		serverIds: () => [...SquadServer.globalState.managedServers.keys()],
 	}
@@ -845,12 +869,8 @@ function otherCommandConfigs(pluginId: string): Record<string, CMD.PluginCommand
 
 // ---- persistence ----
 
-async function persistRow(ctx: C.Db, rt: Runtime) {
-	await ctx
-		.db()
-		.update(Schema.plugins)
-		.set(superjsonify(Schema.plugins, { enabled: rt.enabled, config: rt.configInput, commands: rt.commandConfigs }))
-		.where(eq(Schema.plugins.id, rt.ref.id))
+function persistRow(ctx: C.Db, rt: Runtime) {
+	DB.run(ctx, Q.updatePluginRow({ id: rt.ref.id, enabled: rt.enabled, config: rt.configInput, commands: rt.commandConfigs }))
 }
 
 // ---- router ----
@@ -1014,7 +1034,7 @@ export const router = {
 			if (!rt) return { code: 'err:unknown-plugin' as const }
 			return await lifecycleMtx.runExclusive(async () => {
 				rt.enabled = input.enabled
-				await persistRow(ctx, rt)
+				persistRow(ctx, rt)
 				if (input.enabled) {
 					if (rt.status === 'errored') await deactivateLocked(rt)
 					await activateLocked(rt)
@@ -1057,7 +1077,7 @@ export const router = {
 				// a recurring job's schedule is read from the config
 				SchedJobs.wake()
 			}
-			await persistRow(ctx, rt)
+			persistRow(ctx, rt)
 			update$.next(rt.ref.id)
 			return { code: 'ok' as const }
 		}),
@@ -1135,8 +1155,8 @@ export const router = {
 		.handler(async ({ context: ctx, input }) => {
 			const res = purgeLeftoverData(input.pluginId)
 			if (res.code !== 'ok') return res
-			await SchedJobs.purge(ctx, input.pluginId)
-			await AppEventsSys.persistAppEvent(
+			SchedJobs.purge(ctx, input.pluginId)
+			AppEventsSys.persistAppEvent(
 				ctx,
 				AppEvents.create<AppEvents.PluginDataPurged>({
 					type: 'PLUGIN_DATA_PURGED',
@@ -1162,7 +1182,7 @@ export const router = {
 			if (rt && rt.entry.source === 'builtin') return { code: 'err:builtin' as const }
 			if (!rt && !brokenPackages.has(input.pluginId)) return { code: 'err:unknown-plugin' as const }
 			// the row outlives the package, and an enabled row would start whatever is next installed under this id
-			await ctx.db().update(Schema.plugins).set({ enabled: false }).where(eq(Schema.plugins.id, input.pluginId))
+			DB.run(ctx, Q.disablePlugin({ id: input.pluginId }))
 			await Pkgs.remove(input.pluginId)
 			await reloadPackages(ctx)
 			return { code: 'ok' as const }
@@ -1170,7 +1190,7 @@ export const router = {
 
 	// The plugin's jobs, with when each next runs and how its last run went, and its pending one-off runs
 	listJobs: orpcBase.input(z.object({ pluginId: PLG.PluginIdSchema })).handler(async ({ input }) => {
-		return { code: 'ok' as const, jobs: await SchedJobs.listJobs(input.pluginId) }
+		return { code: 'ok' as const, jobs: SchedJobs.listJobs(input.pluginId) }
 	}),
 
 	// Runs a job now. With a key, the pending one-off run under it; without one, a recurring job outside its schedule.
@@ -1192,7 +1212,7 @@ export const router = {
 		.meta({ type: 'mutation' })
 		.input(z.object({ pluginId: PLG.PluginIdSchema, jobId: SJOB.JobIdSchema, serverId: z.string().nullable(), key: SJOB.KeySchema }))
 		.handler(async ({ context: ctx, input }) => {
-			return await SchedJobs.cancel(input.pluginId, input.serverId, input.jobId, input.key, { userId: ctx.user.discordId })
+			return SchedJobs.cancel(input.pluginId, input.serverId, input.jobId, input.key, { userId: ctx.user.discordId })
 		}),
 
 	rpcCall: orpcBase
@@ -1203,7 +1223,7 @@ export const router = {
 			if (!rt?.router || rt.status !== 'active') return { code: 'err:unknown-rpc' as const }
 			const managedServer = SquadServer.globalState.managedServers.get(input.serverId)
 			if (!managedServer) return { code: 'err:server-not-loaded' as const }
-			const sctx = procedureCtx(rt, { ...DB.addPooledDb({ ...CS.init() }), ...managedServer }, input.serverId, context.user)
+			const sctx = procedureCtx(rt, { ...DB.withDb({ ...CS.init() }), ...managedServer }, input.serverId, context.user)
 			return { code: 'ok' as const, data: await callProcedure(rt, sctx, input.path, input.input) }
 		}),
 }

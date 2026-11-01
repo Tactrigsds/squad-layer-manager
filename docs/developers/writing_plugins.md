@@ -76,7 +76,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.20',
+	apiVersion: '^0.21',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -134,7 +134,7 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 | Field         | What it is                                          |
 | ------------- | --------------------------------------------------- |
 | `ctx.log`     | a logger already named for your plugin              |
-| `ctx.db()`    | a drizzle handle on SLM's database                  |
+| `ctx.db`      | SLM's database connection, for `slm/server/db`      |
 | `ctx.signal`  | an `AbortSignal`, aborted when the plugin stops     |
 | `ctx.cleanup` | tasks run when the plugin stops                     |
 | `ctx.plugin`  | your id and manifest                                |
@@ -199,6 +199,41 @@ export const migrations: PluginMigration[] = [
 Two rules apply. First, list migrations in name order. The host checks this. Second, build the table name from the
 manifest instead of importing it from `schema.ts`. A migration is frozen in time, and renaming a table later must not
 change what an applied migration did.
+
+### Reading and writing your tables
+
+`slm/server/db` runs statements on the connection `ctx.db` holds. Every statement runs synchronously: never `await`
+one. Call `forModule(ctx.module)` once in `activate()`, and define each statement from what it returns with `def`,
+which prepares it once.
+
+```ts
+// server.ts
+import { eq } from 'drizzle-orm'
+import * as Db from 'slm/server/db'
+
+import * as S from './schema.ts'
+
+export async function activate(ctx: P.Ctx<typeof manifest>) {
+	const SQL = Db.forModule(ctx.module)
+	const greetingP = SQL.params({ serverId: S.greetings.serverId, text: S.greetings.text })
+	const insertGreeting = SQL.def('insertGreeting', greetingP, SQL.insert(S.greetings).values(greetingP))
+	const serverP = SQL.params({ serverId: S.greetings.serverId })
+	const greetingsOf = SQL.def('greetingsOf', serverP, SQL.select().from(S.greetings).where(eq(S.greetings.serverId, serverP.serverId)))
+
+	Servers.setup(ctx, (sctx) => {
+		Db.run(sctx, insertGreeting({ serverId: sctx.serverId, text: 'hi' }))
+		sctx.log.info('%d greetings', Db.all(sctx, greetingsOf({ serverId: sctx.serverId })).length)
+	})
+}
+```
+
+- `Db.all` returns every row, `Db.get` the first row or `undefined`, and `Db.run` `{ changes, lastInsertRowid }`.
+- A value that changes between calls is a parameter, declared in `SQL.params`. A constant is wrapped in `SQL.lit(...)`.
+  `def` throws when the plugin activates if either rule is broken.
+- `Db.transaction(ctx, {}, (ctx) => { ... })` runs its callback in a transaction. The callback may not await. Return
+  `{ code: 'ok' }` or nothing to commit, and an `err:` code to roll back.
+- `Db.afterCommit(ctx, task)` runs `task` once the transaction commits, for a change to the plugin's own memory that
+  mirrors a write.
 
 ## Layer ids
 
@@ -269,7 +304,7 @@ Every filter's `owner` is one of `{ type: 'slm-user', userId }`, `{ type: 'plugi
 `{ type: 'system' }`. A system-owned filter is one SLM itself created, such as a fresh install's starting pool.
 
 Your writes are ordinary writes. Open editors update, the reference index rebuilds, and the audit log records a
-`FILTER_CHANGED` naming your plugin rather than a person. Writing the `filters` table through `ctx.db()` skips all
+`FILTER_CHANGED` naming your plugin rather than a person. Writing the `filters` table through `slm/server/db` skips all
 of that and leaves every open page stale until a restart.
 
 Owning a filter does not lock it. A plugin can write any filter, including one an admin made, and an admin with access
@@ -345,7 +380,7 @@ the target already has. The audit log records a `ROTATION_CONTRIBUTOR_CHANGED` n
 contributor added or removed.
 
 Your writes are ordinary writes. Every open page updates, and the audit log records a `ROTATION_CHANGED` naming your
-plugin rather than a person. Writing the `rotations` table through `ctx.db()` skips all of that.
+plugin rather than a person. Writing the `rotations` table through `slm/server/db` skips all of that.
 
 An admin editing a rotation's items works on a shared draft. New items from `update` are saved through that draft, so
 the admins editing it see them. While the draft holds edits nobody has saved, `update` refuses new items with
@@ -931,7 +966,7 @@ metrics under your plugin the same way.
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	// one call gives you a span, a log line and a duration metric
 	const doTheThing = Instr.spanOp('do-the-thing', { module: ctx.module }, async (sctx: P.ServerCtx<typeof manifest>) => {
-		await sctx.db().insert(S.greetings).values({ serverId: sctx.serverId, text: 'hi' })
+		await SquadRcon.broadcast(sctx, PluginConfig.get(sctx).greeting)
 	})
 }
 ```

@@ -252,6 +252,10 @@ it flaky: find the cause, or show the user the evidence that it is a known flake
 
 # Server side
 
+Read docs/developers/database.md before touching a statement or a transaction. Statements are synchronous: define
+them with `SQL.def`, run them with `DB.all/get/run(ctx, stmt)`, and never await one. A transaction callback may not
+await, and an `err:` result rolls it back.
+
 Log significant actions taken by the user or by the system via app events (see src/models/app-events.models.ts).
 
 Pass commonly used state via the ctx object. It is always the first argument, or for observables always the first

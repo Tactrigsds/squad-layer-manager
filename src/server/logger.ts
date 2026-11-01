@@ -8,6 +8,7 @@ import format from 'quick-format-unescaped'
 
 import { flattenObjToAttrs } from '@/lib/object-utils'
 import type * as OtelMod from '@/lib/otel'
+import { maskSecrets } from '@/lib/secret'
 import { assertNever } from '@/lib/type-guards'
 import type * as CS from '@/models/context-shared.models'
 import * as LOG from '@/models/logs.models'
@@ -109,7 +110,7 @@ export function ensureLoggerSetup() {
 					span.recordException(obj)
 				}
 			} else if (typeof inputArgs[0] === 'object') {
-				const obj = inputArgs[0]
+				const obj = maskSecrets(inputArgs[0])
 				attrs = flattenObjToAttrs(obj, '_', 3)
 				inputArgs[0] = attrs
 			}
@@ -149,6 +150,7 @@ export function ensureLoggerSetup() {
 				serializers: LOG.serializers,
 				base: undefined,
 				hooks,
+				formatters: { log: maskSecrets },
 			}
 			break
 		case 'production':
@@ -157,6 +159,7 @@ export function ensureLoggerSetup() {
 				base: undefined,
 				serializers: LOG.serializers,
 				hooks,
+				formatters: { log: maskSecrets },
 			}
 			break
 		default:

@@ -1,8 +1,9 @@
 import * as Schema from '$root/drizzle/schema.ts'
 import * as Rx from '@/lib/rxjs'
-import type * as CS from '@/models/context-shared.models'
+import * as CS from '@/models/context-shared.models'
 import * as DB from '@/server/db'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as Discord from '@/systems/discord.server'
 
@@ -16,6 +17,7 @@ import * as Discord from '@/systems/discord.server'
 // next one picks them up; a rule matching nothing for a few seconds after boot is not worth making the poll wait.
 
 const module = initModule('player-discord-roles')
+const SQL = Sql.forModule(module)
 let log!: CS.Logger
 
 let rolesBySteamId = new Map<bigint, string[]>()
@@ -59,13 +61,21 @@ export function setup() {
 // and so users.server does not have to know this cache exists.
 export const linksChanged$ = new Rx.Subject<void>()
 
+namespace Q {
+	export const allLinks = SQL.def(
+		'allLinks',
+		SQL.params({}),
+		SQL.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id, discordId: Schema.linkedSteamAccounts.discordId }).from(
+			Schema.linkedSteamAccounts,
+		),
+		{ scans: ['linkedSteamAccounts'] },
+	)
+}
+
 async function rebuild(): Promise<void> {
 	try {
-		const ctx = DB.addPooledDb({})
-		const links = await ctx
-			.db()
-			.select({ steam64Id: Schema.linkedSteamAccounts.steam64Id, discordId: Schema.linkedSteamAccounts.discordId })
-			.from(Schema.linkedSteamAccounts)
+		const ctx = DB.withDb(CS.init())
+		const links = DB.all(ctx, Q.allLinks({}))
 		if (links.length === 0) {
 			rolesBySteamId = new Map()
 			return

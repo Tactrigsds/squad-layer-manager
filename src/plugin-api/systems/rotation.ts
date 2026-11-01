@@ -30,11 +30,11 @@ import * as Settings from '@/systems/settings.server'
  * last page.
  */
 export async function search(ctx: PluginsSys.Ctx<any>, input: ROT.SearchInput = {}): Promise<ROT.SearchPage> {
-	return await Rotation.searchSummaries(ctx, ROT.SearchInputSchema.parse(input))
+	return Rotation.searchSummaries(ctx, ROT.SearchInputSchema.parse(input))
 }
 
 export async function get(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Promise<ROT.Rotation | undefined> {
-	return await Rotation.getRotation(ctx, id)
+	return Rotation.getRotation(ctx, id)
 }
 
 /** A refusal any write that sets a repeat ruleset or tags can return. */
@@ -51,7 +51,7 @@ export type CreateResult = { code: 'ok'; rotation: ROT.Rotation } | { code: 'err
 export async function create(ctx: PluginsSys.Ctx<any>, rotation: NewRotation): Promise<CreateResult> {
 	const { owner, items, ...rest } = rotation
 	const input = ROT.NewRotationSchema.parse({ ...rest, items: items && toList(items) })
-	return await Rotation.createRotation(ctx, { ...input, owner: ownerFor(ctx, owner) }, actorFor(ctx))
+	return Rotation.createRotation(ctx, { ...input, owner: ownerFor(ctx, owner) }, actorFor(ctx))
 }
 
 export type UpdatePatch = Omit<ROT.UpdatePatch, 'items'> & { items?: NewItems }
@@ -88,7 +88,7 @@ export type CloneInput = {
 /** Copies the source's items, description and repeat ruleset. Its contributors are not copied. */
 export async function clone(ctx: PluginsSys.Ctx<any>, input: CloneInput): Promise<CreateResult | { code: 'err:not-found' }> {
 	const parsed = ROT.CloneInputSchema.parse({ ...input, copyTags: input.copyTags ?? false, copyContributors: false })
-	return await Rotation.cloneRotation(ctx, parsed, ownerFor(ctx, input.owner), actorFor(ctx))
+	return Rotation.cloneRotation(ctx, parsed, ownerFor(ctx, input.owner), actorFor(ctx))
 }
 
 /**
@@ -100,12 +100,12 @@ export async function copyContributors(
 	sourceId: ROT.RotationId,
 	targetId: ROT.RotationId,
 ): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
-	return await Rotation.copyContributors(ctx, sourceId, targetId, actorFor(ctx))
+	return Rotation.copyContributors(ctx, sourceId, targetId, actorFor(ctx))
 }
 
 /** The users and roles that can edit the rotation without owning it. Empty for a rotation that does not exist. */
 export async function getContributors(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Promise<RBAC.Contributor[]> {
-	return await Rotation.listContributors(ctx, id)
+	return Rotation.listContributors(ctx, id)
 }
 
 /** `err:unknown-user` means the user has never signed in to SLM. */
@@ -114,7 +114,7 @@ export async function addContributor(
 	id: ROT.RotationId,
 	contributor: RBAC.Contributor,
 ): Promise<{ code: 'ok' } | { code: 'err:not-found' } | { code: 'err:unknown-user' } | { code: 'err:already-exists' }> {
-	return await Rotation.addContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
+	return Rotation.addContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
 }
 
 /** `err:not-found` means the rotation does not exist, or does not have that contributor. */
@@ -123,11 +123,11 @@ export async function removeContributor(
 	id: ROT.RotationId,
 	contributor: RBAC.Contributor,
 ): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
-	return await Rotation.removeContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
+	return Rotation.removeContributor(ctx, id, RBAC.ContributorSchema.parse(contributor), actorFor(ctx))
 }
 
 export async function remove(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Promise<{ code: 'ok' } | { code: 'err:not-found' }> {
-	const res = await Rotation.deleteRotation(ctx, id, actorFor(ctx))
+	const res = Rotation.deleteRotation(ctx, id, actorFor(ctx))
 	return { code: res.code }
 }
 
@@ -146,7 +146,7 @@ export async function addToQueue(
 	id: ROT.RotationId,
 	opts: { placement: LL.Placement; tags?: LTag.TagId[]; clear?: (item: LL.Item) => boolean },
 ): Promise<{ code: 'ok' } | { code: 'err:not-found' } | { code: 'err:unsaved-edits' } | { code: 'err:unknown-tags'; message: string }> {
-	const rotation = await Rotation.getRotation(ctx, id)
+	const rotation = Rotation.getRotation(ctx, id)
 	if (!rotation) return { code: 'err:not-found' }
 	const tags = opts.tags ?? []
 	const unknownTags = Settings.unknownLayerTags(tags)

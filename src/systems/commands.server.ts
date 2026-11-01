@@ -184,7 +184,7 @@ async function openExchange(baseCtx: C.Db & C.ManagedServer & CS.AbortSignal, ms
 	const sender = playerRes.player
 	if (!sender.ids.steam) return { code: 'done', result: { code: 'ok' } }
 	// const roles = Rbac.getRolesForIngameUser(ctx, sender.ids as SM.PlayerIds.IdQuery<'steam' | 'eos'>)
-	const discordId = await Users.findDiscordIdBySteam64Id(baseCtx, BigInt(sender.ids.steam!))
+	const discordId = Users.findDiscordIdBySteam64Id(baseCtx, BigInt(sender.ids.steam!))
 
 	const user = discordId ? await Users.getUser(baseCtx, discordId) : undefined
 	const ctx: ChatCtx['ctx'] = Obj.trimUndefined({ ...baseCtx, user, player: sender })
@@ -1085,7 +1085,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			return await h.error('not-in-battlemetrics', h.ctx.tr.text(CMD_Msgs.playerNotInBattlemetrics(targetIds.username)))
 		}
 
-		const auth = await Battlemetrics.authForSteamId(h.ctx, h.sender.ids.steam)
+		const auth = Battlemetrics.authForSteamId(h.ctx, h.sender.ids.steam)
 		const res = await Battlemetrics.addPlayerFlags(h.ctx, auth, bmPlayerData.bmPlayerId, [flagToUpdate.id]).catch((err) => {
 			if (Battlemetrics.isPersonalTokenRejected(err)) return { code: 'token-rejected' as const }
 			throw err
@@ -1131,7 +1131,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			return await h.error('not-found', h.ctx.tr.text(CMD_Msgs.playerLacksFlag(target.ids.username, flagToRemove.name)))
 		}
 
-		const auth = await Battlemetrics.authForSteamId(h.ctx, h.sender.ids.steam)
+		const auth = Battlemetrics.authForSteamId(h.ctx, h.sender.ids.steam)
 		const [status] = await Battlemetrics.removePlayerFlags(h.ctx, auth, bmPlayerData.bmPlayerId, [flagToRemove.id]).catch((err) => {
 			if (Battlemetrics.isPersonalTokenRejected(err)) return ['token-rejected' as const]
 			throw err
@@ -1163,7 +1163,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		const actor = {
 			label: `${h.sender.ids.username} (Steam ${h.sender.ids.steam})`,
 			appActor: ingameActor(h.sender),
-			auth: await Battlemetrics.authForSteamId(h.ctx, h.sender.ids.steam),
+			auth: Battlemetrics.authForSteamId(h.ctx, h.sender.ids.steam),
 		}
 		const res = await Battlemetrics.addNoteToPlayer(h.ctx, target.ids, args.note, actor).catch((err) => {
 			if (Battlemetrics.isPersonalTokenRejected(err)) return 'token-rejected' as const
@@ -1374,7 +1374,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		if (denyRes) return await h.error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
 
 		// the target may be offline, so match against players holding active timeouts rather than the roster
-		const active = await Timeouts.listActiveTimeouts(h.ctx)
+		const active = Timeouts.listActiveTimeouts(h.ctx)
 		const token = args.player
 		let matches = active.filter((t) => t.playerId === token || t.steamId?.toString() === token)
 		if (matches.length === 0) {

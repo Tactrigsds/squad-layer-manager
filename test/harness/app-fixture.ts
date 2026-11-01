@@ -8,7 +8,6 @@ import * as path from 'node:path'
 
 import * as Schema from '$root/drizzle/schema.ts'
 import * as DevInstance from '@/dev/instance'
-import { superjsonify } from '@/lib/drizzle'
 import { tsMigrations } from '@/migrations/registry'
 import type * as BB from '@/models/backburner.models'
 import type * as F from '@/models/filter.models'
@@ -478,9 +477,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		{ id: TEST_REPEAT_RULESET_ID, name: 'Emulated Server', ownerServerId: serverId, rules: [...(opts.repeatRules ?? RRS.DEFAULT_RULES)] },
 	]
 	opts.globalSettings?.(globalSettings)
-	await db
-		.insert(Schema.globalSettings)
-		.values(superjsonify(Schema.globalSettings, { id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) }))
+	await db.insert(Schema.globalSettings).values({ id: 1, settings: SETTINGS.GlobalSettingsSchema.encode(globalSettings) })
 
 	// -------- server --------
 	// the emulator writes its log to a file and the app tails it, the same `local` path a
@@ -514,17 +511,15 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		if (headLayerId) emu.world.handleCommand(L.getLayerCommand(headLayerId, 'set-next'))
 	}
 
-	await db.insert(Schema.servers).values(
-		superjsonify(Schema.servers, {
-			id: serverId,
-			displayName: 'Emulated Server',
-			enabled: true,
-			defaultServer: true,
-			layerQueue,
-			backburner: opts.backburner ?? [],
-			settings: serverSettings,
-		}),
-	)
+	await db.insert(Schema.servers).values({
+		id: serverId,
+		displayName: 'Emulated Server',
+		enabled: true,
+		defaultServer: true,
+		layerQueue,
+		backburner: opts.backburner ?? [],
+		settings: serverSettings,
+	})
 
 	// A second server is a whole second slice: its own emulator, its own log file, its own rcon. Sharing one
 	// emulator between two slices would have them both driving the same world, which is not what two servers
@@ -540,17 +535,15 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		})
 		applyTestServerTimings(secondSettings)
 		secondSettings.adminLists = [TEST_ADMIN_LIST]
-		await db.insert(Schema.servers).values(
-			superjsonify(Schema.servers, {
-				id: secondId,
-				displayName: secondDisplayName,
-				enabled: true,
-				defaultServer: false,
-				layerQueue: [],
-				backburner: [],
-				settings: secondSettings,
-			}),
-		)
+		await db.insert(Schema.servers).values({
+			id: secondId,
+			displayName: secondDisplayName,
+			enabled: true,
+			defaultServer: false,
+			layerQueue: [],
+			backburner: [],
+			settings: secondSettings,
+		})
 	}
 
 	if (unreachableOpts) {
@@ -564,17 +557,15 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		})
 		applyTestServerTimings(unreachableSettings)
 		fs.writeFileSync(path.join(tmpDir, 'SquadGameUnreachable.log'), '')
-		await db.insert(Schema.servers).values(
-			superjsonify(Schema.servers, {
-				id: unreachableId,
-				displayName: 'Unreachable Server',
-				enabled: true,
-				defaultServer: false,
-				layerQueue: [],
-				backburner: [],
-				settings: unreachableSettings,
-			}),
-		)
+		await db.insert(Schema.servers).values({
+			id: unreachableId,
+			displayName: 'Unreachable Server',
+			enabled: true,
+			defaultServer: false,
+			layerQueue: [],
+			backburner: [],
+			settings: unreachableSettings,
+		})
 	}
 
 	// scoped servers are in-process sandboxes (no external emulator), so they cost far less than secondServer
@@ -582,19 +573,17 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 		const scopedSettings = SETTINGS.ServerSettingsSchema.parse({ connections: { type: 'sandbox' } })
 		applyTestServerTimings(scopedSettings)
 		scopedSettings.adminLists = [TEST_ADMIN_LIST]
-		await db.insert(Schema.servers).values(
-			superjsonify(Schema.servers, {
-				id: scoped.id,
-				displayName: scoped.displayName ?? scoped.id,
-				enabled: true,
-				defaultServer: false,
-				layerQueue: [],
-				backburner: [],
-				visibility: 'scoped',
-				ownerDiscordId: scoped.owner.discordId,
-				settings: scopedSettings,
-			}),
-		)
+		await db.insert(Schema.servers).values({
+			id: scoped.id,
+			displayName: scoped.displayName ?? scoped.id,
+			enabled: true,
+			defaultServer: false,
+			layerQueue: [],
+			backburner: [],
+			visibility: 'scoped',
+			ownerDiscordId: scoped.owner.discordId,
+			settings: scopedSettings,
+		})
 	}
 
 	// -------- users --------
@@ -638,7 +627,7 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 	}
 	// written the way rotation.server writes them: items and tags are superjson-encoded json columns
 	if (opts.rotations && opts.rotations.length > 0) {
-		await db.insert(Schema.rotations).values(opts.rotations.map((r) => superjsonify(Schema.rotations, ROT.toRow(r))))
+		await db.insert(Schema.rotations).values(opts.rotations.map((r) => ROT.toRow(r)))
 	}
 	driver.close()
 

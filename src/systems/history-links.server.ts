@@ -157,7 +157,7 @@ function ignoreGone(err: unknown) {
 // The text of each selection the message's author may see. Someone who could not open the links gets nothing from
 // them here either, and is not told why.
 async function quotesFor(message: D.Message, links: ReturnType<typeof HQ.selectionLinksIn>): Promise<Quote[]> {
-	const ctx = DB.addPooledDb({ ...CS.init(), user: { discordId: BigInt(message.author.id) }, signal: CleanupSys.shutdownSignal })
+	const ctx = DB.withDb({ ...CS.init(), user: { discordId: BigInt(message.author.id) }, signal: CleanupSys.shutdownSignal })
 	if (await Rbac.tryDenyProcedureAccess(ctx, 'history.selectionText', undefined)) return []
 	const quotes: Quote[] = []
 	for (const link of links) {

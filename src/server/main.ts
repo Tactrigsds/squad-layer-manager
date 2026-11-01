@@ -132,42 +132,42 @@ await Instr.spanOp('main', { module }, async () => {
 	History.setup()
 	MatchTallies.setup()
 	MatchLayers.setup()
-	await StoredLayerIds.setup()
+	StoredLayerIds.setup()
 	// before FilterEntity reads the filters table, and before Settings writes the global settings row it keys
 	// "has this database ever been configured" off
-	await Seed.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
-	await FilterEntity.setup()
+	Seed.setup(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	FilterEntity.setup()
 	// after FilterEntity, whose filter table it reads when provisioning a session
 	FilterEdit.setup()
 	Rotation.setup()
 	RotationEdit.setup()
 	PersistedCache.setup()
-	await Battlemetrics.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	await Battlemetrics.setup(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	SquadBrowser.setup()
 	Steam.setup()
 	Rbac.setup()
 	void Sessions.setup()
-	await Settings.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	Settings.setup(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	// after Settings.setup so GLOBAL_SETTINGS.layerTable exists; also subscribes to settings changes to re-push
 	Config.setup()
 	await ServerAgent.setup()
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
 	// per-server "SLM started/restarted" admin warn (sent during SquadServerLifecycle.setup) can name who restarted it
-	await AppEventsSys.detectRestartAtBoot(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	AppEventsSys.detectRestartAtBoot(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	// migration 0109's other half: sql cannot evaluate the extractors the index is built from
-	await AppEventsSys.backfillAppEventIndex(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	AppEventsSys.backfillAppEventIndex(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	AdminList.setup()
 	// both before SquadServerLifecycle.setup: it boots a managed server per registered server, and the seeded sandbox has to be
 	// registered by then to get one
 	Sandbox.setup()
-	await Sandbox.seedServerIfEnabled(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	await Sandbox.seedServerIfEnabled(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	await Promise.all([SquadServerLifecycle.setup(), Discord.setup()])
 
-	await Tutorials.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	await Tutorials.setup(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	// before Config.pushPublicConfig, which carries the version it reads off the changelog
-	await Changelog.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
+	Changelog.setup(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 
 	// after the managed servers are up, so the connects it fabricates are seen the way a real one's would be
 	if (DEMO_ENV.DEMO) Sandbox.populateDemoWorlds()
@@ -186,17 +186,17 @@ await Instr.spanOp('main', { module }, async () => {
 	Metrics.setup()
 	// before Plugins.setup, which attaches the active plugins' jobs: a run interrupted by the last shutdown has to be
 	// marked as such before anything can start it again
-	await SchedJobs.setup()
+	SchedJobs.setup()
 	// after the managed servers are up: enabled plugins attach their per-server instances here, and later
 	// servers reach them through the hook in setupManagedServer
-	await PluginsSys.setup(DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }), [
+	await PluginsSys.setup(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }), [
 		...BUILTIN_PLUGINS,
 		...(ENV.NODE_ENV === 'development' ? await discoverSourcePlugins() : []),
 	])
 	// after Plugins.setup and the managed servers: its commands reload plugins and warn every server's admins
 	await ControlSocket.setup()
-	await AppEventsSys.persistAppEvent(
-		DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),
+	AppEventsSys.persistAppEvent(
+		DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }),
 		AppEvents.create<AppEvents.AppStarted>({
 			type: 'APP_STARTED',
 			actor: { type: 'system' },

@@ -1,0 +1,749 @@
+app-events:insertAppEvent
+  insert into "appEvents" ("id", "type", "time", "actorType", "actorUserId", "actorPlayerId", "actorPluginId", "serverId", "matchId", "causeId", "instanceId", "feedVisible", "version", "data") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+app-events:insertAssociation
+  insert into "appEventAssociations" ("dimension", "value", "time", "appEventId", "role") values (?, ?, ?, ?, ?) on conflict do nothing
+
+app-events:lastStartedInstance
+  select "instanceId" from "appEvents" where "appEvents"."type" = ? order by "appEvents"."time" desc limit ?
+
+app-events:listEvents(false)
+  select "id", "type", "time", "actorType", "actorUserId", "actorPlayerId", "actorPluginId", "serverId", "matchId", "causeId", "instanceId", "feedVisible", "version", "data" from "appEvents" order by "appEvents"."time" desc limit ?
+
+app-events:listEvents(true)
+  select "id", "type", "time", "actorType", "actorUserId", "actorPlayerId", "actorPluginId", "serverId", "matchId", "causeId", "instanceId", "feedVisible", "version", "data" from "appEvents" where "appEvents"."time" < ? order by "appEvents"."time" desc limit ?
+
+app-events:playerNames
+  select "eosId", "username" from "players" where "players"."eosId" in (select value from json_each(?))
+
+app-events:restartOf
+  select "actorUserId" from "appEvents" where ("appEvents"."type" = ? and "appEvents"."instanceId" = ?) limit ?
+
+app-events:setFeedVisible
+  update "appEvents" set "feedVisible" = ? where "appEvents"."id" = ?
+
+app-events:unindexedEvents
+  select "id", "type", "time", "actorType", "actorUserId", "actorPlayerId", "actorPluginId", "serverId", "matchId", "causeId", "instanceId", "feedVisible", "version", "data" from "appEvents" where "appEvents"."feedVisible" is null limit ?
+
+backups:lastEventOfType
+  select "time" from "appEvents" where "appEvents"."type" = ? order by "appEvents"."time" desc limit ?
+
+battlemetrics:allTokens
+  select "userId", "token" from "battlemetricsUserTokens"
+
+battlemetrics:deleteToken
+  delete from "battlemetricsUserTokens" where "battlemetricsUserTokens"."userId" = ? returning "userId"
+
+battlemetrics:tokenOfSteamId
+  select "battlemetricsUserTokens"."userId", "battlemetricsUserTokens"."token" from "linkedSteamAccounts" inner join "battlemetricsUserTokens" on "battlemetricsUserTokens"."userId" = "linkedSteamAccounts"."discordId" where "linkedSteamAccounts"."steam64Id" = ?
+
+battlemetrics:tokenOfUser
+  select "token" from "battlemetricsUserTokens" where "battlemetricsUserTokens"."userId" = ?
+
+battlemetrics:tokenUpdatedAt
+  select "updatedAt" from "battlemetricsUserTokens" where "battlemetricsUserTokens"."userId" = ?
+
+battlemetrics:upsertToken
+  insert into "battlemetricsUserTokens" ("userId", "token", "updatedAt") values (?, ?, ?) on conflict ("battlemetricsUserTokens"."userId") do update set "token" = ?, "updatedAt" = ?
+
+battlemetrics:writeToken
+  update "battlemetricsUserTokens" set "token" = ? where "battlemetricsUserTokens"."userId" = ?
+
+changelog:allEntries
+  select "entryId", "firstServedAt" from "changelogEntries"
+
+changelog:insertEntry
+  insert into "changelogEntries" ("entryId", "firstServedAt") values (?, ?) on conflict do nothing
+
+changelog:insertUserState
+  insert into "changelogUserState" ("userId", "seenAt", "notifyLevel", "showOperatorNotes") values (?, ?, ?, ?) on conflict ("changelogUserState"."userId") do update set "userId" = ? returning "userId", "seenAt", "notifyLevel", "showOperatorNotes"
+
+changelog:markSeenUpTo
+  update "changelogUserState" set "seenAt" = ? where ("changelogUserState"."userId" = ? and "changelogUserState"."seenAt" < ?)
+
+changelog:setUserPrefs
+  update "changelogUserState" set "notifyLevel" = ?, "showOperatorNotes" = ? where "changelogUserState"."userId" = ?
+
+changelog:userState
+  select "userId", "seenAt", "notifyLevel", "showOperatorNotes" from "changelogUserState" where "changelogUserState"."userId" = ?
+
+event-archive:archivesOfMatches
+  select "matchId", "serverId", "eventCount", "minEventId", "maxEventId", "encoding", "events", "createdAt" from "archivedMatches" where "archivedMatches"."matchId" in (select value from json_each(?))
+
+event-archive:candidates
+  select "id" from "matchHistory" where ("matchHistory"."serverId" = ? and "matchHistory"."ordinal" < ? and coalesce("matchHistory"."endTime", "matchHistory"."startTime", "matchHistory"."createdAt") < ? and not exists (select 1 from "archivedMatches" where "archivedMatches"."matchId" = "matchHistory"."id")) order by "matchHistory"."ordinal" asc limit ?
+
+event-archive:deleteEventsOfMatch
+  delete from "serverEvents" where "serverEvents"."matchId" = ?
+
+event-archive:hotEventsOfMatches
+  select "id", "type", "time", "matchId", "appEventId", "version", "data" from "serverEvents" where "serverEvents"."matchId" in (select value from json_each(?)) order by "serverEvents"."id" asc
+
+event-archive:insertArchive
+  insert into "archivedMatches" ("matchId", "serverId", "eventCount", "minEventId", "maxEventId", "encoding", "events", "createdAt") values (?, ?, ?, ?, ?, ?, ?, ?)
+
+event-archive:newestOrdinal
+  select "ordinal" from "matchHistory" where "matchHistory"."serverId" = ? order by "matchHistory"."ordinal" desc limit ? offset ?
+
+event-archive:serverIds
+  select distinct "serverId" from "matchHistory"
+
+event-archive:storedEventsOfMatch
+  select "id", "type", "time", "appEventId", "version", "data", json_valid("data") from "serverEvents" where "serverEvents"."matchId" = ? order by "serverEvents"."id" asc
+
+filter-entity:allFilters
+  select "id", "name", "description", "filter", "ownerUserId", "ownerPluginId", "alertMessage", "emoji", "invertedAlertMessage", "invertedEmoji", "missExemption" from "filters"
+
+filter-entity:allRoleContributors
+  select "filterId", "roleId" from "filterRoleContributors"
+
+filter-entity:contributingUsers
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "filterUserContributors" inner join "users" on "users"."discordId" = "filterUserContributors"."userId" inner join "discordAccounts" on "users"."discordId" = "discordAccounts"."discordId" where "filterUserContributors"."filterId" = ?
+
+filter-entity:deleteFilterRow
+  delete from "filters" where "filters"."id" = ?
+
+filter-entity:deleteFiltersByIds
+  delete from "filters" where "filters"."id" in (select value from json_each(?))
+
+filter-entity:deleteRoleContributor
+  delete from "filterRoleContributors" where ("filterRoleContributors"."filterId" = ? and "filterRoleContributors"."roleId" = ?)
+
+filter-entity:deleteUserContributor
+  delete from "filterUserContributors" where ("filterUserContributors"."filterId" = ? and "filterUserContributors"."userId" = ?)
+
+filter-entity:filterById
+  select "id", "name", "description", "filter", "ownerUserId", "ownerPluginId", "alertMessage", "emoji", "invertedAlertMessage", "invertedEmoji", "missExemption" from "filters" where "filters"."id" = ?
+
+filter-entity:filterName
+  select "name" from "filters" where "filters"."id" = ?
+
+filter-entity:filterOwner
+  select "ownerUserId" from "filters" where "filters"."id" = ?
+
+filter-entity:filtersByIds
+  select "id", "name", "description", "filter", "ownerUserId", "ownerPluginId", "alertMessage", "emoji", "invertedAlertMessage", "invertedEmoji", "missExemption" from "filters" where "filters"."id" in (select value from json_each(?))
+
+filter-entity:insertFilter
+  insert into "filters" ("id", "name", "description", "filter", "ownerUserId", "ownerPluginId", "alertMessage", "emoji", "invertedAlertMessage", "invertedEmoji", "missExemption") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+filter-entity:insertFilterIfAbsent
+  insert into "filters" ("id", "name", "description", "filter", "ownerUserId", "ownerPluginId", "alertMessage", "emoji", "invertedAlertMessage", "invertedEmoji", "missExemption") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict do nothing
+
+filter-entity:insertRoleContributor
+  insert into "filterRoleContributors" ("filterId", "roleId") values (?, ?) on conflict do nothing
+
+filter-entity:insertUserContributor
+  insert into "filterUserContributors" ("filterId", "userId") values (?, ?) on conflict do nothing
+
+filter-entity:roleContributorIds
+  select "roleId" from "filterRoleContributors" where "filterRoleContributors"."filterId" = ?
+
+filter-entity:setFilterOwner
+  update "filters" set "ownerUserId" = ?, "ownerPluginId" = ? where "filters"."id" = ?
+
+filter-entity:updateFilterContent
+  update "filters" set "name" = ?, "description" = ?, "filter" = ?, "alertMessage" = ?, "emoji" = ?, "invertedAlertMessage" = ?, "invertedEmoji" = ?, "missExemption" = ? where "filters"."id" = ?
+
+filter-entity:userContributorIds
+  select "userId" from "filterUserContributors" where "filterUserContributors"."filterId" = ?
+
+filter-entity:userExists
+  select "discordId" from "users" where "users"."discordId" = ?
+
+filter-entity:usersByIds
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "users" inner join "discordAccounts" on "users"."discordId" = "discordAccounts"."discordId" where "users"."discordId" in (select value from json_each(?))
+
+history-query-shared:damageSourcesNamed
+  select "id" from "damageSources" where "damageSources"."name" in (select value from json_each(?))
+
+history-query-shared:matchesByIds
+  select "id", "serverId", "ordinal", "layerId", "rawLayerCommandText", "lqItemId", "startTime", "endTime", "createdAt", "outcome", "team1Tickets", "team2Tickets", "layerMap", "layerGamemode", "layerVersion", "layerTeam1Faction", "layerTeam1Unit", "layerTeam2Faction", "layerTeam2Unit", "setByType", "setByUserId", "setByPluginId", "setByRequesters", "team1Kills", "team1Wounds", "team1Deaths", "team2Kills", "team2Wounds", "team2Deaths" from "matchHistory" where "matchHistory"."id" in (select value from json_each(?))
+
+history-query-shared:newestOrdinalByServer
+  select "serverId", max("ordinal") from "matchHistory" where "matchHistory"."serverId" in (select value from json_each(?)) group by "matchHistory"."serverId"
+
+history-query-shared:playerNamesByEosIds
+  select "eosId", "username", "steamId" from "players" where "players"."eosId" in (select value from json_each(?))
+
+history-query-shared:playersByIdRefs
+  select "eosId" from "players" where ("players"."steamId" in (select value from json_each(?)) or "players"."epicId" in (select value from json_each(?)))
+
+history-query-shared:playersByNameScan
+  select distinct "playerId" from "playerUsernames" where "playerUsernames"."username" LIKE ? ESCAPE '\' limit ?
+
+history-query-shared:playersByNameTrigram
+  select distinct "eosId" from "usernameSearch" where "usernameSearch" MATCH ? limit ?
+
+history-query-shared:steamIdsOfPlayers
+  select "steamId" from "players" where "players"."eosId" in (select value from json_each(?))
+
+history-query-shared:usersNamed
+  select "users"."discordId" from "users" inner join "discordAccounts" on "discordAccounts"."discordId" = "users"."discordId" where ("users"."nickname" LIKE ? ESCAPE '\' or "discordAccounts"."username" LIKE ? ESCAPE '\') limit ?
+
+history-resolve:allServerIds
+  select "id" from "servers"
+
+history:allUserNames
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "users" inner join "discordAccounts" on "discordAccounts"."discordId" = "users"."discordId"
+
+history:deleteSavedQuery
+  delete from "savedQueries" where "savedQueries"."id" = ?
+
+history:insertSavedQuery
+  insert into "savedQueries" ("id", "name", "ownerId", "visibility", "query", "createdAt", "updatedAt") values (?, ?, ?, ?, ?, ?, ?)
+
+history:playerById
+  select "username", "steamId" from "players" where "players"."eosId" = ?
+
+history:playerNamesBySteamIds
+  select "steamId", "username" from "players" where "players"."steamId" in (select value from json_each(?))
+
+history:playerSearchResults
+  select "eosId", "username" from "players" where "players"."eosId" in (select value from json_each(?)) limit ?
+
+history:playersByIdRefs
+  select "eosId", "steamId", "epicId", "username" from "players" where ("players"."steamId" in (select value from json_each(?)) or "players"."eosId" in (select value from json_each(?)) or "players"."epicId" in (select value from json_each(?)))
+
+history:savedQueriesVisibleTo
+  select "savedQueries"."id", "savedQueries"."name", "savedQueries"."ownerId", "savedQueries"."visibility", "savedQueries"."query", "savedQueries"."createdAt", "savedQueries"."updatedAt", "discordAccounts"."username" from "savedQueries" left join "discordAccounts" on "discordAccounts"."discordId" = "savedQueries"."ownerId" where ("savedQueries"."ownerId" = ? or "savedQueries"."visibility" = ?) order by "savedQueries"."updatedAt" desc
+
+history:savedQueryById
+  select "id", "name", "ownerId", "visibility", "query", "createdAt", "updatedAt" from "savedQueries" where "savedQueries"."id" = ?
+
+history:updateSavedQuery
+  update "savedQueries" set "name" = ?, "visibility" = ?, "query" = ?, "updatedAt" = ? where "savedQueries"."id" = ?
+
+history:userNamesByIds
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "users" inner join "discordAccounts" on "discordAccounts"."discordId" = "users"."discordId" where "users"."discordId" in (select value from json_each(?))
+
+match-events-cache:appEventsOfMatches
+  select "id", "type", "time", "actorType", "actorUserId", "actorPlayerId", "actorPluginId", "serverId", "matchId", "causeId", "instanceId", "feedVisible", "version", "data" from "appEvents" where "appEvents"."matchId" in (select value from json_each(?)) order by "appEvents"."time" asc
+
+match-events-cache:playerNames
+  select "eosId", "username", "steamId" from "players" where "players"."eosId" in (select value from json_each(?))
+
+match-history:finalizeMatch(false)
+  update "matchHistory" set "endTime" = ?, "outcome" = ? where "matchHistory"."id" = ?
+
+match-history:finalizeMatch(true)
+  update "matchHistory" set "endTime" = ?, "outcome" = ?, "team1Tickets" = ?, "team2Tickets" = ? where "matchHistory"."id" = ?
+
+match-history:insertMatch
+  insert into "matchHistory" ("id", "serverId", "ordinal", "layerId", "rawLayerCommandText", "lqItemId", "startTime", "endTime", "createdAt", "outcome", "team1Tickets", "team2Tickets", "layerMap", "layerGamemode", "layerVersion", "layerTeam1Faction", "layerTeam1Unit", "layerTeam2Faction", "layerTeam2Unit", "setByType", "setByUserId", "setByPluginId", "setByRequesters", "team1Kills", "team1Wounds", "team1Deaths", "team2Kills", "team2Wounds", "team2Deaths") values (null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+match-history:lastConnectionEvent
+  select "type", "time" from "playerEventIndex" where ("playerEventIndex"."playerId" = ? and "playerEventIndex"."serverId" = ? and "playerEventIndex"."type" in (?, ?, ?)) order by "playerEventIndex"."time" desc limit ?
+
+match-history:latestMatch
+  select "id", "serverId", "ordinal", "layerId", "rawLayerCommandText", "lqItemId", "startTime", "endTime", "createdAt", "outcome", "team1Tickets", "team2Tickets", "layerMap", "layerGamemode", "layerVersion", "layerTeam1Faction", "layerTeam1Unit", "layerTeam2Faction", "layerTeam2Unit", "setByType", "setByUserId", "setByPluginId", "setByRequesters", "team1Kills", "team1Wounds", "team1Deaths", "team2Kills", "team2Wounds", "team2Deaths" from "matchHistory" where "matchHistory"."serverId" = ? order by "matchHistory"."ordinal" desc limit ?
+
+match-history:matchByOrdinal
+  select "id", "serverId", "ordinal", "layerId", "rawLayerCommandText", "lqItemId", "startTime", "endTime", "createdAt", "outcome", "team1Tickets", "team2Tickets", "layerMap", "layerGamemode", "layerVersion", "layerTeam1Faction", "layerTeam1Unit", "layerTeam2Faction", "layerTeam2Unit", "setByType", "setByUserId", "setByPluginId", "setByRequesters", "team1Kills", "team1Wounds", "team1Deaths", "team2Kills", "team2Wounds", "team2Deaths" from "matchHistory" where ("matchHistory"."serverId" = ? and "matchHistory"."ordinal" = ?)
+
+match-history:recentMatchesWithUsers
+  select "recent_matches"."id", "recent_matches"."serverId", "recent_matches"."ordinal", "recent_matches"."layerId", "recent_matches"."rawLayerCommandText", "recent_matches"."lqItemId", "recent_matches"."startTime", "recent_matches"."endTime", "recent_matches"."createdAt", "recent_matches"."outcome", "recent_matches"."team1Tickets", "recent_matches"."team2Tickets", "recent_matches"."layerMap", "recent_matches"."layerGamemode", "recent_matches"."layerVersion", "recent_matches"."layerTeam1Faction", "recent_matches"."layerTeam1Unit", "recent_matches"."layerTeam2Faction", "recent_matches"."layerTeam2Unit", "recent_matches"."setByType", "recent_matches"."setByUserId", "recent_matches"."setByPluginId", "recent_matches"."setByRequesters", "recent_matches"."team1Kills", "recent_matches"."team1Wounds", "recent_matches"."team1Deaths", "recent_matches"."team2Kills", "recent_matches"."team2Wounds", "recent_matches"."team2Deaths", "users"."discordId", "users"."nickname", "discordAccounts"."discordId", "discordAccounts"."username", "discordAccounts"."updatedAt" from (select "id", "serverId", "ordinal", "layerId", "rawLayerCommandText", "lqItemId", "startTime", "endTime", "createdAt", "outcome", "team1Tickets", "team2Tickets", "layerMap", "layerGamemode", "layerVersion", "layerTeam1Faction", "layerTeam1Unit", "layerTeam2Faction", "layerTeam2Unit", "setByType", "setByUserId", "setByPluginId", "setByRequesters", "team1Kills", "team1Wounds", "team1Deaths", "team2Kills", "team2Wounds", "team2Deaths" from "matchHistory" where ("matchHistory"."ordinal" >= ? and "matchHistory"."serverId" = ?) order by "matchHistory"."ordinal" desc limit ?) "recent_matches" left join "users" on "recent_matches"."setByUserId" = "users"."discordId" left join "discordAccounts" on "users"."discordId" = "discordAccounts"."discordId"
+
+match-history:squadById
+  select "id", "ingameSquadId", "teamId", "name", "creatorId", "matchId", "createdAt" from "squads" where "squads"."id" = ?
+
+match-history:steamIdOf
+  select "steamId" from "players" where "players"."eosId" = ?
+
+match-layers:countUnresolved
+  select count(*) from "matchHistory" where "matchHistory"."layerMap" is null
+
+match-layers:rewriteLayer
+  update "matchHistory" set "layerId" = ?, "layerMap" = ?, "layerGamemode" = ?, "layerVersion" = ?, "layerTeam1Faction" = ?, "layerTeam1Unit" = ?, "layerTeam2Faction" = ?, "layerTeam2Unit" = ? where "matchHistory"."id" = ?
+
+match-layers:setUnresolvedParts
+  update "matchHistory" set "layerMap" = ?, "layerGamemode" = ?, "layerVersion" = ?, "layerTeam1Faction" = ?, "layerTeam1Unit" = ?, "layerTeam2Faction" = ?, "layerTeam2Unit" = ? where ("matchHistory"."layerId" = ? and "matchHistory"."layerMap" is null)
+
+match-layers:unresolvedLayerIds
+  select distinct "layerId" from "matchHistory" where "matchHistory"."layerMap" is null
+
+match-layers:unresolvedWithCommandText
+  select "id", "layerId", "rawLayerCommandText" from "matchHistory" where ("matchHistory"."layerMap" is null and "matchHistory"."rawLayerCommandText" is not null)
+
+match-population:matchesReaching
+  select "matchHistory"."id", "matchHistory"."ordinal", "matchHistory"."layerId", "matchHistory"."startTime", "matchHistory"."createdAt", "matchHistory"."endTime", "matchPopulation"."version", "matchPopulation"."samples" from "matchHistory" left join "matchPopulation" on "matchPopulation"."matchId" = "matchHistory"."id" where ("matchHistory"."serverId" = ? and ("matchHistory"."endTime" >= ? or ("matchHistory"."endTime" is null and ("matchHistory"."startTime" >= ? or ("matchHistory"."startTime" is null and "matchHistory"."createdAt" >= ?))))) order by "matchHistory"."ordinal" asc
+
+match-population:newestOrdinal
+  select max("ordinal") from "matchHistory" where "matchHistory"."serverId" = ?
+
+match-population:upsertSamples
+  insert into "matchPopulation" ("matchId", "version", "samples") values (?, ?, ?) on conflict ("matchPopulation"."matchId") do update set "version" = ?, "samples" = ?
+
+match-tallies-shared:anyPendingMatch
+  select "matchHistory"."id" from "matchHistory" left join "matchPopulation" on "matchPopulation"."matchId" = "matchHistory"."id" where ("matchHistory"."serverId" = ? and ("matchHistory"."team1Kills" is null or ("matchPopulation"."matchId" IS NULL OR "matchPopulation"."version" != ?)) and not "matchHistory"."id" in (select value from json_each(?)) and "matchHistory"."ordinal" < (SELECT max("matchHistory"."ordinal") FROM "matchHistory" WHERE "matchHistory"."serverId" = ?)) limit ?
+
+match-tallies-shared:pendingMatches
+  select "matchHistory"."id", "matchHistory"."team1Kills" is null, ("matchPopulation"."matchId" IS NULL OR "matchPopulation"."version" != ?) from "matchHistory" left join "matchPopulation" on "matchPopulation"."matchId" = "matchHistory"."id" where ("matchHistory"."serverId" = ? and ("matchHistory"."team1Kills" is null or ("matchPopulation"."matchId" IS NULL OR "matchPopulation"."version" != ?)) and not "matchHistory"."id" in (select value from json_each(?)) and "matchHistory"."ordinal" < (SELECT max("matchHistory"."ordinal") FROM "matchHistory" WHERE "matchHistory"."serverId" = ?)) order by "matchHistory"."ordinal" desc limit ?
+
+match-tallies:setCombatStats
+  update "matchHistory" set "team1Kills" = ?, "team1Wounds" = ?, "team1Deaths" = ?, "team2Kills" = ?, "team2Wounds" = ?, "team2Deaths" = ? where "matchHistory"."id" = ?
+
+persistedCache:deleteRowsUpdatedBefore
+  delete from "persistedCache" where "persistedCache"."updatedAt" < ?
+
+persistedCache:rowByKey
+  select "key", "value", "updatedAt" from "persistedCache" where "persistedCache"."key" = ?
+
+persistedCache:upsertRow
+  insert into "persistedCache" ("key", "value", "updatedAt") values (?, ?, ?) on conflict ("persistedCache"."key") do update set "value" = ?, "updatedAt" = ?
+
+player-discord-roles:allLinks
+  select "steam64Id", "discordId" from "linkedSteamAccounts"
+
+player-usernames:usernamesOf
+  select "username", "time" from "playerUsernames" where "playerUsernames"."playerId" = ? order by "playerUsernames"."time" desc limit ?
+
+plugins:disablePlugin
+  update "plugins" set "enabled" = ? where "plugins"."id" = ?
+
+plugins:insertPluginRow
+  insert into "plugins" ("id", "enabled", "config", "commands") values (?, ?, ?, ?)
+
+plugins:pluginRow
+  select "id", "enabled", "config", "commands" from "plugins" where "plugins"."id" = ?
+
+plugins:pluginRows
+  select "id" from "plugins"
+
+plugins:updatePluginRow
+  update "plugins" set "enabled" = ?, "config" = ?, "commands" = ? where "plugins"."id" = ?
+
+rbac:ownedFilters
+  select "id" from "filters" where "filters"."ownerUserId" = ?
+
+rbac:ownedRotations
+  select "id" from "rotations" where "rotations"."ownerUserId" = ?
+
+rbac:roleContributedFilters
+  select "filterId" from "filterRoleContributors" where "filterRoleContributors"."roleId" in (select value from json_each(?))
+
+rbac:roleContributedRotations
+  select "rotationId" from "rotationRoleContributors" where "rotationRoleContributors"."roleId" in (select value from json_each(?))
+
+rbac:steamIdByEosId
+  select "steamId" from "players" where "players"."eosId" = ?
+
+rbac:userContributedFilters
+  select "filterId" from "filterUserContributors" where "filterUserContributors"."userId" = ?
+
+rbac:userContributedRotations
+  select "rotationId" from "rotationUserContributors" where "rotationUserContributors"."userId" = ?
+
+rotation:archivedCounts
+  select coalesce(sum("archived" = 0), 0), coalesce(sum("archived" = 1), 0) from "rotations"
+
+rotation:cloneIdsTaken
+  select "id" from "rotations" where ("rotations"."id" = ? or "rotations"."id" LIKE ? ESCAPE '\')
+
+rotation:contributingUsers
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "rotationUserContributors" inner join "users" on "users"."discordId" = "rotationUserContributors"."userId" inner join "discordAccounts" on "users"."discordId" = "discordAccounts"."discordId" where "rotationUserContributors"."rotationId" = ?
+
+rotation:deleteRoleContributor
+  delete from "rotationRoleContributors" where ("rotationRoleContributors"."rotationId" = ? and "rotationRoleContributors"."roleId" = ?)
+
+rotation:deleteRotationRow
+  delete from "rotations" where "rotations"."id" = ?
+
+rotation:deleteUserContributor
+  delete from "rotationUserContributors" where ("rotationUserContributors"."rotationId" = ? and "rotationUserContributors"."userId" = ?)
+
+rotation:insertRoleContributor
+  insert into "rotationRoleContributors" ("rotationId", "roleId") values (?, ?) on conflict do nothing
+
+rotation:insertRotation
+  insert into "rotations" ("id", "name", "description", "items", "repeatRulesetId", "tags", "archived", "ownerUserId", "ownerPluginId", "createdAt", "updatedAt") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict do nothing
+
+rotation:insertUserContributor
+  insert into "rotationUserContributors" ("rotationId", "userId") values (?, ?) on conflict do nothing
+
+rotation:repeatRulesetIdsInUse
+  select distinct "repeatRulesetId" from "rotations" where "rotations"."repeatRulesetId" is not null
+
+rotation:roleContributorIds
+  select "roleId" from "rotationRoleContributors" where "rotationRoleContributors"."rotationId" = ?
+
+rotation:rotationById
+  select "id", "name", "description", "items", "repeatRulesetId", "tags", "archived", "ownerUserId", "ownerPluginId", "createdAt", "updatedAt" from "rotations" where "rotations"."id" = ?
+
+rotation:rotationName
+  select "name" from "rotations" where "rotations"."id" = ?
+
+rotation:rotationNames
+  select "id", "name" from "rotations" where "rotations"."id" in (select value from json_each(?))
+
+rotation:rotationOwner
+  select "ownerUserId" from "rotations" where "rotations"."id" = ?
+
+rotation:rotationOwners
+  select distinct "ownerUserId", "ownerPluginId" from "rotations"
+
+rotation:tagCounts
+  select j.value, count(*) from "rotations", json_each("rotations"."tags", '$.json') AS j group by j.value
+
+rotation:updateRotationRow
+  update "rotations" set "name" = ?, "description" = ?, "items" = ?, "repeatRulesetId" = ?, "tags" = ?, "archived" = ?, "ownerUserId" = ?, "ownerPluginId" = ?, "createdAt" = ?, "updatedAt" = ? where "rotations"."id" = ?
+
+rotation:userContributorIds
+  select "userId" from "rotationUserContributors" where "rotationUserContributors"."rotationId" = ?
+
+rotation:userExists
+  select "discordId" from "users" where "users"."discordId" = ?
+
+rotation:usersByIds
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "users" inner join "discordAccounts" on "users"."discordId" = "discordAccounts"."discordId" where "users"."discordId" in (select value from json_each(?))
+
+scheduled-jobs:blockOnServerNotLoaded
+  update "scheduledJobRuns" set "state" = ?, "nextAttemptAt" = null, "blockedReason" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ?)
+
+scheduled-jobs:blockRunning
+  update "scheduledJobRuns" set "state" = ?, "attempt" = ?, "nextAttemptAt" = ?, "blockedReason" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ?)
+
+scheduled-jobs:cancelOpenRun
+  update "scheduledJobRuns" set "state" = ?, "nextAttemptAt" = null, "finishedAt" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ? and "scheduledJobRuns"."state" in (?, ?, ?))
+
+scheduled-jobs:cancelRunning
+  update "scheduledJobRuns" set "state" = ?, "nextAttemptAt" = null, "finishedAt" = ?, "error" = null where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ?)
+
+scheduled-jobs:claimRun(false)
+  update "scheduledJobRuns" set "state" = ?, "attempt" = ?, "manual" = ?, "startedAt" = ?, "blockedReason" = null, "cancelRequested" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ? and "scheduledJobRuns"."dueAt" = ? and "scheduledJobRuns"."payload" is null)
+
+scheduled-jobs:claimRun(true)
+  update "scheduledJobRuns" set "state" = ?, "attempt" = ?, "manual" = ?, "startedAt" = ?, "blockedReason" = null, "cancelRequested" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ? and "scheduledJobRuns"."dueAt" = ? and "scheduledJobRuns"."payload" = ?)
+
+scheduled-jobs:closeCancellingRuns
+  update "scheduledJobRuns" set "state" = ?, "nextAttemptAt" = null, "finishedAt" = ?, "error" = ? where ("scheduledJobRuns"."state" = ? and "scheduledJobRuns"."cancelRequested" = ?)
+
+scheduled-jobs:deleteOpenRun
+  delete from "scheduledJobRuns" where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ? and "scheduledJobRuns"."state" in (?, ?, ?))
+
+scheduled-jobs:deletePendingRun
+  delete from "scheduledJobRuns" where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ? and "scheduledJobRuns"."dueAt" = ?)
+
+scheduled-jobs:deletePluginRuns
+  delete from "scheduledJobRuns" where "scheduledJobRuns"."pluginId" = ?
+
+scheduled-jobs:failRun
+  update "scheduledJobRuns" set "state" = ?, "nextAttemptAt" = null, "finishedAt" = ?, "error" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" in (?, ?, ?, ?))
+
+scheduled-jobs:insertManualRun
+  insert into "scheduledJobRuns" ("id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested") values (null, ?, ?, ?, ?, ?, ?, null, ?, ?, null, ?, null, null, null, null, ?) returning "id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested"
+
+scheduled-jobs:insertRecurringRun
+  insert into "scheduledJobRuns" ("id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested") values (null, ?, ?, ?, ?, ?, ?, null, ?, ?, null, ?, null, null, null, null, ?) on conflict do nothing returning "id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested"
+
+scheduled-jobs:lastRecurringOfEach(false)
+  select "pluginId", "serverId", "jobId", max("dueAt"), "finishedAt" from "scheduledJobRuns" where "scheduledJobRuns"."kind" = ? group by "scheduledJobRuns"."pluginId", "scheduledJobRuns"."serverId", "scheduledJobRuns"."jobId"
+
+scheduled-jobs:lastRecurringOfEach(true)
+  select "pluginId", "serverId", "jobId", max("dueAt"), "finishedAt" from "scheduledJobRuns" where ("scheduledJobRuns"."kind" = ? and "scheduledJobRuns"."pluginId" = ?) group by "scheduledJobRuns"."pluginId", "scheduledJobRuns"."serverId", "scheduledJobRuns"."jobId"
+
+scheduled-jobs:latestFinishedOfPlugin
+  select "id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested", max("finishedAt") from "scheduledJobRuns" where ("scheduledJobRuns"."pluginId" = ? and "scheduledJobRuns"."finishedAt" is not null) group by "scheduledJobRuns"."serverId", "scheduledJobRuns"."jobId"
+
+scheduled-jobs:openOnceRunByKey
+  select "id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested" from "scheduledJobRuns" where (("scheduledJobRuns"."pluginId" = ? and "scheduledJobRuns"."serverId" = ? and "scheduledJobRuns"."jobId" = ? and "scheduledJobRuns"."key" = ?) and "scheduledJobRuns"."kind" = ? and "scheduledJobRuns"."state" in (?, ?, ?))
+
+scheduled-jobs:openRuns
+  select "id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested" from "scheduledJobRuns" where "scheduledJobRuns"."state" in (?, ?, ?)
+
+scheduled-jobs:openRunsOfPlugin
+  select "id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested" from "scheduledJobRuns" where ("scheduledJobRuns"."pluginId" = ? and "scheduledJobRuns"."state" in (?, ?, ?, ?)) order by "scheduledJobRuns"."dueAt" asc
+
+scheduled-jobs:pruneFinishedRuns
+  delete from "scheduledJobRuns" where ("scheduledJobRuns"."state" in (?, ?, ?, ?) and "scheduledJobRuns"."finishedAt" < ? and "scheduledJobRuns"."id" not in (select "id" from (select "id", max("finishedAt") from "scheduledJobRuns" where "scheduledJobRuns"."finishedAt" is not null group by "scheduledJobRuns"."pluginId", "scheduledJobRuns"."serverId", "scheduledJobRuns"."jobId") "latestFinished") and "scheduledJobRuns"."id" not in (select "id" from (select "id", max("dueAt") from "scheduledJobRuns" where "scheduledJobRuns"."kind" = ? group by "scheduledJobRuns"."pluginId", "scheduledJobRuns"."serverId", "scheduledJobRuns"."jobId") "latestRecurring"))
+
+scheduled-jobs:requestCancel
+  update "scheduledJobRuns" set "cancelRequested" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ?)
+
+scheduled-jobs:restoreRunning
+  update "scheduledJobRuns" set "state" = ?, "attempt" = ?, "nextAttemptAt" = ?, "manual" = ?, "startedAt" = ?, "blockedReason" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ?)
+
+scheduled-jobs:retryInterruptedRuns
+  update "scheduledJobRuns" set "state" = ?, "nextAttemptAt" = ?, "error" = ? where "scheduledJobRuns"."state" = ?
+
+scheduled-jobs:retryRunning
+  update "scheduledJobRuns" set "state" = ?, "nextAttemptAt" = ?, "error" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ?)
+
+scheduled-jobs:runByKey
+  select "id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested" from "scheduledJobRuns" where ("scheduledJobRuns"."pluginId" = ? and "scheduledJobRuns"."serverId" = ? and "scheduledJobRuns"."jobId" = ? and "scheduledJobRuns"."key" = ?)
+
+scheduled-jobs:skipEarlierOccurrences
+  update "scheduledJobRuns" set "state" = ?, "nextAttemptAt" = null, "finishedAt" = ?, "error" = ? where ("scheduledJobRuns"."pluginId" = ? and "scheduledJobRuns"."serverId" = ? and "scheduledJobRuns"."jobId" = ? and "scheduledJobRuns"."kind" = ? and "scheduledJobRuns"."state" in (?, ?, ?) and "scheduledJobRuns"."dueAt" < ?) returning "id"
+
+scheduled-jobs:skipRunning
+  update "scheduledJobRuns" set "state" = ?, "attempt" = ?, "finishedAt" = ?, "error" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ?)
+
+scheduled-jobs:succeedRunning
+  update "scheduledJobRuns" set "state" = ?, "nextAttemptAt" = null, "finishedAt" = ?, "error" = null where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ?)
+
+scheduled-jobs:unblockRun
+  update "scheduledJobRuns" set "nextAttemptAt" = ? where ("scheduledJobRuns"."id" = ? and "scheduledJobRuns"."state" = ? and "scheduledJobRuns"."nextAttemptAt" is null)
+
+scheduled-jobs:upsertOnceRun
+  insert into "scheduledJobRuns" ("id", "pluginId", "serverId", "jobId", "key", "kind", "dueAt", "payload", "state", "attempt", "nextAttemptAt", "manual", "startedAt", "finishedAt", "error", "blockedReason", "cancelRequested") values (null, ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, null, null, null, null, ?) on conflict ("scheduledJobRuns"."pluginId", "scheduledJobRuns"."serverId", "scheduledJobRuns"."jobId", "scheduledJobRuns"."key") do update set "pluginId" = ?, "serverId" = ?, "jobId" = ?, "key" = ?, "kind" = ?, "dueAt" = ?, "payload" = ?, "state" = ?, "attempt" = ?, "nextAttemptAt" = null, "manual" = ?, "startedAt" = null, "finishedAt" = null, "error" = null, "blockedReason" = null, "cancelRequested" = ? where "scheduledJobRuns"."state" <> ? returning "id"
+
+server-agent:serverIds
+  select "id" from "servers"
+
+server-event-writes:damageSourceId
+  select "id" from "damageSources" where "damageSources"."name" = ?
+
+server-event-writes:insertChatSearch
+  insert into "chatSearch" ("message", "serverEventId", "playerId", "matchId", "serverId", "time") values (?, ?, ?, ?, ?, ?)
+
+server-event-writes:insertDamageSource
+  insert into "damageSources" ("id", "name") values (null, ?) on conflict ("damageSources"."name") do nothing
+
+server-event-writes:insertEventIndex
+  insert into "serverEventIndex" ("serverEventId", "time", "matchId", "serverId", "type", "damageSourceId", "variant", "channel", "targetId", "targetType") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict ("serverEventIndex"."serverEventId") do nothing
+
+server-event-writes:insertPlayerIndex
+  insert into "playerEventIndex" ("playerId", "time", "serverEventId", "assocType", "matchId", "serverId", "type", "damageSourceId", "variant", "channel", "targetId", "targetType") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict ("playerEventIndex"."playerId", "playerEventIndex"."time", "playerEventIndex"."serverEventId", "playerEventIndex"."assocType") do nothing
+
+server-event-writes:insertServerEvent
+  insert into "serverEvents" ("id", "type", "time", "matchId", "appEventId", "version", "data") values (null, ?, ?, ?, ?, ?, ?) returning "id"
+
+server-event-writes:insertSquadAssociation
+  insert into "squadEventAssociations" ("serverEventId", "squadId", "createdAt") values (?, ?, ?) on conflict ("squadEventAssociations"."serverEventId", "squadEventAssociations"."squadId") do nothing
+
+server-event-writes:playerExists
+  select "eosId" from "players" where "players"."eosId" = ?
+
+server-event-writes:releaseEpicId
+  update "players" set "epicId" = null, "modifiedAt" = ? where ("players"."epicId" = ? and "players"."eosId" <> ?) returning "eosId"
+
+server-event-writes:releaseSteamId
+  update "players" set "steamId" = null, "modifiedAt" = ? where ("players"."steamId" = ? and "players"."eosId" <> ?) returning "eosId"
+
+server-event-writes:renamePlayer
+  update "players" set "username" = ?, "usernameNoTag" = CASE WHEN substr(?, -length("players"."usernameNoTag")) = "players"."usernameNoTag" THEN "players"."usernameNoTag" END, "modifiedAt" = ? where "players"."eosId" = ?
+
+server-event-writes:upsertPlayer
+  insert into "players" ("eosId", "steamId", "epicId", "username", "usernameNoTag", "createdAt", "modifiedAt") values (?, ?, ?, ?, ?, ?, ?) on conflict ("players"."eosId") do update set "steamId" = excluded.steamId, "username" = CASE WHEN excluded.username = excluded.usernameNoTag AND substr("players"."username", -length(excluded.username)) = excluded.username THEN "players"."username" ELSE excluded.username END, "usernameNoTag" = CASE WHEN excluded.usernameNoTag IS NOT NULL THEN excluded.usernameNoTag WHEN substr(excluded.username, -length("players"."usernameNoTag")) = "players"."usernameNoTag" THEN "players"."usernameNoTag" END, "modifiedAt" = excluded.modifiedAt
+
+server-event-writes:upsertSquad
+  insert into "squads" ("id", "ingameSquadId", "teamId", "name", "creatorId", "matchId", "createdAt") values (?, ?, ?, ?, ?, ?, ?) on conflict ("squads"."id") do update set "ingameSquadId" = excluded.ingameSquadId, "teamId" = excluded.teamId, "name" = excluded.name, "creatorId" = excluded.creatorId, "matchId" = excluded.matchId
+
+sessions:accountsByLowerName
+  select "discordId", "username" from "discordAccounts" where lower("discordAccounts"."username") = ? order by "discordAccounts"."discordId"
+
+sessions:deleteExpiredSessions
+  delete from "sessions" where "sessions"."expiresAt" < ?
+
+sessions:deleteSession
+  delete from "sessions" where "sessions"."session" = ?
+
+sessions:ensureUser
+  insert into "users" ("discordId", "nickname") values (?, null) on conflict do nothing
+
+sessions:extendSession
+  update "sessions" set "expiresAt" = ? where "sessions"."session" = ?
+
+sessions:insertSession
+  insert into "sessions" ("session", "userId", "expiresAt") values (?, ?, ?)
+
+sessions:sessionWithUser
+  select "sessions"."session", "sessions"."userId", "sessions"."expiresAt", "users"."discordId", "users"."nickname", "discordAccounts"."username" from "sessions" inner join "users" on "users"."discordId" = "sessions"."userId" inner join "discordAccounts" on "discordAccounts"."discordId" = "users"."discordId" where "sessions"."session" = ?
+
+sessions:userByUsername
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "users" inner join "discordAccounts" on "discordAccounts"."discordId" = "users"."discordId" where "discordAccounts"."username" = ?
+
+sessions:validSessions
+  select "sessions"."session", "sessions"."userId", "sessions"."expiresAt", "users"."discordId", "users"."nickname", "discordAccounts"."username" from "sessions" inner join "users" on "users"."discordId" = "sessions"."userId" inner join "discordAccounts" on "discordAccounts"."discordId" = "users"."discordId" where "sessions"."expiresAt" > ?
+
+settings:clearDefaultServer
+  update "servers" set "defaultServer" = ?
+
+settings:deleteServer
+  delete from "servers" where "servers"."id" = ?
+
+settings:globalSettingsRows
+  select "id", "settings" from "globalSettings"
+
+settings:insertGlobalSettings
+  insert into "globalSettings" ("id", "settings") values (?, ?)
+
+settings:insertServer
+  insert into "servers" ("id", "displayName", "enabled", "defaultServer", "layerQueue", "teamswaps", "backburner", "switchRequests", "settings", "visibility", "ownerDiscordId") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+settings:markDefaultServer
+  update "servers" set "defaultServer" = ? where "servers"."id" = ?
+
+settings:serverRows
+  select "id", "displayName", "enabled", "defaultServer", "layerQueue", "teamswaps", "backburner", "switchRequests", "settings", "visibility", "ownerDiscordId" from "servers"
+
+settings:serverSettingsById
+  select "id", "settings" from "servers" where "servers"."id" = ?
+
+settings:serverSettingsRows
+  select "id", "settings" from "servers"
+
+settings:writeGlobalSettings
+  update "globalSettings" set "settings" = ?
+
+settings:writeServerEnabled
+  update "servers" set "enabled" = ? where "servers"."id" = ?
+
+settings:writeServerSettings
+  update "servers" set "settings" = ? where "servers"."id" = ?
+
+squad-server:lastSquadId
+  select max("id") from "squads"
+
+squad-server:lifecycle:appEventsOf
+  select "id", "type", "time", "actorType", "actorUserId", "actorPlayerId", "actorPluginId", "serverId", "matchId", "causeId", "instanceId", "feedVisible", "version", "data" from "appEvents" where "appEvents"."matchId" = ? order by "appEvents"."time" asc
+
+squad-server:lifecycle:lastMatchOf
+  select "id" from "matchHistory" where "matchHistory"."serverId" = ? order by "matchHistory"."ordinal" desc limit ?
+
+squad-server:lifecycle:serverEventsOf
+  select "id", "type", "time", "matchId", "appEventId", "version", "data" from "serverEvents" where "serverEvents"."matchId" = ? order by "serverEvents"."id" asc
+
+squad-server:lifecycle:usernamesNoTag
+  select "eosId", "username", "usernameNoTag" from "players" where ("players"."eosId" in (select value from json_each(?)) and "players"."usernameNoTag" is not null)
+
+squad-server:serverById
+  select "id", "displayName", "enabled", "defaultServer", "layerQueue", "teamswaps", "backburner", "switchRequests", "settings", "visibility", "ownerDiscordId" from "servers" where "servers"."id" = ?
+
+stored-layer-ids:associationLayerIds
+  select distinct "value" from "appEventAssociations" where "appEventAssociations"."dimension" = ?
+
+stored-layer-ids:layerAppEventsPage
+  select "id", "data" from "appEvents" where ("appEvents"."id" > ? and (instr("appEvents"."data", 'layerId') > 0 OR instr("appEvents"."data", 'LayerId') > 0 OR instr("appEvents"."data", 'choices') > 0)) order by "appEvents"."id" limit ?
+
+stored-layer-ids:layerServerEventsPage
+  select "id", "type", "data" from "serverEvents" where (("serverEvents"."type" = ? or "serverEvents"."type" = ? or "serverEvents"."type" = ?) and "serverEvents"."id" > ?) order by "serverEvents"."id" limit ?
+
+stored-layer-ids:matchHistoryLayerIds
+  select distinct "layerId" from "matchHistory"
+
+stored-layer-ids:renameAssociationLayerId
+  update "appEventAssociations" set "value" = ? where ("appEventAssociations"."value" = ? and "appEventAssociations"."dimension" = ?)
+
+stored-layer-ids:renameMatchHistoryLayerId
+  update "matchHistory" set "layerId" = ? where "matchHistory"."layerId" = ?
+
+stored-layer-ids:setAppEventData
+  update "appEvents" set "data" = ? where "appEvents"."id" = ?
+
+stored-layer-ids:setServerEventData
+  update "serverEvents" set "data" = ? where "serverEvents"."id" = ?
+
+timeouts:activeById
+  select "id", "playerId", "expiresAt", "cancelled", "createdAt", "appEventId", "issuedServerId", "reasonLabel", "reasonTemplate", "reasonVars" from "timeouts" where ("timeouts"."id" = ? and ("timeouts"."cancelled" = ? and "timeouts"."expiresAt" > ?))
+
+timeouts:activeForPlayers
+  select "id", "playerId", "expiresAt", "cancelled", "createdAt", "appEventId", "issuedServerId", "reasonLabel", "reasonTemplate", "reasonVars" from "timeouts" where (("timeouts"."cancelled" = ? and "timeouts"."expiresAt" > ?) and "timeouts"."playerId" in (select value from json_each(?)))
+
+timeouts:cancel
+  update "timeouts" set "cancelled" = ? where "timeouts"."id" = ?
+
+timeouts:ensurePlayer
+  insert into "players" ("eosId", "steamId", "epicId", "username", "usernameNoTag", "createdAt", "modifiedAt") values (?, ?, null, ?, null, ?, ?) on conflict ("players"."eosId") do nothing
+
+timeouts:insertTimeout
+  insert into "timeouts" ("id", "playerId", "expiresAt", "cancelled", "createdAt", "appEventId", "issuedServerId", "reasonLabel", "reasonTemplate", "reasonVars") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
+timeouts:listActive
+  select "timeouts"."id", "timeouts"."playerId", "timeouts"."expiresAt", "timeouts"."cancelled", "timeouts"."createdAt", "timeouts"."appEventId", "timeouts"."issuedServerId", "timeouts"."reasonLabel", "timeouts"."reasonTemplate", "timeouts"."reasonVars", "players"."username", "players"."steamId", "appEvents"."actorType", "appEvents"."actorUserId", "appEvents"."actorPlayerId", "actorPlayer"."username" from "timeouts" left join "players" on "timeouts"."playerId" = "players"."eosId" left join "appEvents" on "timeouts"."appEventId" = "appEvents"."id" left join "players" "actorPlayer" on "appEvents"."actorPlayerId" = "actorPlayer"."eosId" where ("timeouts"."cancelled" = ? and "timeouts"."expiresAt" > ?) order by "timeouts"."expiresAt" asc
+
+tutorials:deletePeerAccount
+  delete from "discordAccounts" where "discordAccounts"."discordId" = ?
+
+tutorials:dismissalsOf
+  select "userId", "surfaceId", "dismissedAt" from "tutorialPromptDismissals" where "tutorialPromptDismissals"."userId" = ?
+
+tutorials:insertDismissal
+  insert into "tutorialPromptDismissals" ("userId", "surfaceId", "dismissedAt") values (?, ?, ?) on conflict do nothing
+
+tutorials:insertPeerAccount
+  insert into "discordAccounts" ("discordId", "username", "updatedAt") values (?, ?, ?) on conflict do nothing
+
+tutorials:insertPeerUser
+  insert into "users" ("discordId", "nickname") values (?, null) on conflict do nothing
+
+tutorials:progressOf
+  select "userId", "scenarioId", "stepId", "completedAt", "updatedAt" from "tutorialProgress" where "tutorialProgress"."userId" = ?
+
+tutorials:rescaleAppEventTimes
+  update "appEvents" set "time" = cast(? + (min(max("appEvents"."time" - ?, 0), ?) * ?) / ? as integer) where "appEvents"."matchId" = ?
+
+tutorials:rescaleServerEventTimes
+  update "serverEvents" set "time" = cast(? + (min(max("serverEvents"."time" - ?, 0), ?) * ?) / ? as integer) where "serverEvents"."matchId" = ?
+
+tutorials:retimeMatch
+  update "matchHistory" set "startTime" = ?, "endTime" = ?, "createdAt" = ? where "matchHistory"."id" = ?
+
+tutorials:tutorialFilterIds
+  select "id" from "filters" where "filters"."id" like ?
+
+tutorials:tutorialServerIds
+  select "id" from "servers" where "servers"."id" like ?
+
+tutorials:upsertProgress(false)
+  insert into "tutorialProgress" ("userId", "scenarioId", "stepId", "completedAt", "updatedAt") values (?, ?, ?, ?, ?) on conflict ("tutorialProgress"."userId", "tutorialProgress"."scenarioId") do update set "stepId" = ?, "updatedAt" = ?
+
+tutorials:upsertProgress(true)
+  insert into "tutorialProgress" ("userId", "scenarioId", "stepId", "completedAt", "updatedAt") values (?, ?, ?, ?, ?) on conflict ("tutorialProgress"."userId", "tutorialProgress"."scenarioId") do update set "stepId" = ?, "completedAt" = ?, "updatedAt" = ?
+
+users:allUsers
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "users" inner join "discordAccounts" on "users"."discordId" = "discordAccounts"."discordId"
+
+users:connectionLinkedSteamIds
+  select "steam64Id" from "linkedSteamAccounts" where ("linkedSteamAccounts"."discordId" = ? and "linkedSteamAccounts"."origin" = ?)
+
+users:deleteConnectionLinks
+  delete from "linkedSteamAccounts" where (("linkedSteamAccounts"."discordId" = ? and "linkedSteamAccounts"."origin" = ?) and "linkedSteamAccounts"."steam64Id" in (select value from json_each(?))) returning "steam64Id"
+
+users:deleteLink
+  delete from "linkedSteamAccounts" where "linkedSteamAccounts"."steam64Id" = ?
+
+users:deleteOwnLinks
+  delete from "linkedSteamAccounts" where ("linkedSteamAccounts"."discordId" = ? and "linkedSteamAccounts"."steam64Id" in (select value from json_each(?)))
+
+users:insertLink
+  insert into "linkedSteamAccounts" ("steam64Id", "discordId", "origin", "linkedBy", "createdAt") values (?, ?, ?, ?, ?)
+
+users:insertLinkIfFree
+  insert into "linkedSteamAccounts" ("steam64Id", "discordId", "origin", "linkedBy", "createdAt") values (?, ?, ?, ?, ?) on conflict do nothing returning "steam64Id"
+
+users:linkOfSteamAccount
+  select "linkedSteamAccounts"."steam64Id", "linkedSteamAccounts"."discordId", "linkedSteamAccounts"."origin", "linkedSteamAccounts"."linkedBy", "linkedSteamAccounts"."createdAt", "discordAccounts"."username" from "linkedSteamAccounts" inner join "discordAccounts" on "discordAccounts"."discordId" = "linkedSteamAccounts"."discordId" where "linkedSteamAccounts"."steam64Id" = ?
+
+users:linkOwner
+  select "discordId" from "linkedSteamAccounts" where "linkedSteamAccounts"."steam64Id" = ?
+
+users:linkOwners
+  select "steam64Id", "discordId" from "linkedSteamAccounts" where "linkedSteamAccounts"."steam64Id" in (select value from json_each(?))
+
+users:linkedSteamIds
+  select "steam64Id" from "linkedSteamAccounts" where "linkedSteamAccounts"."discordId" = ?
+
+users:linksOfDiscordAccount
+  select "linkedSteamAccounts"."steam64Id", "linkedSteamAccounts"."discordId", "linkedSteamAccounts"."origin", "linkedSteamAccounts"."linkedBy", "linkedSteamAccounts"."createdAt", "discordAccounts"."username" from "linkedSteamAccounts" inner join "discordAccounts" on "discordAccounts"."discordId" = "linkedSteamAccounts"."discordId" where "linkedSteamAccounts"."discordId" = ?
+
+users:setNickname
+  update "users" set "nickname" = ? where "users"."discordId" = ?
+
+users:upsertDiscordAccount
+  insert into "discordAccounts" ("discordId", "username", "updatedAt") values (?, ?, ?) on conflict ("discordAccounts"."discordId") do update set "username" = excluded.username, "updatedAt" = excluded.updatedAt
+
+users:userById
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "users" inner join "discordAccounts" on "users"."discordId" = "discordAccounts"."discordId" where "users"."discordId" = ?
+
+users:userBySteamId
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "users" inner join "discordAccounts" on "users"."discordId" = "discordAccounts"."discordId" inner join "linkedSteamAccounts" on "users"."discordId" = "linkedSteamAccounts"."discordId" where "linkedSteamAccounts"."steam64Id" = ?
+
+users:userPlayerIds
+  select "players"."eosId", "players"."steamId" from "linkedSteamAccounts" left join "players" on "linkedSteamAccounts"."steam64Id" = "players"."steamId" where "linkedSteamAccounts"."discordId" = ?
+
+users:userRow
+  select "discordId", "nickname" from "users" where "users"."discordId" = ?
+
+users:usersByIds
+  select "users"."discordId", "users"."nickname", "discordAccounts"."username" from "users" inner join "discordAccounts" on "users"."discordId" = "discordAccounts"."discordId" where "users"."discordId" in (select value from json_each(?))

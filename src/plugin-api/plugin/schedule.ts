@@ -77,7 +77,7 @@ export async function at<P>(ctx: PluginsSys.ServerCtx<any>, job: ServerJob<P>, r
 export async function at<P>(ctx: PluginsSys.Ctx<any>, job: PluginJob<P>, run: At<P>): Promise<ScheduleResult>
 export async function at(ctx: PluginsSys.Ctx<any>, job: Job<unknown>, run: At<unknown>): Promise<ScheduleResult> {
 	const when = typeof run.at === 'number' ? run.at : run.at.getTime()
-	return await SchedJobs.scheduleOnce(ctx.plugin.id, serverIdOf(ctx, job), job.id, when, run.payload, run.key)
+	return SchedJobs.scheduleOnce(ctx.plugin.id, serverIdOf(ctx, job), job.id, when, run.payload, run.key)
 }
 
 export type CancelResult = SchedJobs.CancelResult
@@ -87,7 +87,7 @@ export type CancelResult = SchedJobs.CancelResult
  * and `stopping` is true: it is recorded as SCHEDULED_JOB_CANCELLED once it stops by throwing that abort.
  */
 export async function cancel(ctx: PluginsSys.Ctx<any>, job: Job<any>, key: string): Promise<CancelResult> {
-	return await SchedJobs.cancel(ctx.plugin.id, serverIdOf(ctx, job), job.id, key, null)
+	return SchedJobs.cancel(ctx.plugin.id, serverIdOf(ctx, job), job.id, key, null)
 }
 
 function serverIdOf(ctx: PluginsSys.Ctx<any>, job: Job<any>): string | null {

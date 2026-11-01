@@ -15,6 +15,7 @@ import * as Permissions from 'slm/plugin/permissions'
 import * as Rpc from 'slm/plugin/rpc.server'
 import * as Schedule from 'slm/plugin/schedule'
 import * as Servers from 'slm/plugin/servers'
+import * as Db from 'slm/server/db'
 import * as AppEventsSys from 'slm/systems/app-events'
 import * as Discord from 'slm/systems/discord'
 import * as Filters from 'slm/systems/filter-entity'
@@ -482,7 +483,7 @@ export const router = {
 		.meta({ access: RBAC.Access.PUBLIC })
 		.input(z.object({ serverId: z.string() }))
 		.handler(async function* ({ context, input }) {
-			yield await context.db().select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId))
+			yield Db.all(context, sql!.select().from(S.greetings).where(eq(S.greetings.serverId, input.serverId)))
 		}),
 }
 
@@ -587,9 +588,12 @@ export const jobs = [greetJob, heartbeatJob, gatedJob, stoppableJob, timedJob]
 // an action this plugin defines for itself, so a role can be granted it without SLM knowing what it means.
 // Held module-level so the router can ask for it; the builders are the plugin's own, not the host's.
 let perms: { greet: (serverId: string) => RBAC.Permission<'plugin:action'> } | undefined
+let sql: ReturnType<typeof Db.forModule> | undefined
 
 export async function activate(ctx: P.Ctx<typeof manifest>) {
 	activations++
+	sql = Db.forModule(ctx.module)
+	const SQL = sql
 	perms = Permissions.register(ctx, {
 		greet: { scope: 'server', description: 'Send the greeting on a server' },
 	})
@@ -620,10 +624,10 @@ export async function activate(ctx: P.Ctx<typeof manifest>) {
 		Reminders.register(sctx, async () => [`[hello] rolled on ${sctx.serverId}`])
 		void (async () => {
 			const matches = await MatchHistory.getRecentMatches(sctx)
-			await sctx
-				.db()
-				.insert(S.greetings)
-				.values({ serverId: sctx.serverId, text: PluginConfig.get(sctx).greeting, matches: matches.length })
+			Db.run(
+				sctx,
+				SQL.insert(S.greetings).values({ serverId: sctx.serverId, text: PluginConfig.get(sctx).greeting, matches: matches.length }),
+			)
 			await AppEventsSys.emit(sctx, 'greeted', { serverId: sctx.serverId }, `hello plugin greeted ${sctx.serverId}`)
 		})()
 	})

@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm'
 import { blob, check, customType, index, integer, primaryKey, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core'
-import superjson from 'superjson'
 
 import * as ZodUtils from '@/lib/zod-utils'
 
+import { secretColumn, superjsonColumn, unlogged } from './columns'
 import { APP_EVENT_ACTOR_TYPE, APP_EVENT_TYPE, SERVER_EVENT_PLAYER_ASSOC_TYPE, SERVER_EVENT_TYPE } from './enums'
 
 // 64-bit ids (discord/steam) are stored as TEXT: sqlite INTEGER is signed 64-bit and better-sqlite3
@@ -490,6 +490,7 @@ export const filters = sqliteTable(
 	},
 	(table) => ({
 		singleOwner: check('filtersSingleOwner', sql`${table.ownerUserId} IS NULL OR ${table.ownerPluginId} IS NULL`),
+		ownerUserIdIndex: index('filtersOwnerUserIdIndex').on(table.ownerUserId),
 	}),
 )
 
@@ -505,6 +506,7 @@ export const filterUserContributors = sqliteTable(
 	},
 	(table) => ({
 		pk: primaryKey({ columns: [table.filterId, table.userId] }),
+		userIdIndex: index('filterUserContributorsUserIdIndex').on(table.userId),
 	}),
 )
 
@@ -516,7 +518,10 @@ export const filterRoleContributors = sqliteTable(
 			.references(() => filters.id, { onDelete: 'cascade' }),
 		roleId: text('roleId').notNull(),
 	},
-	(table) => ({ pk: primaryKey({ columns: [table.filterId, table.roleId] }) }),
+	(table) => ({
+		pk: primaryKey({ columns: [table.filterId, table.roleId] }),
+		roleIdIndex: index('filterRoleContributorsRoleIdIndex').on(table.roleId),
+	}),
 )
 
 export type Filter = typeof filters.$inferSelect
@@ -530,10 +535,10 @@ export const rotations = sqliteTable(
 		name: text('name').notNull(),
 		description: text('description'),
 		// LL.List, anonymized (see ROT.anonymize)
-		items: json('items').notNull(),
+		items: superjsonColumn<unknown>('items').notNull(),
 		repeatRulesetId: text('repeatRulesetId'),
 		// rotation tag ids (globalSettings.rotationTags)
-		tags: json('tags').notNull(),
+		tags: superjsonColumn<string[]>('tags').notNull(),
 		archived: boolean('archived').notNull().default(false),
 		ownerUserId: bigintText('ownerUserId').references(() => users.discordId, { onDelete: 'set null' }),
 		ownerPluginId: text('ownerPluginId').references(() => plugins.id, { onDelete: 'set null' }),
@@ -542,6 +547,7 @@ export const rotations = sqliteTable(
 	},
 	(table) => ({
 		singleOwner: check('rotationsSingleOwner', sql`${table.ownerUserId} IS NULL OR ${table.ownerPluginId} IS NULL`),
+		ownerUserIdIndex: index('rotationsOwnerUserIdIndex').on(table.ownerUserId),
 	}),
 )
 
@@ -557,6 +563,7 @@ export const rotationUserContributors = sqliteTable(
 	},
 	(table) => ({
 		pk: primaryKey({ columns: [table.rotationId, table.userId] }),
+		userIdIndex: index('rotationUserContributorsUserIdIndex').on(table.userId),
 	}),
 )
 
@@ -568,7 +575,10 @@ export const rotationRoleContributors = sqliteTable(
 			.references(() => rotations.id, { onDelete: 'cascade' }),
 		roleId: text('roleId').notNull(),
 	},
-	(table) => ({ pk: primaryKey({ columns: [table.rotationId, table.roleId] }) }),
+	(table) => ({
+		pk: primaryKey({ columns: [table.rotationId, table.roleId] }),
+		roleIdIndex: index('rotationRoleContributorsRoleIdIndex').on(table.roleId),
+	}),
 )
 
 export type Rotation = typeof rotations.$inferSelect
@@ -616,11 +626,11 @@ export const servers = sqliteTable('servers', {
 	displayName: text('displayName').notNull(),
 	enabled: boolean('enabled').notNull().default(true),
 	defaultServer: boolean('defaultServer').notNull().default(false),
-	layerQueue: json('layerQueue').notNull().default(superjson.serialize([])),
-	teamswaps: json('teamswaps').notNull().default(superjson.serialize(new Map())),
-	backburner: json('backburner').notNull().default(superjson.serialize([])),
-	switchRequests: json('switchRequests').default(superjson.serialize(null)),
-	settings: json('settings').default(superjson.serialize({})),
+	layerQueue: superjsonColumn<unknown>('layerQueue').notNull().default([]),
+	teamswaps: superjsonColumn<unknown>('teamswaps').notNull().default(new Map()),
+	backburner: superjsonColumn<unknown>('backburner').notNull().default([]),
+	switchRequests: superjsonColumn<unknown>('switchRequests').default(null),
+	settings: superjsonColumn<unknown>('settings').default({}),
 	// 'scoped' entries are visible and usable only to their owner (ownerDiscordId); tutorials spin up per-user
 	// emulated servers this way. 'public' (the default) is every server that existed before this column.
 	visibility: text('visibility').notNull().default('public'),
@@ -629,7 +639,7 @@ export const servers = sqliteTable('servers', {
 
 export const globalSettings = sqliteTable('globalSettings', {
 	id: integer('id').primaryKey().default(1),
-	settings: json('settings').notNull().default(superjson.serialize({})),
+	settings: superjsonColumn<unknown>('settings').notNull().default({}),
 })
 
 // installed-plugin state: whether it should run, its config (encoded z.input shape, like globalSettings), and
@@ -638,9 +648,11 @@ export const globalSettings = sqliteTable('globalSettings', {
 export const plugins = sqliteTable('plugins', {
 	id: text('id').primaryKey(),
 	enabled: boolean('enabled').notNull().default(false),
-	config: json('config').notNull().default(superjson.serialize({})),
-	commands: json('commands').notNull().default(superjson.serialize({})),
+	config: superjsonColumn<Record<string, unknown>>('config').notNull().default({}),
+	commands: superjsonColumn<unknown>('commands').notNull().default({}),
 })
+
+unlogged(servers.settings, globalSettings.settings)
 
 export type Server = typeof servers.$inferSelect
 
@@ -716,12 +728,13 @@ export const sessions = sqliteTable(
 		userIdIndex: index('sessionUserIdIndex').on(table.userId),
 	}),
 )
+unlogged(sessions.id)
 
 export const persistedCache = sqliteTable(
 	'persistedCache',
 	{
 		key: text('key').primaryKey(),
-		value: json('value').notNull(),
+		value: superjsonColumn<unknown>('value').notNull(),
 		updatedAt: timestamp('updatedAt')
 			.$defaultFn(() => new Date())
 			.notNull(),
@@ -785,7 +798,7 @@ export const battlemetricsUserTokens = sqliteTable('battlemetricsUserTokens', {
 	userId: bigintText('userId')
 		.primaryKey()
 		.references(() => users.discordId, { onDelete: 'cascade' }),
-	token: text('token').notNull(),
+	token: secretColumn('token').notNull(),
 	updatedAt: timestamp('updatedAt').notNull(),
 })
 

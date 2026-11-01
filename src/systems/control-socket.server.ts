@@ -72,7 +72,7 @@ function managedServerCtx(serverId: string) {
 async function handle(req: Request): Promise<Response> {
 	switch (req.command) {
 		case 'reload-plugins': {
-			const ctx = DB.addPooledDb({ ...CS.init(), log })
+			const ctx = DB.withDb({ ...CS.init(), log })
 			await PluginsSys.reloadPackages(ctx)
 			return {
 				code: 'ok',
@@ -82,7 +82,7 @@ async function handle(req: Request): Promise<Response> {
 		// forces a compaction pass rather than waiting for the next scheduled one -- for after EVENT_ARCHIVE_WINDOW
 		// is changed, or before taking a backup of a database that has just caught up on a long backlog
 		case 'compact-events': {
-			const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+			const ctx = DB.withDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
 			const env = archiveEnvBuilder()
 			const res = await EventArchive.compactAgedMatches(ctx, {
 				window: env.EVENT_ARCHIVE_WINDOW,
@@ -93,7 +93,7 @@ async function handle(req: Request): Promise<Response> {
 		// re-resolves matches whose layer the engine could not place. Normally driven by a layer artifact
 		// changing; forced here for the pass that follows an out-of-band artifact swap
 		case 'reconcile-layers': {
-			const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+			const ctx = DB.withDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
 			const res = await MatchLayers.reconcileMatchLayers(ctx)
 			return { code: 'ok', ...(res ?? { skipped: 'already reconciled against this layer artifact' }) }
 		}
@@ -110,7 +110,7 @@ async function handle(req: Request): Promise<Response> {
 					message: `--expires must be a duration like 10m, up to 24h (got ${JSON.stringify(expires)})`,
 				}
 			}
-			const ctx = DB.addPooledDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
+			const ctx = DB.withDb({ ...CS.init(), log, signal: CleanupSys.shutdownSignal })
 			const res = await Announcements.announce(ctx, message, durationMs)
 			return { code: 'ok', expiresAt: res.announcement.expiresAt, warned: res.warned, failed: res.failed }
 		}

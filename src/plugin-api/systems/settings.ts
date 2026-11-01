@@ -55,7 +55,7 @@ export type UpdateResult =
 export async function updateGlobal(ctx: PluginsSys.Ctx<any>, ops: Mutation[]): Promise<UpdateResult> {
 	const invalid = invalidPath(ops)
 	if (invalid) return invalid
-	return await Settings.editGlobalSettings(ctx, ops, { type: 'plugin', pluginId: ctx.plugin.id })
+	return Settings.editGlobalSettings(ctx, ops, { type: 'plugin', pluginId: ctx.plugin.id })
 }
 
 /** `updateGlobal` for a server's settings, whether or not it is running. The connection details cannot be written. */

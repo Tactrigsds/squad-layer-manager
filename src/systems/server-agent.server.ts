@@ -10,7 +10,8 @@ import * as CS from '@/models/context-shared.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
-import { baseLogger } from '@/server/logger'
+import { baseLogger, initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as CleanupSys from '@/systems/cleanup.server'
 import type { RconTransport, RconTransportHandlers } from '@/systems/core-rcon.server'
 import * as ServerConsole from '@/systems/server-console.server'
@@ -178,18 +179,27 @@ export function rconTransportFor(serverId: string): RconTransport {
 	}
 }
 
+const module = initModule('server-agent')
+const SQL = Sql.forModule(module)
+
+namespace Q {
+	export const serverIds = SQL.def('serverIds', SQL.params({}), SQL.select({ id: Schema.servers.id }).from(Schema.servers), {
+		scans: ['servers'],
+	})
+}
+
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general })
 let ENV!: ReturnType<typeof envBuilder>
 
 export async function setup() {
 	ENV = envBuilder()
 	const log = baseLogger
-	const dbCtx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
-	const ids = (await dbCtx.db().select({ id: Schema.servers.id }).from(Schema.servers)).map((r) => r.id)
+	const dbCtx = DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
+	const ids = DB.all(dbCtx, Q.serverIds({})).map((r) => r.id)
 	const usingAgent: string[] = []
 	for (const id of ids) {
 		try {
-			const settings = await Settings.getServerSettings(dbCtx, id)
+			const settings = Settings.getServerSettings(dbCtx, id)
 			if (settings.connections.type !== 'server-agent') continue
 			usingAgent.push(id)
 			if (settings.connections.token === SETTINGS.DEV_AGENT_TOKEN && ENV.NODE_ENV !== 'development') {
@@ -237,10 +247,10 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 	}
 	const [, version, serverId, token] = match
 
-	const dbCtx = DB.addPooledDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
+	const dbCtx = DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
 	let settings
 	try {
-		settings = await Settings.getServerSettings(dbCtx, serverId)
+		settings = Settings.getServerSettings(dbCtx, serverId)
 	} catch {
 		log.warn('Server agent %s referenced unknown server %s', remote, serverId)
 		close(ws, CLOSE_UNKNOWN_SERVER, 'unknown server')

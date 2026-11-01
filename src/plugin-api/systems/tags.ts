@@ -27,5 +27,5 @@ export async function ensure(
 ): Promise<
 	{ code: 'ok'; tag: LTag.Tag } | { code: 'err:invalid-label'; message: string } | { code: 'err:invalid-settings'; message: string }
 > {
-	return await Settings.ensureTag(ctx, KEYS[kind], label, { type: 'plugin', pluginId: ctx.plugin.id })
+	return Settings.ensureTag(ctx, KEYS[kind], label, { type: 'plugin', pluginId: ctx.plugin.id })
 }

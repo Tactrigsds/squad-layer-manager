@@ -1,15 +1,19 @@
-import DatabaseConstructor, { type Database } from 'better-sqlite3'
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import * as Otel from '@opentelemetry/api'
+import DatabaseConstructor, { type Database, type Statement } from 'better-sqlite3'
+import { is } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { SQLiteInsertBase } from 'drizzle-orm/sqlite-core'
 import fs from 'node:fs'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { highlight } from 'sql-highlight'
 
-import { assertNever } from '@/lib/type-guards'
 import { tsMigrations } from '@/migrations/registry'
 import type * as CS from '@/models/context-shared.models'
+import * as ATTRS from '@/models/otel-attrs.models'
+import * as Instr from '@/server/instrumentation'
 import { initModule } from '@/server/logger'
+import * as Sql from '@/server/sql'
 import * as CleanupSys from '@/systems/cleanup.server'
 
 import type * as C from './context.ts'
@@ -18,18 +22,18 @@ import * as DbMeta from './db-meta.ts'
 import * as Env from './env.ts'
 import * as Migrate from './migrate.ts'
 
-export type Db = BetterSQLite3Database<Record<string, never>>
-
 const module = initModule('db')
-let log!: CS.Logger
+// a stand-in until setup(), for connections a test opens itself
+let log: CS.Logger = console as unknown as CS.Logger
 
 let driver!: Database
 
 // backups: boot takes a pre-migration snapshot, which is named after DB_PATH and retained in BACKUPS_DIR
 const envBuilder = Env.getEnvBuilder({ ...Env.groups.general, ...Env.groups.db, ...Env.groups.backups })
 let ENV!: ReturnType<typeof envBuilder>
-let db: Db
-let dbRedactParams: Db
+let main!: Conn
+// development and test, at debug level: each statement's values go to its module's logger
+let logValues = false
 
 // the DB_PATH default was ./data/main.sqlite3 before backups landed (they're named after the db file, and "main" said
 // nothing). A deployment that relied on the default would otherwise come up silently on a fresh, empty database while
@@ -124,21 +128,13 @@ export async function setup(opts?: { skipMigrationCheck?: boolean }) {
 		await maintenance.worker?.terminate()
 	})
 
-	db = drizzle(driver, {
-		logger: {
-			logQuery: (query: string, params: unknown[]) => {
-				if (log.isLevelEnabled('debug')) log.debug('%s %o', highlight(query), params)
-			},
-		},
-	})
+	main = connect(driver)
+	logValues = ENV.NODE_ENV !== 'production' && log.isLevelEnabled('debug')
+	Sql.observeStats()
+}
 
-	dbRedactParams = drizzle(driver, {
-		logger: {
-			logQuery: (query: string, params: unknown[]) => {
-				if (log.isLevelEnabled('debug')) log.debug('%s', highlight(query))
-			},
-		},
-	})
+export function mainConn(): Conn {
+	return main
 }
 
 // -------- the maintenance worker (see db-maintenance.worker.ts) --------
@@ -252,204 +248,434 @@ export function readBuildStamp() {
 }
 
 // the raw better-sqlite3 connection, for the plugin migration runner (same contract as core migrations:
-// DDL and data reshaping outside drizzle). Everything else goes through ctx.db().
+// DDL and data reshaping outside drizzle). Everything else goes through the executors below.
 export function rawDriver(): Database {
 	return driver
 }
 
-// try to use the getter instead of passing the db instance around by itself. that way the logger is always up-to-date. not expensive.
-export function addPooledDb<T extends object>(ctx: T) {
-	if ('db' in ctx) return ctx as T & C.Db
+// -------- connections --------
+
+// A connection as a ctx carries it (`ctx.db`). `session` prepares through the text cache, for statements built per
+// call; `direct` prepares outside it, for definitions, which hold their statement for the life of the connection.
+export type Conn = {
+	readonly driver: Database
+	readonly session: unknown
+	readonly direct: unknown
+}
+
+const TEXT_CACHE_SIZE = 500
+
+// Drizzle calls only `prepare` on its client (and `transaction`, which is never used), so it gets one of its own that
+// keeps a sqlite statement per SQL text. Drizzle binds literals as parameters, so a statement built per call renders
+// the same text every time and reuses one sqlite statement.
+function textCache(d: Database, max: number) {
+	const cache = new Map<string, Statement>()
 	return {
-		...ctx,
-		db(opts?: { redactParams?: boolean }) {
-			const redactParams = opts?.redactParams ?? false
-			if (redactParams) {
-				return dbRedactParams
-			} else {
-				return db
+		prepare(text: string) {
+			let stmt = cache.get(text)
+			if (stmt) {
+				// most recently used goes last
+				cache.delete(text)
+				cache.set(text, stmt)
+				// drizzle sets raw() before every run that wants array rows, and expects object rows straight after
+				// prepare, so a reader goes back out in object mode. raw() throws on statements that return no rows.
+				return stmt.reader ? stmt.raw(false) : stmt
 			}
+			stmt = d.prepare(text)
+			cache.set(text, stmt)
+			if (cache.size > max) cache.delete(cache.keys().next().value!)
+			return stmt
+		},
+		transaction(): never {
+			throw new Error('use DB.transaction(ctx, opts, cb)')
 		},
 	}
 }
 
-// better-sqlite3 has a single connection and drizzle's transaction API over it is synchronous, so
-// transactions with async callbacks are implemented with manual BEGIN/COMMIT. The lock serializes
-// logical transactions so awaited work inside one can't interleave statements from another.
-let txLock: Promise<void> = Promise.resolve()
-async function acquireTxLock(): Promise<() => void> {
-	let release!: () => void
-	const prev = txLock
-	txLock = new Promise((res) => (release = res))
-	await prev
-	return release
+function sessionOf(db: object): unknown {
+	return (db as { session: unknown }).session
 }
 
-// Only queries may be awaited inside a transaction: the lock above is process-wide, so a callback that waits on
-// anything else stalls every other write in the process for as long as it waits (and whatever it waited on is not
-// rolled back with the transaction anyway). See docs/developers/architecture.md.
-//
-// That property is detectable rather than merely conventional. better-sqlite3 is synchronous, so an awaited drizzle
-// query settles on a microtask, and the microtask queue always drains before the loop reaches the check phase --
-// a query-only callback therefore always beats a setImmediate scheduled alongside it. Anything that reaches the
-// network, the disk or a timer has to yield first, and loses the race.
-//
-// exported for its test: the race is the whole mechanism, and it is not otherwise observable from outside.
-export async function runDetectingYield<V>(run: () => Promise<V>): Promise<{ res: V; yielded: boolean }> {
-	let yielded = false
-	const immediate = setImmediate(() => {
-		yielded = true
-	})
+export function connect(d: Database): Conn {
+	return {
+		driver: d,
+		session: sessionOf(drizzle({ client: textCache(d, TEXT_CACHE_SIZE) as unknown as Database })),
+		direct: sessionOf(drizzle({ client: d })),
+	}
+}
+
+export function withDb<T extends CS.Ctx>(ctx: T): T & C.Db {
+	if ('db' in ctx) return ctx as T & C.Db
+	return { ...ctx, db: main }
+}
+
+// -------- transactions --------
+
+// what a transaction callback returns: `ok` commits, `err:` rolls back, and `commitDespiteError` commits an error
+export type TxResult = { code: 'ok'; commitDespiteError?: never } | { code: `err:${string}`; commitDespiteError?: true }
+// what the caller gets back: the instruction is spent by the scope that ran it
+export type Spent<R> = R extends { commitDespiteError: true } ? Omit<R, 'commitDespiteError'> : R
+// the ctx a transactional op is called with: the callback's, outside a transaction or inside one
+export type Outer<P> = Omit<P, 'tx'> & { tx?: TxHandle }
+
+export class TxHandle {
+	open = true
+	readonly tasks: (() => void)[] = []
+	constructor(
+		readonly conn: Conn,
+		// shared by every scope of one transaction: set once sqlite has ended the transaction on its own
+		readonly root: { aborted: boolean },
+		readonly depth: number,
+	) {}
+	// Runs `task` synchronously after the outermost COMMIT, once the transaction has ended, so a task may open a
+	// transaction of its own. A rolled-back scope drops its tasks. Cache changes, in-memory mirrors, socket closes and
+	// every emission go through here.
+	afterCommit(task: () => void) {
+		if (!this.open) throw new Error('afterCommit on a transaction that has ended: its task would never run')
+		this.tasks.push(task)
+	}
+}
+
+// Runs `task` once the ctx's transaction commits, or now when the ctx is in none. For in-memory state that mirrors a
+// write, which a rollback would otherwise leave changed.
+export function afterCommit(ctx: object, task: () => void) {
+	const tx = (ctx as { tx?: TxHandle }).tx
+	if (tx) tx.afterCommit(task)
+	else task()
+}
+
+// The ctx against its connection, in both directions. Types cannot prove a property absent, so a ctx captured outside
+// a transaction can reach into one, and a ctx whose transaction has ended would otherwise run in autocommit.
+function checkConn(ctx: object, conn: Conn) {
+	const tx = (ctx as { tx?: TxHandle }).tx
+	if (tx) {
+		if (!tx.open)
+			throw new Error('a statement ran with a ctx whose transaction has ended: a ctx captured by a callback, timer or afterCommit task')
+		if (tx.conn !== conn) throw new Error('a statement ran on one connection with a transaction open on another')
+		if (tx.root.aborted || !conn.driver.inTransaction)
+			throw new Error('sqlite ended this transaction after an earlier error, so its writes are gone and nothing more may run in it')
+	} else if (conn.driver.inTransaction) {
+		throw new Error('a statement ran outside the transaction that is open: a ctx captured from outside its transaction() callback')
+	}
+}
+
+function isThenable(v: unknown): v is PromiseLike<unknown> {
+	return v !== null && (typeof v === 'object' || typeof v === 'function') && typeof (v as { then?: unknown }).then === 'function'
+}
+
+function spend<R>(res: R): Spent<R> {
+	if (res && typeof res === 'object' && 'commitDespiteError' in res) {
+		const { commitDespiteError: _, ...rest } = res as R & { commitDespiteError?: true }
+		return rest as Spent<R>
+	}
+	return res as Spent<R>
+}
+
+// Ends a scope without its writes. Rethrows nothing: the caller rethrows the error that ended the scope.
+function rollbackScope(conn: Conn, handle: TxHandle) {
+	const d = conn.driver
+	// sqlite has already rolled the whole transaction back (SQLITE_FULL, INSERT OR ROLLBACK)
+	if (!d.inTransaction) {
+		handle.root.aborted = true
+		return
+	}
 	try {
-		return { res: await run(), yielded }
-	} finally {
-		clearImmediate(immediate)
-	}
-}
-
-// keyed on the tx handle, which a joined inner transaction shares with its outer one, so a violation is reported once
-// at the innermost transaction that saw it -- the precise one -- rather than again at every transaction enclosing it.
-const asyncTxReported = new WeakSet<object>()
-
-async function runTxCallback<V>(txHandle: object, callback: () => Promise<V>): Promise<V> {
-	// constructed eagerly because the offending call site is gone by the time the violation is detectable. V8 formats
-	// .stack lazily, so this costs an allocation unless it's actually reported.
-	const callSite = new Error()
-	const { res, yielded } = await runDetectingYield(callback)
-	// deliberately after the await rather than around it: a callback that threw is already loud, and throwing this on
-	// top of it would bury the actual failure
-	if (yielded && !asyncTxReported.has(txHandle)) {
-		asyncTxReported.add(txHandle)
-		reportAsyncTx(callSite)
-	}
-	return res
-}
-
-function reportAsyncTx(callSite: Error): void {
-	const msg =
-		'transaction callback yielded to the event loop: only queries may be awaited inside runTransaction, ' +
-		'because the transaction lock is process-wide. Hoist the call above runTransaction if the write needs its ' +
-		'result, or defer it with ctx.tx.unlockTasks if it is a side effect of the write. See docs/developers/architecture.md.'
-	switch (ENV.NODE_ENV) {
-		// a violation is a latency bug rather than a correctness one, and rolling a transaction back over it in prod
-		// would turn slow writes into failed ones
-		case 'production':
-			log.warn({ err: callSite }, msg)
-			return
-		case 'development':
-		case 'test':
-			callSite.message = msg
-			throw callSite
-		default:
-			assertNever(ENV.NODE_ENV)
-	}
-}
-
-// A transaction held open across many small synchronous writes, so a burst of them shares one COMMIT. Each write
-// runs in its own savepoint, so one that throws rolls back alone. It holds the process-wide lock from open to
-// commit, so the code between the two must await nothing but other writes to it, the same rule runTransaction
-// enforces. Committing on a later turn of the event loop is reported the same way.
-export type WriteBatch = {
-	write<V>(cb: () => V): V
-	commit(): void
-}
-
-export async function openWriteBatch(): Promise<WriteBatch> {
-	const callSite = new Error()
-	const release = await acquireTxLock()
-	try {
-		driver.exec('BEGIN IMMEDIATE')
+		if (handle.depth === 0) d.exec('ROLLBACK')
+		else d.exec(`ROLLBACK TO tx_${handle.depth}; RELEASE tx_${handle.depth}`)
 	} catch (err) {
-		release()
+		log.error(err, 'could not roll back a transaction scope')
+		if (!d.inTransaction) handle.root.aborted = true
+	}
+}
+
+function setOutcome(outcome: ATTRS.Db.TxOutcome) {
+	Otel.trace.getActiveSpan()?.setAttribute(ATTRS.Db.TX_OUTCOME, outcome)
+}
+
+/**
+ * Runs `cb` in a transaction, synchronously, and commits or rolls back by what it returns:
+ *
+ * | the callback | the scope |
+ * | --- | --- |
+ * | returns `{ code: 'ok', ... }` or nothing | commits |
+ * | returns `{ code: 'err:...' }` | rolls back |
+ * | returns `{ code: 'err:...', commitDespiteError: true }` | commits, and the caller gets the result without the flag |
+ * | throws | rolls back |
+ *
+ * Inside a transaction it opens a savepoint, so a nested scope's error undoes only that scope's writes. `dryRun` rolls
+ * back whatever the callback returns.
+ */
+export function transaction<Ctx extends C.Db, R extends TxResult | void>(
+	ctx: Ctx,
+	opts: { dryRun?: boolean },
+	cb: (ctx: Ctx & C.Tx) => R,
+): Spent<R> {
+	const conn = ctx.db
+	const parent = (ctx as Partial<C.Tx>).tx
+	checkConn(ctx, conn)
+	const handle = new TxHandle(conn, parent ? parent.root : { aborted: false }, parent ? parent.depth + 1 : 0)
+	conn.driver.exec(parent ? `SAVEPOINT tx_${handle.depth}` : 'BEGIN IMMEDIATE')
+	let res: R
+	try {
+		res = cb({ ...ctx, tx: handle })
+		if (isThenable(res)) {
+			// the statements after its first await fail the ctx check on their own
+			Promise.resolve(res).catch(() => {})
+			throw new Error('a transaction callback returned a promise: transactions are synchronous, so it may not await')
+		}
+	} catch (err) {
+		handle.open = false
+		rollbackScope(conn, handle)
+		setOutcome('rolled-back')
 		throw err
 	}
-	let yielded = false
-	const immediate = setImmediate(() => {
-		yielded = true
-	})
-	let open = true
-	return {
-		write(cb) {
-			if (!open) throw new Error('write to a committed batch')
-			driver.exec('SAVEPOINT batch_write')
-			try {
-				const res = cb()
-				driver.exec('RELEASE batch_write')
-				return res
-			} catch (err) {
-				driver.exec('ROLLBACK TO batch_write')
-				driver.exec('RELEASE batch_write')
-				throw err
-			}
-		},
-		commit() {
-			if (!open) return
-			open = false
-			clearImmediate(immediate)
-			try {
-				driver.exec('COMMIT')
-			} catch (err) {
-				if (driver.inTransaction) driver.exec('ROLLBACK')
-				throw err
-			} finally {
-				release()
-			}
-			if (yielded) {
-				callSite.message = 'write batch was held open across a turn of the event loop. See openWriteBatch.'
-				log.error({ err: callSite }, callSite.message)
-			}
-		},
+	handle.open = false
+	if (handle.root.aborted) {
+		rollbackScope(conn, handle)
+		setOutcome('rolled-back')
+		throw new Error('sqlite ended this transaction after an error its callback caught, so its writes are gone')
+	}
+	const r = res as { code?: string; commitDespiteError?: true } | undefined
+	const commit = !opts.dryRun && (r === undefined || r.code === 'ok' || r.commitDespiteError === true)
+	if (!commit) {
+		rollbackScope(conn, handle)
+		setOutcome('rolled-back')
+		return spend(res)
+	}
+	if (parent) {
+		conn.driver.exec(`RELEASE tx_${handle.depth}`)
+		parent.tasks.push(...handle.tasks)
+		setOutcome('released')
+		return spend(res)
+	}
+	try {
+		conn.driver.exec('COMMIT')
+	} catch (err) {
+		// a deferred foreign-key violation fails COMMIT and leaves the transaction open
+		if (conn.driver.inTransaction) conn.driver.exec('ROLLBACK')
+		setOutcome('rolled-back')
+		throw err
+	}
+	setOutcome('committed')
+	for (const task of handle.tasks) {
+		try {
+			task()
+		} catch (err) {
+			// the write has committed, so the task's failure is not the caller's
+			log.error(err, 'an afterCommit task failed')
+		}
+	}
+	return spend(res)
+}
+
+/**
+ * A transactional server function: `spanOpSync` plus `transaction()`. The callback declares the ctx it needs, and the
+ * op is callable with that ctx outside a transaction or inside one, where it runs in a savepoint.
+ */
+export function txOp<P extends C.Db & C.Tx, A extends unknown[], R extends TxResult | void>(
+	name: string,
+	opts: Instr.SpanOpSyncOpts<(ctx: Outer<P>, ...args: A) => Spent<R>> & { dryRun?: boolean },
+	cb: (ctx: P, ...args: A) => R,
+): (ctx: Outer<P>, ...args: A) => Spent<R> {
+	const txOpts = { dryRun: opts.dryRun }
+	return Instr.spanOpSync(name, opts, (ctx: Outer<P>, ...args: A) =>
+		transaction(ctx as unknown as P, txOpts, (tx) => cb(tx as P, ...args)),
+	) as (ctx: Outer<P>, ...args: A) => Spent<R>
+}
+
+// -------- executors --------
+
+// A statement an executor runs: a builder from SQL.select/insert/update/delete, or a definition called with its values.
+type Runnable<M extends string> = { [K in M]: (...args: any[]) => unknown }
+type Stmt<M extends string> = Runnable<M> | Sql.Called<Runnable<M>>
+type Result<S, M extends string> =
+	S extends Sql.Called<infer T> ? (T extends Runnable<M> ? ReturnType<T[M]> : never) : S extends Runnable<M> ? ReturnType<S[M]> : never
+
+type Ran = Sql.Preparable & { session: Sql.Unbound }
+
+const SLOW_MS = 100
+
+type ExecCtx = C.Db & { tx?: TxHandle; sqlStats?: Instr.SqlStats }
+
+function prepare(conn: Conn, stmt: Ran | Sql.Called<unknown>): { prepared: Sql.PreparedQuery; entry?: Sql.Entry; stats: Sql.Stats } {
+	if (Sql.CALLED in stmt) {
+		const entry = stmt[Sql.CALLED]
+		let prepared = entry.prepared.get(conn)
+		if (!prepared) {
+			// a view whose session is the connection's own: the definition's builder is frozen
+			prepared = entry.stmt._prepare.call(Object.create(entry.stmt, { session: { value: conn.direct } }), false)
+			entry.prepared.set(conn, prepared)
+		}
+		return { prepared, entry, stats: entry.stats }
+	}
+	const unbound = stmt.session
+	if (!(unbound instanceof Sql.Unbound)) {
+		if (typeof stmt === 'function') throw new TypeError('a definition must be called with its values before it runs')
+		throw new TypeError('build a statement with SQL.select/insert/update/delete from Sql.forModule')
+	}
+	stmt.session = conn.session as Sql.Unbound
+	try {
+		return { prepared: stmt._prepare(true), stats: unbound.stats }
+	} finally {
+		stmt.session = unbound
 	}
 }
 
-export async function runTransaction<T extends C.Db, V>(
-	ctx: T & { tx?: { rollback: () => void } },
-	opts: { redactParams?: boolean },
-	callback: (ctx: T & C.Tx) => Promise<V>,
-): Promise<V>
-export async function runTransaction<T extends C.Db, V>(
-	ctx: T & { tx?: { rollback: () => void } },
-	callback: (ctx: T & C.Tx) => Promise<V>,
-): Promise<V>
-export async function runTransaction<T extends C.Db, V>(
-	ctx: T & { tx?: { rollback: () => void } },
-	secondArg: ((ctx: T & C.Tx) => Promise<V>) | { redactParams?: boolean },
-	thirdArg?: (ctx: T & C.Tx) => Promise<V>,
-): Promise<V> {
-	const opts = typeof secondArg === 'object' ? secondArg : undefined
-	const callback = (typeof secondArg === 'function' ? secondArg : thirdArg)!
-
-	// already inside a transaction: join it. an inner rollback() rolls back the outer transaction
-	if (ctx.tx) return await runTxCallback(ctx.tx, () => callback(ctx as T & C.Tx))
-
-	let res!: Awaited<V>
-	let shouldRollback = false
-	const unlockTasks: C.Tx['tx']['unlockTasks'] = []
-	const txHandle: C.Tx['tx'] = {
-		rollback: () => {
-			shouldRollback = true
-		},
-		unlockTasks,
-	}
-	const release = await acquireTxLock()
+function exec(ctx: ExecCtx, stmt: unknown, method: 'all' | 'get' | 'run', checked: boolean): unknown {
+	const conn = ctx.db
+	if (!checked) checkConn(ctx, conn)
+	const t0 = performance.now()
+	const { prepared, entry, stats } = prepare(conn, stmt as Ran)
+	const values = entry ? (stmt as Sql.Called<unknown>).values : undefined
 	try {
-		driver.exec('BEGIN IMMEDIATE')
-		try {
-			res = await runTxCallback(txHandle, () =>
-				callback({
-					...ctx,
-					tx: txHandle,
-					db: () => ctx.db(opts),
-				}),
-			)
-			driver.exec(shouldRollback ? 'ROLLBACK' : 'COMMIT')
-		} catch (err) {
-			if (driver.inTransaction) driver.exec('ROLLBACK')
-			throw err
-		}
+		return prepared[method](values)
+	} catch (err) {
+		stats.errors++
+		// sqlite rolls back the whole transaction on some errors (SQLITE_FULL), not only the statement
+		if (ctx.tx && !conn.driver.inTransaction) ctx.tx.root.aborted = true
+		throw err
 	} finally {
-		release()
+		const ms = performance.now() - t0
+		stats.record(ms)
+		const st = ctx.sqlStats
+		if (st) {
+			st.count++
+			st.ms += ms
+		}
+		if (ms > SLOW_MS || logValues) {
+			const l = (entry?.module ?? (stmt as Ran).session.module).getLogger()
+			const statement = entry?.name ?? stats.name
+			if (ms > SLOW_MS) l.warn({ statement, ms: Math.round(ms) }, 'slow statement: %s', prepared.query.sql)
+			// never in production; Secrets are masked by the logger
+			if (logValues) {
+				const logged =
+					entry && values ? loggedValues(values, entry.unlogged) : (prepared.query.params as unknown[]).map((v) => loggedValue(v, 0))
+				l.debug({ statement, values: logged }, '%s', highlight(prepared.query.sql))
+			}
+		}
 	}
-	await Promise.all(unlockTasks.map(async (task) => task()))
-	return res
+}
+
+const LOGGED_CHARS = 200
+const LOGGED_ITEMS = 20
+const LOGGED_DEPTH = 3
+
+function loggedValues(values: Record<string, unknown>, unlogged: ReadonlySet<string>) {
+	const out: Record<string, unknown> = {}
+	for (const k in values) out[k] = unlogged.has(k) ? '[redacted]' : loggedValue(values[k], 0)
+	return out
+}
+
+// a value as the debug log shows it, cut short where it is long or deep
+function loggedValue(v: unknown, depth: number): unknown {
+	if (typeof v === 'string') return v.length > LOGGED_CHARS ? `${v.slice(0, LOGGED_CHARS)}… (${v.length} chars)` : v
+	if (v instanceof Uint8Array) return `[${v.byteLength} bytes]`
+	if (v === null || typeof v !== 'object') return v
+	const isArray = Array.isArray(v)
+	if (!isArray && Object.getPrototypeOf(v) !== Object.prototype) return v
+	if (depth >= LOGGED_DEPTH) return isArray ? `[${v.length} items]` : '[object]'
+	if (isArray) {
+		const head = v.slice(0, LOGGED_ITEMS).map((x) => loggedValue(x, depth + 1))
+		return v.length > LOGGED_ITEMS ? [...head, `… (${v.length} items)`] : head
+	}
+	const out: Record<string, unknown> = {}
+	for (const k in v) out[k] = loggedValue((v as Record<string, unknown>)[k], depth + 1)
+	return out
+}
+
+export function all<S extends Stmt<'all'>>(ctx: C.Db, stmt: S): Result<S, 'all'> {
+	return exec(ctx, stmt, 'all', false) as Result<S, 'all'>
+}
+
+export function get<S extends Stmt<'get'>>(ctx: C.Db, stmt: S): Result<S, 'get'> {
+	return exec(ctx, stmt, 'get', false) as Result<S, 'get'>
+}
+
+export type RunResult = { changes: number; lastInsertRowid: number | bigint }
+export type Changes = number | { atLeast?: number; atMost?: number }
+export type Checked<O extends string> = { code: 'ok'; changes: number; lastInsertRowid?: number | bigint } | { code: O; changes: number }
+
+/**
+ * Runs a write. With `changes`, compares sqlite's count of rows the statement wrote (`sqlite3_changes`: not rows
+ * written by triggers, cascades or REPLACE) and returns `otherwise` when it does not match. A write that fails a check
+ * with an upper bound is undone, in a transaction of its own or a savepoint, so when the executor returns either the
+ * statement's effect is in the current scope and the result is `ok`, or the effect is absent.
+ */
+export function run(ctx: C.Db, stmt: Stmt<'run'>): RunResult
+export function run<O extends `err:${string}`>(ctx: C.Db, stmt: Stmt<'run'>, opts: { changes: Changes; otherwise: O }): Checked<O>
+export function run(ctx: C.Db, stmt: Stmt<'run'>, opts?: { changes: Changes; otherwise: string }): RunResult | Checked<string> {
+	if (!opts) return exec(ctx, stmt, 'run', false) as RunResult
+	const c = opts.changes
+	const min = typeof c === 'number' ? c : (c.atLeast ?? 0)
+	const max = typeof c === 'number' ? c : (c.atMost ?? Infinity)
+	const built = Sql.CALLED in (stmt as object) ? (stmt as Sql.Called<unknown>)[Sql.CALLED].stmt : stmt
+	const isInsert = is(built, SQLiteInsertBase)
+	const result = (r: RunResult): Checked<string> =>
+		r.changes >= min && r.changes <= max
+			? isInsert && r.changes > 0
+				? { code: 'ok', changes: r.changes, lastInsertRowid: r.lastInsertRowid }
+				: { code: 'ok', changes: r.changes }
+			: { code: opts.otherwise, changes: r.changes }
+	// a write that falls short of a lower bound changed nothing beyond what it reports, so it runs bare
+	if (max === Infinity) return result(exec(ctx, stmt, 'run', false) as RunResult)
+	const conn = ctx.db
+	checkConn(ctx, conn)
+	const inTx = Boolean((ctx as Partial<C.Tx>).tx)
+	conn.driver.exec(inTx ? 'SAVEPOINT stmt_check' : 'BEGIN IMMEDIATE')
+	let r: RunResult
+	try {
+		r = exec(ctx, stmt, 'run', true) as RunResult
+	} catch (err) {
+		if (conn.driver.inTransaction) conn.driver.exec(inTx ? 'ROLLBACK TO stmt_check; RELEASE stmt_check' : 'ROLLBACK')
+		throw err
+	}
+	const out = result(r)
+	if (out.code === 'ok') conn.driver.exec(inTx ? 'RELEASE stmt_check' : 'COMMIT')
+	else conn.driver.exec(inTx ? 'ROLLBACK TO stmt_check; RELEASE stmt_check' : 'ROLLBACK')
+	return out
+}
+
+const totalChangesStmts = new WeakMap<Conn, Statement>()
+
+// sqlite's count of rows written on the ctx's connection since it opened (`sqlite3_total_changes`), which, unlike a
+// statement's own count, includes the rows foreign-key actions deleted or updated
+export function totalChanges(ctx: C.Db): number {
+	let stmt = totalChangesStmts.get(ctx.db)
+	if (!stmt) {
+		stmt = ctx.db.driver.prepare('SELECT total_changes() AS n').pluck()
+		totalChangesStmts.set(ctx.db, stmt)
+	}
+	return stmt.get() as number
+}
+
+// -------- the boot check --------
+
+// Development and test: prepares every defined statement, and fails on a table scan the definition did not declare.
+// Runs once every system is set up, so every module has defined its statements.
+export function checkStatements(conn: Conn) {
+	const problems: string[] = []
+	for (const r of Sql.registry.values()) {
+		r.enumerate?.()
+		for (const entry of r.entries()) {
+			try {
+				conn.driver.prepare(entry.text)
+				const plan = conn.driver.prepare(`EXPLAIN QUERY PLAN ${entry.text}`).all(
+					...entry.text
+						.split('?')
+						.slice(1)
+						.map(() => null),
+				) as {
+					detail: string
+				}[]
+				for (const { detail } of plan) {
+					// a scan through an index still reads the whole index; json_each's virtual table reads only its argument
+					const m = /^SCAN (\S+)/.exec(detail)
+					if (m && !/VIRTUAL TABLE/.test(detail) && !entry.scans.includes(m[1])) problems.push(`${entry.name}: ${detail}`)
+				}
+			} catch (err) {
+				problems.push(`${entry.name}: ${(err as Error).message}`)
+			}
+		}
+	}
+	return problems
 }
