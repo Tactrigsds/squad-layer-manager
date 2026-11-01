@@ -275,8 +275,7 @@ exists.</p>
 a self-deadlock, and sorts multiple acquisitions into a stable global order so overlapping mutex sets cannot
 deadlock. The <code>IsolatedSubject</code> family exists because of this: they re-enter the root async context before emitting,
 so a subscriber does not inherit the publisher&#x27;s mutex ownership.</p>
-<p>Three parallel buckets defer work until an enclosing critical section fully ends. All three are mutable arrays, shared
-by reference through ctx spreads:</p>
+<p>Three mechanisms defer work until an enclosing critical section fully ends:</p>
 
 
 
@@ -302,7 +301,7 @@ by reference through ctx spreads:</p>
 
 
 
-<div class="docs-table"><table><thead><tr><th>Bucket</th><th>Runs after</th><th>Typical use</th></tr></thead><tbody><tr><td><code>ctx.tx.unlockTasks</code></td><td>a db transaction commits</td><td>don&#x27;t broadcast a change a rollback would undo</td></tr><tr><td>mutex <code>releaseTasks</code></td><td>a mutex set fully unlocks</td><td></td></tr><tr><td><code>ctx.deferred</code></td><td>an ancestor awaits it</td><td>best-effort background work, kept inside the ancestor&#x27;s scope</td></tr></tbody></table></div>
+<div class="docs-table"><table><thead><tr><th>Mechanism</th><th>Runs after</th><th>Typical use</th></tr></thead><tbody><tr><td><code>DB.afterCommit</code></td><td>the outermost commit</td><td>don&#x27;t broadcast a change a rollback would undo</td></tr><tr><td>mutex <code>releaseTasks</code></td><td>a mutex set fully unlocks</td><td></td></tr><tr><td><code>ctx.deferred</code></td><td>an ancestor awaits it</td><td>best-effort background work, kept inside the ancestor&#x27;s scope</td></tr></tbody></table></div>
 <h3 id="orpc-over-a-websocket" class="docs-heading">oRPC over a WebSocket<a href="#orpc-over-a-websocket" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/architecture.md#orpc-over-a-websocket" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <p>All client-server communication is oRPC over a <strong>single WebSocket</strong>, not HTTP. The router is a flat object of
 per-system subrouters, each built from <code>getOrpcBase(module)</code>, which installs two middlewares. The first wraps the
@@ -852,8 +851,9 @@ survive <code>z.toJSONSchema</code>, so the settings form, its table of contents
 text. A unit test fails on any setting without a label. Mark a subtree <code>opaque</code> when it is edited as one value.</p>
 <h2 id="data-and-persistence" class="docs-heading">Data and persistence<a href="#data-and-persistence" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/architecture.md#data-and-persistence" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>better-sqlite3 + drizzle, WAL mode. The schema is deliberately small, because most structured state is stored in JSON
-columns rather than being normalized. Those columns are <strong>superjson</strong>, not plain JSON, transformed by a pair that
-walks the drizzle table config, which is what lets bigints (Discord snowflakes) and Dates round-trip.</p>
+columns rather than being normalized. Most of those columns are <strong>superjson</strong>, not plain JSON, which is what lets bigints
+(Discord snowflakes), Dates and Maps round-trip. <a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/database.md">database.md</a> describes how server code reads and writes
+the database: statements, definitions, transactions and the checks on them.</p>
 <p><strong>Checkpoints, backup snapshots and vacuuming run on a worker thread</strong> (<code>src/server/db-maintenance.worker.ts</code>) with
 its own connection. On the main connection, sqlite checkpoints inside whichever COMMIT pushes the WAL past
 <code>wal_autocheckpoint</code>, which stalls the event loop for the length of a write-back and an fsync. The main connection
@@ -864,22 +864,10 @@ The database runs with <code>auto_vacuum=INCREMENTAL</code>, and once more than 
 to the filesystem 128 pages at a time, which holds the write lock for a couple of milliseconds per step. A database
 created before this was switched over by one full <code>VACUUM</code>, which <code>applyPendingMigrations</code> runs under its exclusive
 lock (<code>src/server/migrate.ts</code>).</p>
-<p><strong>Transactions serialize globally.</strong> better-sqlite3 is one synchronous connection, so <code>runTransaction</code> serializes
-logical transactions behind a promise-chain lock. It is re-entrant: an inner transaction joins the outer one, and an
-inner rollback rolls back the outer.</p>
-<p>Because that lock is process-wide, <strong>a <code>runTransaction</code> callback must never await anything but a query.</strong> Queries
-resolve immediately, so a query-only transaction holds the lock for microseconds. Awaiting rcon, discord, sftp or
-any other network call inside one stalls every write in the process for that round-trip, and the external call is
-not rolled back with the transaction anyway. Two ways out, both already used:</p>
-<ul>
-<li><strong>Hoist</strong> the call above the transaction, when the write depends on its result.</li>
-<li><strong>Defer</strong> it onto <code>ctx.tx.unlockTasks</code>, when it is a side effect of the write. These belong to the <em>outermost</em>
-transaction, so a deferred task escapes an enclosing transaction too.</li>
-</ul>
-<p><strong>The rule is enforced.</strong> <code>runTransaction</code> races every callback against a <code>setImmediate</code>: a query-only callback settles
-on a microtask and always wins, while one that reaches the network, the disk or a timer has to yield and loses. Losing
-throws in development and test and warns in production, where a violation is a latency bug and failing the write would
-be worse.</p>
+<p><strong>Transactions are synchronous.</strong> better-sqlite3 is one synchronous connection, so a statement never yields, and a
+<code>DB.transaction</code> callback may not await. Nothing else can run between a transaction&#x27;s statements, so it needs no lock.
+Work that waits, such as an rcon command, goes before the transaction or after it, and in-memory state that mirrors a
+write changes in <code>DB.afterCommit</code>. Async flows that read, wait and then write hold a mutex across the whole flow instead.</p>
 <p><strong>Migrations</strong> use a custom runner (<code>src/server/migrate.ts</code>, <code>pnpm db:migrate</code>) that merges the <code>.sql</code> files
 drizzle-kit generated up to 0007 with the hand-written <code>.ts</code> migrations after them into one filename-ordered sequence.
 Two constraints shape it:</p>
