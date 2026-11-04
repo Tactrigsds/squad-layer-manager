@@ -21,6 +21,18 @@ export function server(serverId: string): Readonly<SETTINGS.PublicServerSettings
 	return SquadServer.find(serverId)?.serverSettings.settings
 }
 
+export type ServerSummary = { id: string; displayName: string; enabled: boolean; sandbox: boolean }
+
+/** Every server SLM knows of, running or not. A sandbox is one SLM emulates, with no real squad server behind it. */
+export function listServers(): ServerSummary[] {
+	return Settings.listServerEntries().map((entry) => ({
+		id: entry.id,
+		displayName: entry.displayName,
+		enabled: entry.enabled,
+		sandbox: entry.sandbox,
+	}))
+}
+
 /** The global settings each time they change. Does not emit the current value. */
 export function globalChanges(ctx: PluginsSys.Ctx<any>): Rx.Observable<Readonly<SETTINGS.GlobalSettings>> {
 	return Settings.settings$.pipe(

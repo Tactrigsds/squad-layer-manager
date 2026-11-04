@@ -80,6 +80,9 @@ COPY --from=builder /app/register-otel.mjs /app/register-source-maps.mjs ./
 # the server instantiates the same engine the browser does, and reads the wasm off disk
 COPY --from=builder /app/assets/layer-engine.wasm ./assets/layer-engine.wasm
 
+# the only fonts rasterized SVG can draw text in (see systems/svg-raster.server.ts)
+COPY assets/fonts ./assets/fonts
+
 # the layer table and the components its encoded values index into. Small enough to ship, so the image boots on
 # its own; a deployment that wants a different layer version drops the pair into its /app/data mount, which is
 # searched first (see systems/layer-artifacts.server.ts).

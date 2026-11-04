@@ -35,6 +35,7 @@ import * as pluginServers from '@/plugin-api/plugin/servers'
 import * as serverDb from '@/plugin-api/server/db'
 import * as serverInstrumentation from '@/plugin-api/server/instrumentation'
 import * as serverLogger from '@/plugin-api/server/logger'
+import * as serverSvgRaster from '@/plugin-api/server/svg-raster'
 import * as systemsAppEvents from '@/plugin-api/systems/app-events'
 import * as systemsDiscord from '@/plugin-api/systems/discord'
 import * as systemsFilterEntity from '@/plugin-api/systems/filter-entity'
@@ -91,6 +92,7 @@ export function setup() {
 		'slm/server/db': serverDb,
 		'slm/server/instrumentation': serverInstrumentation,
 		'slm/server/logger': serverLogger,
+		'slm/server/svg-raster': serverSvgRaster,
 		'slm/systems/app-events': systemsAppEvents,
 		'slm/systems/discord': systemsDiscord,
 		'slm/systems/filter-entity': systemsFilterEntity,

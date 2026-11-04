@@ -93,6 +93,7 @@
 		"@opentelemetry/semantic-conventions": "^1.43.0",
 		"@orpc/otel": "^1.14.8",
 		"@radix-ui/react-direction": "^1.1.4",
+		"@resvg/resvg-js": "^2.6.2",
 		"better-sqlite3": "^12.11.1",
 		"bufferutil": "^4.1.0",
 		"cnfast": "^0.0.8",
