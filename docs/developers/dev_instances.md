@@ -149,6 +149,12 @@ Blocked deliberately, via env overrides in `src/dev/instance.ts`:
 - **Discord** is off (`DISCORD_ENABLED=false`). The oauth callback is built from `ORIGIN`, so real login would need
   every slot's port registered as a redirect uri on the discord app. `QUERY_PARAM_AUTH_BYPASS` stands in. RBAC roles
   that come from discord are unavailable as a result, but the `SUPER_USERS` bootstrap still applies.
+
+   To work on something that posts to Discord, put a test bot's `DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN` and
+   `DISCORD_HOME_GUILD_ID` in `.env.dev-discord` at the checkout's root. The instance then connects that bot to that
+   guild. Sign-in stays on `QUERY_PARAM_AUTH_BYPASS`. Git ignores the file, and a worktree does not share it with the
+   main checkout. Use a guild made for testing, since the instance posts there for real.
+
 - **BattleMetrics** points at the emulator's stub, and provisioning writes the stub's org id and a dummy token into
   the workspace's settings. The real API would write flags and notes to the live org.
 
