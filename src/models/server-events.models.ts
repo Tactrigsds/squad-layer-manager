@@ -361,6 +361,19 @@ export const PLAYER_WOUNDED_META = meta<PlayerWounded<AnyPlayer>>({
 	],
 })
 
+export type PlayerRevived<P = SM.PlayerId> = {
+	type: 'PLAYER_REVIVED'
+} & SM.PlayerAssoc<'reviver', P> &
+	SM.PlayerAssoc<'revived', P> &
+	Base
+
+export const PLAYER_REVIVED_META = meta<PlayerRevived<AnyPlayer>>({
+	players: [
+		{ assocType: 'reviver', get: (e) => e.reviver },
+		{ assocType: 'revived', get: (e) => e.revived },
+	],
+})
+
 // The vehicle or deployable a destroyed or radio-damaged event is about. `targetType` is the vehicle's class from the
 // layer data (MBT, LOGI_WHEELED, ...) or a DSTR.DeployableType, and null for a vehicle blueprint the layer data does
 // not know.
@@ -395,6 +408,26 @@ export const VEHICLE_DESTROYED_META = meta<VehicleDestroyed<AnyPlayer>>({
 		{ assocType: 'attacker', get: (e) => e.attacker },
 		{ assocType: 'victim', get: (e) => e.crew },
 	],
+})
+
+// One player's hit on a vehicle, for every hit that is not the vehicle burning, cooking off or crashing. Hits on a
+// vehicle already destroyed are left out.
+export type VehicleDamaged<P = SM.PlayerId> = {
+	type: 'VEHICLE_DAMAGED'
+	vehicle: TargetActor
+	// the side that fielded it, found as for VEHICLE_DESTROYED
+	teamId: SM.TeamId | null
+	// the health the hit took, after armour
+	damage: number
+	damageType: string | null
+	// null when the causer is a crewed vehicle SLM could not match to its occupant
+	weapon: string | null
+	variant: DestroyedVariant
+} & SM.PlayerAssoc<'attacker', P> &
+	Base
+
+export const VEHICLE_DAMAGED_META = meta<VehicleDamaged<AnyPlayer>>({
+	players: [{ assocType: 'attacker', get: (e) => e.attacker }],
 })
 
 export type DeployableDestroyed<P = SM.PlayerId> = {
@@ -432,11 +465,12 @@ export const FOB_RADIO_DAMAGED_META = meta<FobRadioDamaged<AnyPlayer>>({
 	players: [{ assocType: 'attacker', get: (e) => e.attacker }],
 })
 
-export type TargetedEvent<P = SM.PlayerId> = VehicleDestroyed<P> | DeployableDestroyed<P> | FobRadioDamaged<P>
+export type TargetedEvent<P = SM.PlayerId> = VehicleDestroyed<P> | VehicleDamaged<P> | DeployableDestroyed<P> | FobRadioDamaged<P>
 
 export function targetOf(event: TargetedEvent<any>): TargetActor {
 	switch (event.type) {
 		case 'VEHICLE_DESTROYED':
+		case 'VEHICLE_DAMAGED':
 			return event.vehicle
 		case 'DEPLOYABLE_DESTROYED':
 			return event.deployable
@@ -448,7 +482,15 @@ export function targetOf(event: TargetedEvent<any>): TargetActor {
 }
 
 export function isTargetedEvent<E extends { type: string }>(event: E): event is Extract<E, { type: TargetedEvent['type'] }> {
-	return event.type === 'VEHICLE_DESTROYED' || event.type === 'DEPLOYABLE_DESTROYED' || event.type === 'FOB_RADIO_DAMAGED'
+	switch (event.type) {
+		case 'VEHICLE_DESTROYED':
+		case 'VEHICLE_DAMAGED':
+		case 'DEPLOYABLE_DESTROYED':
+		case 'FOB_RADIO_DAMAGED':
+			return true
+		default:
+			return false
+	}
 }
 
 export type SyntheticEvent<P = SM.PlayerId> =
@@ -485,7 +527,9 @@ export type Event<P = SM.PlayerId> =
 	| PlayerWarned<P>
 	| PlayerDied<P>
 	| PlayerWounded<P>
+	| PlayerRevived<P>
 	| VehicleDestroyed<P>
+	| VehicleDamaged<P>
 	| DeployableDestroyed<P>
 	| FobRadioDamaged<P>
 	// synthetic
@@ -589,6 +633,7 @@ export const PlayerDiedSchema = event('PLAYER_DIED', {
 	deathVariant: ZodUtils.internedEnum(SM.LogEvents.DeathVariantSchema.options),
 })
 export const PlayerWoundedSchema = event('PLAYER_WOUNDED', woundedOrDiedShape)
+export const PlayerRevivedSchema = event('PLAYER_REVIVED', { reviver: SM.PlayerIdSchema, revived: SM.PlayerIdSchema })
 const TargetActorSchema = z.object({ className: z.string(), instanceId: z.number(), targetType: z.string().nullable() })
 const destroyedShape = {
 	teamId: SM.TeamIdSchema.nullable(),
@@ -602,6 +647,15 @@ export const VehicleDestroyedSchema = event('VEHICLE_DESTROYED', {
 	...destroyedShape,
 	vehicle: TargetActorSchema,
 	crew: z.array(SM.PlayerIdSchema),
+})
+export const VehicleDamagedSchema = event('VEHICLE_DAMAGED', {
+	vehicle: TargetActorSchema,
+	teamId: SM.TeamIdSchema.nullable(),
+	damage: z.number(),
+	damageType: z.string().nullable(),
+	weapon: z.string().nullable(),
+	variant: PlayerWoundedOrDiedVariantSchema.nullable(),
+	attacker: SM.PlayerIdSchema,
 })
 export const DeployableDestroyedSchema = event('DEPLOYABLE_DESTROYED', { ...destroyedShape, deployable: TargetActorSchema })
 export const FobRadioDamagedSchema = event('FOB_RADIO_DAMAGED', {
@@ -666,7 +720,9 @@ export const EventSchema = z.discriminatedUnion('type', [
 	PlayerWarnedSchema,
 	PlayerDiedSchema,
 	PlayerWoundedSchema,
+	PlayerRevivedSchema,
 	VehicleDestroyedSchema,
+	VehicleDamagedSchema,
 	DeployableDestroyedSchema,
 	FobRadioDamagedSchema,
 	PlayerDetailsChangedSchema,
@@ -717,7 +773,9 @@ export const EVENT_META = {
 	PLAYER_WARNED: PLAYER_WARNED_META,
 	PLAYER_DIED: PLAYER_DIED_META,
 	PLAYER_WOUNDED: PLAYER_WOUNDED_META,
+	PLAYER_REVIVED: PLAYER_REVIVED_META,
 	VEHICLE_DESTROYED: VEHICLE_DESTROYED_META,
+	VEHICLE_DAMAGED: VEHICLE_DAMAGED_META,
 	DEPLOYABLE_DESTROYED: DEPLOYABLE_DESTROYED_META,
 	FOB_RADIO_DAMAGED: FOB_RADIO_DAMAGED_META,
 	TEAMS_POLLED_UPDATE: TEAMS_POLLED_UPDATE_META,

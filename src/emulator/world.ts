@@ -335,6 +335,10 @@ export class World {
 		this.#log(Fmt.logWound(victim, attacker, 60, weapon))
 	}
 
+	revivePlayer(revived: EmuPlayer, reviver: EmuPlayer) {
+		this.#log(Fmt.logRevive(reviver, revived))
+	}
+
 	killPlayer(victim: EmuPlayer, attacker: EmuPlayer, weapon = 'BP_M4_M68') {
 		if (victim.teamId === 1 || victim.teamId === 2) this.tickets[victim.teamId - 1] = Math.max(0, this.tickets[victim.teamId - 1] - 1)
 		this.#log(Fmt.logDie(victim, attacker, 100, weapon))
@@ -360,6 +364,27 @@ export class World {
 			Fmt.logVehicleHealth(crew[0]?.name.trim() ?? actor, 1050, causer, attacker, -50),
 			...crew.map((p, seat) => Fmt.logVehicleExited(p, actor, seat)),
 		)
+	}
+
+	// the vehicle of each blueprint that damageVehicle is wearing down, until it is destroyed
+	#damagedVehicles = new Map<string, { actor: string; health: number }>()
+
+	// One hit on an empty vehicle of the blueprint, so successive calls wear the same vehicle down until it is
+	// destroyed, after which the next call starts on a new one.
+	damageVehicle(attacker: EmuPlayer, blueprint: string, damage: number, weapon = 'BP_RPG7_Tandem_Heat_Proj2') {
+		let vehicle = this.#damagedVehicles.get(blueprint)
+		if (!vehicle) {
+			vehicle = { actor: `${blueprint}_C_${this.#nextInstanceId--}`, health: 1000 }
+			this.#damagedVehicles.set(blueprint, vehicle)
+		}
+		vehicle.health -= damage
+		if (vehicle.health <= 0) this.#damagedVehicles.delete(blueprint)
+		const causer = `${weapon}_C_${this.#nextInstanceId--}`
+		this.#log(
+			Fmt.logVehicleDamageApplied(vehicle.actor, damage, 'BP_HAT_DamageType_C'),
+			Fmt.logVehicleHealth(vehicle.actor, damage, causer, attacker, vehicle.health),
+		)
+		return vehicle.health
 	}
 
 	destroyDeployable(attacker: EmuPlayer, blueprint: string, weapon = 'BP_M67Frag') {

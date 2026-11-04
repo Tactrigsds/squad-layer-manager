@@ -294,7 +294,9 @@ export type EventEnriched =
 	| (SE.AdminBroadcast & { player?: SM.Player })
 	| SE.PlayerDied<SM.Player>
 	| SE.PlayerWounded<SM.Player>
+	| SE.PlayerRevived<SM.Player>
 	| SE.VehicleDestroyed<SM.Player>
+	| SE.VehicleDamaged<SM.Player>
 	| SE.DeployableDestroyed<SM.Player>
 	| SE.FobRadioDamaged<SM.Player>
 	| AggregatedWarns
@@ -373,7 +375,9 @@ const RENDERS_IN_FEED = {
 	TICKETS_CHANGED: () => false,
 	PLAYER_DIED: () => true,
 	PLAYER_WOUNDED: () => true,
+	PLAYER_REVIVED: () => true,
 	VEHICLE_DESTROYED: () => true,
+	VEHICLE_DAMAGED: () => true,
 	DEPLOYABLE_DESTROYED: () => true,
 	FOB_RADIO_DAMAGED: () => true,
 	MAP_SET: () => true,
@@ -432,7 +436,9 @@ export namespace Wire {
 		SQUAD_RENAMED: { squads: ['squad'] },
 		PLAYER_DIED: { players: ['victim', 'attacker'] },
 		PLAYER_WOUNDED: { players: ['victim', 'attacker'] },
+		PLAYER_REVIVED: { players: ['reviver', 'revived'] },
 		VEHICLE_DESTROYED: { players: ['attacker'], playerLists: ['crew'] },
+		VEHICLE_DAMAGED: { players: ['attacker'] },
 		DEPLOYABLE_DESTROYED: { players: ['attacker'] },
 		FOB_RADIO_DAMAGED: { players: ['attacker'] },
 		MAP_SET: { players: ['actorPlayer'] },
@@ -1314,6 +1320,28 @@ export function interpolateEvent(state: InterpolableState, event: SE.Event, opts
 			return { ...event, victim, attacker }
 		}
 
+		case 'PLAYER_REVIVED': {
+			const reviver = state.players.get(event.reviver)
+			if (!reviver) {
+				return noop(`Reviver ${SM.PlayerIds.prettyPrint(event.reviver)} of ${event.type} was not found in the interpolated player list`)
+			}
+			const revived = state.players.get(event.revived)
+			if (!revived) {
+				return noop(`Revived ${SM.PlayerIds.prettyPrint(event.revived)} of ${event.type} was not found in the interpolated player list`)
+			}
+			return { ...event, reviver, revived }
+		}
+
+		case 'VEHICLE_DAMAGED': {
+			const attacker = state.players.get(event.attacker)
+			if (!attacker) {
+				return noop(
+					`Attacker ${SM.PlayerIds.prettyPrint(event.attacker)} of ${event.type} was not found in the interpolated player list`,
+				)
+			}
+			return { ...event, attacker }
+		}
+
 		// Nothing is lost to a missing crew member, so only an attacker who cannot be named drops the event, as a
 		// kill with an unknown attacker does.
 		case 'VEHICLE_DESTROYED':
@@ -1440,6 +1468,7 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			return true
 		case 'DEFAULT':
 			if (isKillfeedEvent(event) && event.variant !== 'teamkill') return false
+			if (event.type === 'PLAYER_REVIVED' || event.type === 'VEHICLE_DAMAGED') return false
 			if (SE.isTargetedEvent(event) && event.variant !== 'teamkill') return false
 			if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') return false
 			return true
@@ -1455,7 +1484,7 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			if (event.type === 'PLAYER_CONNECTED' || event.type === 'PLAYER_DISCONNECTED') return event.player.isAdmin
 			return isAdminActionEvent(event)
 		case 'KILLFEED':
-			return isKillfeedEvent(event) || SE.isTargetedEvent(event)
+			return isKillfeedEvent(event) || event.type === 'PLAYER_REVIVED' || SE.isTargetedEvent(event)
 		case 'VEHICLES':
 			return SE.isTargetedEvent(event)
 		default:

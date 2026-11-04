@@ -119,6 +119,10 @@ const ADMIN_BROADCAST_MULTILINE =
 const PLAYER_WOUNDED =
 	'[2026.04.27-23.33.47:250][332]LogSquadTrace: [DedicatedServer]Wound(): Player:RaT I Gangry KillingDamage=0.000000 from BP_PlayerController_C_2146093177 (Online IDs: EOS: 00029ce874284d2ba0199af5dd36a199 steam: 76561198397430155 | Controller ID: BP_PlayerController_C_2146093177) caused by BP_Soldier_USMC_Rifleman1_Woodland_C'
 
+// names padded with a variable run of spaces, and the revived player's name holding spaces of its own
+const PLAYER_REVIVED =
+	'[2026.09.29-21.37.19:807][430]LogSquad:   clockco (Online IDs: EOS: 0002f119081f4aed9e23fd00d51607b8 steam: 76561198172435677) has revived taters  t@co b3ll c@t (Online IDs: EOS: 0002a99d655d4fffb1a28a79bfa3be2a steam: 76561199530097256).'
+
 // Deployable/fortification weapon token with no _C suffix (attacker INVALID here, but exercises the verbatim-token path)
 const WOUND_FENCE =
 	'[2026.07.02-22.36.19:324][287]LogSquadTrace: [DedicatedServer]Wound(): Player:  vicctoorr KillingDamage=7.000000 from BP_PlayerController_C_2146099999 (Online IDs: EOS: 00029ce874284d2ba0199af5dd36a199 steam: 76561198397430155 | Controller ID: BP_PlayerController_C_2146099999) caused by Fence58_229'
@@ -209,6 +213,18 @@ describe('LogEvents.parse', () => {
 			const events = await collect([WOUND_FENCE, NEXT_TICK_EVENT].join('\n'))
 			expect(events).toHaveLength(1)
 			expect(events[0]).toMatchObject({ type: 'PLAYER_WOUNDED', damageSource: 'Fence58_229' })
+		})
+	})
+
+	describe('PLAYER_REVIVED', () => {
+		it('parses a revive, trimming the padding around both names', async () => {
+			const events = await collect([PLAYER_REVIVED, NEXT_TICK_EVENT].join('\n'))
+			expect(events).toHaveLength(1)
+			expect(events[0]).toMatchObject({
+				type: 'PLAYER_REVIVED',
+				reviverIds: { username: 'clockco', eos: '0002f119081f4aed9e23fd00d51607b8', steam: '76561198172435677' },
+				revivedIds: { username: 'taters  t@co b3ll c@t', eos: '0002a99d655d4fffb1a28a79bfa3be2a', steam: '76561199530097256' },
+			})
 		})
 	})
 

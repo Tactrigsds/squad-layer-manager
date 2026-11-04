@@ -3,8 +3,9 @@ import type * as SM from '@/models/squad.models'
 // Vehicles and deployables being destroyed, and FOB radios being attacked, worked out from the game log. Squad logs
 // no "destroyed" line, so a destruction is an actor's health crossing from above zero to zero or below, across the
 // per-hit health lines (SM.LogEvents VEHICLE_HEALTH_CHANGED / DEPLOYABLE_HEALTH_CHANGED). This module holds the
-// per-match state that takes (health, previous crossing, crew) and turns those lines into destructions. It knows
-// nothing of teams or the layer: pending-events.models.ts resolves those when it builds the server event.
+// per-match state that takes (health, previous crossing, crew) and turns those lines into destructions, and into the
+// player hits on vehicles that come before them. It knows nothing of teams or the layer: pending-events.models.ts
+// resolves those when it builds the server event.
 //
 // Log quirks it has to absorb:
 // - A crewed vehicle's health line names an occupant instead of the vehicle. The DAMAGE_APPLIED line for the same
@@ -250,26 +251,42 @@ function recordHealth(state: State, actorName: string, damage: number, health: n
 	return previous
 }
 
-function crossedZero(state: State, actorName: string, damage: number, health: number): boolean {
-	const previous = recordHealth(state, actorName, damage, health)
-	return damage > 0 && previous > 0 && health <= 0
+// A player's hit on a live vehicle with something other than the vehicle itself, so burning, cook-offs and collisions
+// are left out even when the log names an instigator for them.
+export type VehicleHit = {
+	actor: Actor
+	// the health the hit took, after armour
+	damage: number
+	damageType: string | null
+	weapon: string | null
+	attacker: SM.PlayerId
+	crew: SM.PlayerId[]
 }
 
-export function onVehicleHealthChanged(state: State, event: SM.LogEvents.VehicleHealthChanged): Destruction | null {
+export type VehicleOutcome = { hit: VehicleHit | null; destruction: Destruction | null }
+
+const NO_VEHICLE_OUTCOME: VehicleOutcome = { hit: null, destruction: null }
+
+export function onVehicleHealthChanged(state: State, event: SM.LogEvents.VehicleHealthChanged): VehicleOutcome {
 	const vehicle = resolveVehicle(state, event)
-	if (!vehicle) return null
+	if (!vehicle) return NO_VEHICLE_OUTCOME
 	noteVehicle(state, vehicle)
-	if (!crossedZero(state, vehicle, event.damage, event.health)) return null
-	const hit = hitsThisTick(state, event).findLast((h) => h.actor === vehicle && Math.abs(h.damage - event.damage) < 0.01)
-	const damageType = hit?.damageType ?? null
+	const previous = recordHealth(state, vehicle, event.damage, event.health)
+	if (!(event.damage > 0 && previous > 0)) return NO_VEHICLE_OUTCOME
+	const destroyed = event.health <= 0
 	const selfInflicted = event.causer === event.subject || event.causer === vehicle
+	const attacker = event.instigatorIds?.eos ?? null
+	const actor = parseActor(vehicle)!
+	const isHit = attacker !== null && !selfInflicted && !isWreck(actor.className)
+	if (!destroyed && !isHit) return NO_VEHICLE_OUTCOME
+
+	const damageType =
+		hitsThisTick(state, event).findLast((h) => h.actor === vehicle && Math.abs(h.damage - event.damage) < 0.01)?.damageType ?? null
+	const weapon = selfInflicted ? null : weaponOf(state, event.causer)
+	const crew = crewOf(state, vehicle)
 	return {
-		actor: parseActor(vehicle)!,
-		damageType,
-		cause: causeOf(damageType),
-		weapon: selfInflicted ? null : weaponOf(state, event.causer),
-		attacker: event.instigatorIds?.eos ?? null,
-		crew: crewOf(state, vehicle),
+		hit: isHit ? { actor, damage: event.damage, damageType, weapon, attacker, crew } : null,
+		destruction: destroyed ? { actor, damageType, cause: causeOf(damageType), weapon, attacker, crew } : null,
 	}
 }
 

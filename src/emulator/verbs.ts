@@ -243,6 +243,13 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 			world.bleedOutPlayer(requirePlayer(host, victim), requirePlayer(host, attacker))
 			return `${victim} died after being wounded by ${attacker}`
 		}
+		case 'revive': {
+			const { revived, attacker, reviver } = input as SB.SandboxVerbInput<'revive'>
+			const revivedPlayer = requirePlayer(host, revived)
+			world.woundPlayer(revivedPlayer, requirePlayer(host, attacker))
+			world.revivePlayer(revivedPlayer, requirePlayer(host, reviver))
+			return `${reviver} revived ${revived} after ${attacker} wounded them`
+		}
 		case 'destroy-vehicle': {
 			const { attacker, blueprint, crew } = input as SB.SandboxVerbInput<'destroy-vehicle'>
 			world.destroyVehicle(
@@ -251,6 +258,13 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 				crew.map((name) => requirePlayer(host, name)),
 			)
 			return `${attacker} destroyed ${blueprint}${crew.length > 0 ? ` with ${crew.join(', ')} aboard` : ''}`
+		}
+		case 'damage-vehicle': {
+			const { attacker, blueprint, damage } = input as SB.SandboxVerbInput<'damage-vehicle'>
+			const health = world.damageVehicle(requirePlayer(host, attacker), blueprint, damage)
+			return health > 0
+				? `${attacker} hit ${blueprint} for ${damage}, leaving it at ${health}`
+				: `${attacker} destroyed ${blueprint} with a hit for ${damage}`
 		}
 		case 'destroy-deployable': {
 			const { attacker, blueprint } = input as SB.SandboxVerbInput<'destroy-deployable'>

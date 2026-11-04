@@ -257,6 +257,8 @@ export const playerDiedOfWounds = def((victim: Rendered, variant: 'normal' | 'su
 	),
 )
 
+export const playerRevived = def((reviver: Rendered, revived: Rendered) => rt('{reviver} revived {revived}', { reviver, revived }))
+
 export const diedOfWoundsTip = def('Bled out, or gave up while wounded. The server log does not record which.')
 
 export const withWeapon = def(' with {weapon}', (weapon: string) => ({ weapon }))
@@ -286,6 +288,10 @@ export const targetDestroyedUnattributed = def((target: Rendered, cause: Destroy
 export const destroyedCrew = def((crew: Rendered) => rt(' · crew: {crew}', { crew }))
 
 export const destroyedCrewCount = def(' · crew of {count}', (count: number) => ({ count }))
+
+export const vehicleHit = def((attacker: Rendered, vehicle: Rendered, damage: number, weapon?: Rendered) =>
+	rt('{attacker} hit {vehicle} for {damage}{weapon}', { attacker, vehicle, damage, weapon }),
+)
 
 export const fobRadio = def('FOB radio')
 

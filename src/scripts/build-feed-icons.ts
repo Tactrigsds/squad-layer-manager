@@ -25,6 +25,7 @@ const USED = [
 	'Clock',
 	'Copy',
 	'CloudFog',
+	'Crosshair',
 	'Crown',
 	'Dot',
 	'Droplet',

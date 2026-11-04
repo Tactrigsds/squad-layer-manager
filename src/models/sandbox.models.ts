@@ -245,6 +245,16 @@ export const SANDBOX_VERBS = {
 		},
 		mutatesWorld: true,
 	}),
+	revive: def({
+		usage: 'revive <revived> <attacker> <reviver>',
+		summary: 'one player wounds another, and a third revives them',
+		input: z.object({ revived: PlayerNameSchema, attacker: PlayerNameSchema, reviver: PlayerNameSchema }),
+		tokens: ([revived, attacker, reviver]) => {
+			requireTokens([revived, attacker, reviver], 3, 'revive <revived> <attacker> <reviver>')
+			return { revived, attacker, reviver }
+		},
+		mutatesWorld: true,
+	}),
 	'destroy-vehicle': def({
 		usage: 'destroy-vehicle <attacker> <blueprint> [crew...]',
 		summary: 'a player destroys a vehicle, e.g. BP_BTR80_Militia, with the named players aboard',
@@ -252,6 +262,16 @@ export const SANDBOX_VERBS = {
 		tokens: ([attacker, blueprint, ...crew]) => {
 			requireTokens([attacker, blueprint], 2, 'destroy-vehicle <attacker> <blueprint> [crew...]')
 			return { attacker, blueprint, crew }
+		},
+		mutatesWorld: true,
+	}),
+	'damage-vehicle': def({
+		usage: 'damage-vehicle <attacker> <blueprint> [damage]',
+		summary: 'a player hits an empty vehicle, e.g. BP_BTR80_Militia, for 100 damage by default. Repeated hits wear one vehicle down',
+		input: z.object({ attacker: PlayerNameSchema, blueprint: z.string().min(1), damage: z.number().positive().prefault(100) }),
+		tokens: ([attacker, blueprint, damage]) => {
+			requireTokens([attacker, blueprint], 2, 'damage-vehicle <attacker> <blueprint> [damage]')
+			return { attacker, blueprint, damage: damage === undefined ? undefined : Number(damage) }
 		},
 		mutatesWorld: true,
 	}),

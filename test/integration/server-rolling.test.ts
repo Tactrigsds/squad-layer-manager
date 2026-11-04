@@ -784,11 +784,15 @@ describe('the event archive', () => {
 			if (res.code !== 'ok' || res.type !== 'events') throw new Error(res.code)
 			return res
 		}
-		const byVehicle = await total({ feed: 'KILLFEED', vehicle: info.vehicle })
+		const byVehicle = await total({ feed: 'KILLFEED', vehicle: info.vehicle, types: ['VEHICLE_DESTROYED'] })
 		expect(byVehicle.total).toBe(1)
 		expect(byVehicle.rowsHtml[0]).toContain('destroyed by')
 		expect((await total({ feed: 'ALL', targetType: info.vehicleType })).total).toBeGreaterThan(0)
-		expect((await total({ feed: 'ALL', target: tank })).total).toBe(1)
+		expect((await total({ feed: 'ALL', target: tank, types: ['VEHICLE_DESTROYED'] })).total).toBe(1)
+		// the killing shot is also a hit, recorded just before the destruction
+		const hits = await total({ feed: 'KILLFEED', target: tank, types: ['VEHICLE_DAMAGED'] })
+		expect(hits.total).toBe(1)
+		expect((await total({ target: tank, types: ['VEHICLE_DAMAGED'] })).total).toBe(0)
 		expect((await total({ feed: 'ALL', targetType: 'AMMO' })).total).toBe(1)
 		// the crew are the vehicle's victims
 		expect((await total({ feed: 'ALL', players: [gunner.eos], playerRole: 'victim', types: ['VEHICLE_DESTROYED'] })).total).toBe(1)
@@ -814,8 +818,8 @@ describe('the event archive', () => {
 		expect(teamkill.total).toBe(1)
 		expect(teamkill.rowsHtml[0]).toContain('teammate')
 
-		// the vehicles filter: the three destroyed, and two reports of each radio attack
-		expect((await total({ feed: 'VEHICLES' })).total).toBe(7)
+		// the vehicles filter: the three destroyed, the killing hit on each vehicle, and two reports of each radio attack
+		expect((await total({ feed: 'VEHICLES' })).total).toBe(9)
 	})
 
 	it('records previous usernames and finds a player by one', async () => {

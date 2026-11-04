@@ -1530,6 +1530,30 @@ export namespace LogEvents {
 		},
 	})
 
+	export const PlayerRevivedDef = eventDef('PLAYER_REVIVED', {
+		...BaseEventProperties,
+		reviverIds: PlayerIds.IdFields('eos', 'username'),
+		revivedIds: PlayerIds.IdFields('eos', 'username'),
+	})
+	export type PlayerRevived = z.infer<(typeof PlayerRevivedDef)['schema']>
+	// The game pads both names with a variable run of spaces, which PlayerIds.parse trims.
+	export const PlayerRevivedMatcher = createLogMatcher({
+		event: PlayerRevivedDef,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: (.+?) \(Online IDs:([^)]+)\) has revived (.+?) \(Online IDs:([^)]+)\)\./,
+		onMatch: (args) => {
+			const reviverIds = PlayerIds.parse({ username: args[3], idsStr: args[4] })
+			const revivedIds = PlayerIds.parse({ username: args[5], idsStr: args[6] })
+			if (!reviverIds.eos || !revivedIds.eos) return null
+			return {
+				raw: args[0],
+				time: parseTimestamp(args[1]),
+				chainID: args[2],
+				reviverIds,
+				revivedIds,
+			}
+		},
+	})
+
 	export const AdminBroadcastDef = eventDef('ADMIN_BROADCAST', {
 		...BaseEventProperties,
 		message: z.string(),
@@ -1962,6 +1986,7 @@ export namespace LogEvents {
 		PlayerJoinSuccededMatcher,
 		PlayerDiedMatcher,
 		PlayerWoundedMatcher,
+		PlayerRevivedMatcher,
 		AdminBroadcastMatcher,
 		LayerChangedMatcher,
 		MapSetMatcher,
@@ -2003,6 +2028,7 @@ export namespace LogEvents {
 		| PlayerJoinSucceeded
 		| PlayerDied
 		| PlayerWounded
+		| PlayerRevived
 		| AdminBroadcast
 		| MapSet
 		| LayerChanged

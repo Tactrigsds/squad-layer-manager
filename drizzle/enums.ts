@@ -40,6 +40,8 @@ export const SERVER_EVENT_TYPE = z.enum([
 	'DEPLOYABLE_DESTROYED',
 	'FOB_RADIO_DAMAGED',
 	'TICKETS_CHANGED',
+	'PLAYER_REVIVED',
+	'VEHICLE_DAMAGED',
 ])
 
 export type ServerEventType = z.infer<typeof SERVER_EVENT_TYPE>
@@ -101,6 +103,8 @@ export const SERVER_EVENT_PLAYER_ASSOC_TYPE = z.enum([
 	'attacker',
 	'victim',
 	'game-participant', // participants will be part of a NEW_GAME or INIT, and they are treated as a collection during serialization/deserialization
+	'reviver',
+	'revived',
 ])
 
 export type ServerEventPlayerAssocType = z.infer<typeof SERVER_EVENT_PLAYER_ASSOC_TYPE>
