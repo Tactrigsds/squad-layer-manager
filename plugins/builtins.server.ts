@@ -6,6 +6,7 @@ import type * as PLG from '@/models/plugins.models'
 import type { BuiltinPlugin, ServerModule } from '@/systems/plugins.server'
 
 import afkKicker from './afk-kicker/plugin.ts'
+import scoreboard from './scoreboard/plugin.ts'
 import teamkillWarns from './teamkill-warns/plugin.ts'
 
 // The plugins shipped in this repo, statically registered so the rolldown server bundle includes them.
@@ -20,6 +21,11 @@ export const BUILTIN_PLUGINS: BuiltinPlugin[] = [
 	{
 		manifest: afkKicker,
 		server: () => import('./afk-kicker/server.ts'),
+		hasClient: false,
+	},
+	{
+		manifest: scoreboard,
+		server: () => import('./scoreboard/server.ts'),
 		hasClient: false,
 	},
 ]

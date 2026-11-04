@@ -11,10 +11,11 @@ permission.
 
 SLM ships with these plugins. They are installed but stopped by default.
 
-| Plugin         | What it does                                                              |
-| -------------- | ------------------------------------------------------------------------- |
-| AFK Kicker     | Kicks AFK players when people are waiting in the queue, longest AFK first |
-| Teamkill Warns | Warns players when they have been teamkilled                              |
+| Plugin         | What it does                                                                  |
+| -------------- | ----------------------------------------------------------------------------- |
+| AFK Kicker     | Kicks AFK players when people are waiting in the queue, longest AFK first     |
+| Teamkill Warns | Warns players when they have been teamkilled                                  |
+| Scoreboard     | Posts a scoreboard to Discord when a match ends, with leaderboards and charts |
 
 ## Installing a plugin
 
