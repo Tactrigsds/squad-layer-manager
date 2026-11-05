@@ -72,7 +72,9 @@ export function setup() {
 }
 
 export function initPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverState: SS.ServerState) {
-	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner)
+	const sllState = SLL.createNewState(serverState.layerQueue, serverState.backburner, {
+		generateWhenEmpty: serverState.settings.queue.mainPool.generateLayers,
+	})
 	const payload: LQ.Ctx.Payload = {
 		nextLayerSyncState$: new IsolatedBehaviorSubject<LQ.NextLayerSyncState>({ code: 'synced' }),
 		ingameVote$: new IsolatedBehaviorSubject<LQ.IngameVote | null>(null),
@@ -391,6 +393,23 @@ export const setupInstance = Instr.spanOp(
 							await dispatchOp(ctx, { op: 'discard-abandoned-request-edits', opId: SLL.createOpId() })
 						}
 						log.info('discarded abandoned %s edits', scope)
+					}),
+				)
+				.subscribe(),
+		)
+
+		// -------- follow the layer generation setting --------
+		// an op rather than a direct write, so every replica's reducer sees the same flag
+		ctx.cleanup.push(
+			Settings.settings$
+				.pipe(
+					Rx.filter((e): e is Extract<Settings.SettingsEvent, { scope: 'server' }> => e.scope === 'server' && e.serverId === serverId),
+					Rx.map((e) => e.settings.queue.mainPool.generateLayers),
+					Rx.distinctUntilChanged(),
+					Instr.durableSub('sync-generate-when-empty', { module, levels: { event: 'info' } }, async (enabled, signal) => {
+						const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
+						if (ctx.layerQueue.session.state.generateWhenEmpty === enabled) return
+						await dispatchOp(ctx, { op: 'set-generate-when-empty', enabled, opId: SLL.createOpId() })
 					}),
 				)
 				.subscribe(),

@@ -156,6 +156,12 @@ function buildOperationSchema<
 			// generated item and its consumption converge atomically on every replica
 			consumedBackburnerItemIds: z.array(BB.ItemIdSchema).optional(),
 		}),
+		// server-only: follows the server's layer generation setting. Turning it on with an empty queue generates a layer
+		z.object({
+			...baseProps,
+			op: z.literal('set-generate-when-empty'),
+			enabled: z.boolean(),
+		}),
 		z.object({
 			...baseProps,
 			...clientProps,
@@ -323,8 +329,8 @@ export type State = {
 	saving: boolean
 	mutations: ItemMut.Mutations
 	requestingGeneratedQueueItem: boolean
-	// a server's queue is never left empty: saving an empty one asks for a generated item first. A rotation's list
-	// may be empty, so its session turns this off.
+	// while set, the queue is never left empty: saving an empty one asks for a generated item first. A rotation's
+	// list may be empty, so its session turns this off, as does a server whose layer generation setting is off.
 	generateWhenEmpty: boolean
 	lastSaveOpId: null | string
 	// the layer backburner (in-game "layer requests"), sharing this session so ops can atomically span both
@@ -489,6 +495,15 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 		session.requestingGeneratedQueueItem = false
 		return true
 	}
+	// ahead of the generation gate, so turning generation off while a layer is being generated still lands
+	if (newOp.op === 'set-generate-when-empty') {
+		session.generateWhenEmpty = newOp.enabled
+		if (newOp.enabled && session.savedList.length === 0 && !session.requestingGeneratedQueueItem) {
+			session.requestingGeneratedQueueItem = true
+			onSideEffect?.({ code: 'request-queue-item-generation' })
+		}
+		return true
+	}
 	// backburner ops never touch the queue list, so they are exempt from the generation gate; the shared
 	// editWindowSeqId gate above still applies to the draft ops (which carry a window id)
 	if (isBackburnerOp(newOp)) return applyBackburnerOperation(session, newOp, onSideEffect)
@@ -507,7 +522,7 @@ export function applyOperation(session: State, newOp: Operation, onSideEffect?: 
 
 	switch (newOp.op) {
 		case 'init': {
-			if (session.savedList.length === 0) {
+			if (session.savedList.length === 0 && session.generateWhenEmpty) {
 				session.requestingGeneratedQueueItem = true
 				onSideEffect?.({ code: 'request-queue-item-generation' })
 				return true

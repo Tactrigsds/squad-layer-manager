@@ -19,7 +19,12 @@ SLM overrides is not announced, so turning both on warns admins only about chang
 
 ## Generated and automatic votes
 
-Use the _Generation & Votes_ tab to set whether SLM generates votes when the queue runs out, and when votes start.
+Use the _Generation & Votes_ tab to set whether SLM generates layers or votes when the queue runs out, and when votes
+start.
+
+_Generate layers_ is on by default. With the setting off, SLM generates nothing: the queue stays empty until a user adds
+to it, and SLM does not queue layer requests. Turning the setting back on with an empty queue generates a layer or vote
+straight away.
 
 With _Generate votes_ on, SLM generates a vote between 3 layers instead of a single layer when the queue runs out.
 

@@ -70,6 +70,7 @@ export function savedBackburner(app: AppFixture): { itemId: string; filter: Para
 export function savedPool(app: AppFixture): {
 	skipWarningsForTags?: string[]
 	repeatRulesetId: string | null
+	generateLayers?: boolean
 	generateVotes?: { enabled: boolean; displayProps: string[] }
 } {
 	const db = app.readDb()

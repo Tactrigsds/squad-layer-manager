@@ -11,9 +11,13 @@ export { getSavedBackburner, getSavedQueue, getSlmUpdatesEnabled } from '@/syste
 
 type DispatchArgs = Parameters<typeof LayerQueue.dispatchOp>
 
-// `revert` undoes a user's own edits, so it has no place in a plugin's ops
-export const dispatchOp: (ctx: DispatchArgs[0], op: Exclude<SLL.Operation, { op: 'revert' }>, opts?: DispatchArgs[2]) => Promise<void> =
-	LayerQueue.dispatchOp
+// `revert` undoes a user's own edits, and `set-generate-when-empty` follows the server's settings, so neither has a
+// place in a plugin's ops
+export const dispatchOp: (
+	ctx: DispatchArgs[0],
+	op: Exclude<SLL.Operation, { op: 'revert' | 'set-generate-when-empty' }>,
+	opts?: DispatchArgs[2],
+) => Promise<void> = LayerQueue.dispatchOp
 
 /**
  * Resolves once nobody has unsaved queue edits open, straight away when nobody has. Pass it as a blocked job's

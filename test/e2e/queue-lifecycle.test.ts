@@ -10,8 +10,8 @@ import { expect, test } from './fixtures'
 
 // One queue, followed through its whole life against a single app: rendered as seeded, edited and
 // discarded, edited and saved, consumed by a map roll, refilled by a generated vote, the vote configured, and
-// finally emptied so that autogeneration refills it with a vote. Each test hands the next its starting state, so the
-// order is the scenario.
+// emptied so that autogeneration refills it with a vote, and finally emptied with generation switched off. Each test
+// hands the next its starting state, so the order is the scenario.
 
 const MATCHES_POOL = '✅'
 const MISSES_POOL = '❌'
@@ -311,5 +311,42 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible({ timeout: 20_000 })
 		await expect(page.getByText(/The next layer was set to Narva_RAAS_v1.* outside SLM, added to the queue ahead of/)).toBeVisible()
 		await expect(page.getByText(/^Next layer set to Narva_RAAS_v1/)).toHaveCount(0)
+	})
+
+	test('leaves a cleared queue empty while generation is off, and refills it once generation is back on', async ({ page }) => {
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (2)')).toBeVisible()
+
+		const setGenerateLayers = async (enabled: boolean) => {
+			await page.getByRole('button', { name: 'Pool Configuration' }).click()
+			await page.getByRole('button', { name: 'Generation' }).click()
+			const generateLayers = page.getByRole('checkbox', { name: 'Generate layers' })
+			const generateVotes = page.getByRole('checkbox', { name: 'Generate votes' })
+			await expect(generateVotes).toBeEnabled({ enabled: !enabled })
+			await generateLayers.click()
+			await expect(generateVotes).toBeEnabled({ enabled })
+			await page.getByRole('button', { name: 'Save Changes' }).click()
+			await app.waitFor(() => (savedPool(app).generateLayers !== false) === enabled || null, {
+				label: `layer generation switched ${enabled ? 'on' : 'off'}`,
+			})
+			await page.getByRole('button', { name: 'Close window' }).click()
+		}
+
+		await setGenerateLayers(false)
+		await page.getByRole('button', { name: 'Start Editing' }).click()
+		await page.getByRole('button', { name: 'Clear Queue' }).click()
+		await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
+		// with generation on, an empty queue is never saved: the generated item takes its place
+		await app.waitFor(() => savedQueue(app).length === 0 || null, { label: 'the empty queue saved' })
+
+		await setGenerateLayers(true)
+		const [vote] = await app.waitFor(
+			() => {
+				const list = savedQueue(app)
+				return list.length === 1 && list[0].type === 'vote-list-item' ? list : null
+			},
+			{ label: 'the generated vote', timeoutMs: 30_000 },
+		)
+		expect(vote.source.type).toBe('generated')
 	})
 })
