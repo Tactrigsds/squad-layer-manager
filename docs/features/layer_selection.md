@@ -69,6 +69,7 @@ When the queue runs out, SLM generates the next layer from your pool. A generate
 filters set to constrain generation, and the repeat rules marked _Autogen_. Configurable weights make chosen maps,
 gamemodes or factions come up more or less often. When a [layer request](#layer-requests) is pending, SLM generates
 the requested layer. SLM can generate a vote between 3 layers, each on a different map, in place of a single layer.
+Autogeneration can be switched off for a server.
 
 See [Generated and automatic votes](../guide/configuring/layer_rotation.md#generated-and-automatic-votes) and
 [Randomization](../guide/configuring/layer_rotation.md#randomization).

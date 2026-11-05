@@ -805,6 +805,7 @@ function actorsByItem(ops: SLL.Operation[]): Map<LL.ItemId, Actor> {
 			// the rest are session bookkeeping. backburner ops never touch queue items (their attribution is
 			// carried by the LAYER_REQUEST_* events instead)
 			case 'init':
+			case 'set-generate-when-empty':
 			case 'shift-first-saved-layer':
 			case 'save':
 			case 'save-completed':

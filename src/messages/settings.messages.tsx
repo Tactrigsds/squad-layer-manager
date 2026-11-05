@@ -295,6 +295,14 @@ export const nextLayerLabels: Record<SETTINGS.NextLayerSettingKey, TString> = {
 
 export const generationTab = def('Generation & Votes')
 
+export const generatedLayers = def('Generated Layers')
+
+export const generateLayersLabel = def('Generate layers')
+
+export const generateLayersHelp = def(
+	'When the queue runs out, SLM generates the next layer or vote. When the setting is off, the queue stays empty until a user adds to it, and layer requests are not queued automatically.',
+)
+
 export const generatedVotes = def('Generated Votes')
 
 export const generateVotesLabel = def('Generate votes')

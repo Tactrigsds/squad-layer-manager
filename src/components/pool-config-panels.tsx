@@ -397,12 +397,14 @@ function BooleanSettingRow({
 	label,
 	description,
 	tourId,
+	disabled,
 }: {
 	api: PoolConfigApi
 	path?: SETTINGS.SettingsPath
 	label: string
 	description: string
 	tourId?: string
+	disabled?: boolean
 }) {
 	const id = React.useId()
 	const checked = usePoolValue(api, path) === true
@@ -413,7 +415,7 @@ function BooleanSettingRow({
 					id={id}
 					className="mt-0.5"
 					checked={checked}
-					disabled={!!api.writeDenied}
+					disabled={disabled || !!api.writeDenied}
 					onCheckedChange={(next) => api.set(path, next)}
 				/>
 			</PermissionDeniedTooltip>
@@ -448,10 +450,20 @@ export function NextLayerPanel({ apis }: { apis: Record<SETTINGS.NextLayerSettin
 
 // the settings page edits the vote settings in its own section, so only the pool configuration window passes autoStartApi
 export function GenerationPanel({ api, autoStartApi }: { api: PoolConfigApi; autoStartApi?: PoolConfigApi }) {
+	const generateLayers = usePoolValue(api, ['generateLayers']) !== false
 	const enabled = usePoolValue(api, ['generateVotes', 'enabled']) === true
 	const displayProps = (usePoolValue(api, ['generateVotes', 'displayProps']) as DH.LayerDisplayProp[] | undefined) ?? []
 	return (
 		<div className="space-y-6">
+			<div className="space-y-3">
+				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.generatedLayers())}</h4>
+				<BooleanSettingRow
+					api={api}
+					path={['generateLayers']}
+					label={tr.text(SETTINGS_Msgs.generateLayersLabel())}
+					description={tr.text(SETTINGS_Msgs.generateLayersHelp())}
+				/>
+			</div>
 			<div className="space-y-3">
 				<h4 className={cn(Typo.H4, 'text-sm font-medium text-muted-foreground')}>{tr.text(SETTINGS_Msgs.generatedVotes())}</h4>
 				<BooleanSettingRow
@@ -459,6 +471,7 @@ export function GenerationPanel({ api, autoStartApi }: { api: PoolConfigApi; aut
 					path={['generateVotes', 'enabled']}
 					label={tr.text(SETTINGS_Msgs.generateVotesLabel())}
 					description={tr.text(SETTINGS_Msgs.generateVotesHelp())}
+					disabled={!generateLayers}
 				/>
 				<div className="space-y-2 ps-6">
 					<div className="space-y-1">
@@ -470,7 +483,7 @@ export function GenerationPanel({ api, autoStartApi }: { api: PoolConfigApi; aut
 							<VoteDisplayPropsCheckboxes
 								displayProps={displayProps}
 								onChange={(next) => api.set(['generateVotes', 'displayProps'], next)}
-								disabled={!enabled || !!api.writeDenied}
+								disabled={!generateLayers || !enabled || !!api.writeDenied}
 								lockMap
 							/>
 						</div>

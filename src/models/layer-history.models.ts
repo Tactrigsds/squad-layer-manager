@@ -198,6 +198,7 @@ export function queueSessionLog(e: AppEvents.QueueUpdated): SessionLogEntry[] {
 				break
 			}
 			case 'init':
+			case 'set-generate-when-empty':
 			case 'save':
 			case 'save-completed':
 			case 'discard-abandoned-request-edits':

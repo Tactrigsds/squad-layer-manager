@@ -31,6 +31,7 @@ describe('pool configuration schema', () => {
 			warnFor: [{ filterId: 'b-filter', applyAs: 'regular' }],
 			constrainGeneration: [{ filterId: 'the-pool', applyAs: 'regular' }],
 			layerRequestFilters: [{ filterId: 'b-filter', applyAs: 'inverted' }],
+			generateLayers: false,
 			generateVotes: { enabled: true, displayProps: ['map', 'factions'] },
 			skipWarningsForTags: ['planned:aaaaaa'],
 			repeatRulesetId: 'emu-server',
