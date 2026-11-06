@@ -150,6 +150,75 @@ describe('plugin host', () => {
 		await client.plugins.setEnabled({ pluginId: 'afk-kicker', enabled: false })
 	})
 
+	it('scheduled-commands runs each task as a job: at round end, at match start, and on Run now', async () => {
+		const runs = () =>
+			readRows<{ command: string; matchId: number; actorPluginId: string | null }>(
+				`SELECT json_extract(data, '$.json.command') AS command, matchId, actorPluginId FROM appEvents WHERE type = 'RCON_COMMAND_RUN'`,
+			)
+		const runOf = (command: string) => runs().find((r) => r.command === command)
+		const jobs = async () => {
+			const res = await client.plugins.listJobs({ pluginId: 'scheduled-commands' })
+			return res.code === 'ok' ? res.jobs : []
+		}
+		const target = async (jobId: string) => (await jobs()).find((j) => j.id === jobId)?.targets.find((t) => t.serverId === app.serverId)
+
+		await client.plugins.setEnabled({ pluginId: 'scheduled-commands', enabled: true })
+		const saved = await client.plugins.updateSettings({
+			pluginId: 'scheduled-commands',
+			config: {
+				tasks: [
+					{ name: 'GG', servers: [app.serverId], trigger: { type: 'round-end', after: '0s' }, commands: ['AdminBroadcast SCHED_GG'] },
+					{
+						name: 'Unpopulated',
+						servers: [app.serverId],
+						trigger: { type: 'round-end', after: '0s' },
+						commands: ['AdminBroadcast SCHED_SKIPPED'],
+						minPlayers: 1000,
+					},
+					{
+						name: 'Welcome broadcast',
+						servers: [app.serverId],
+						trigger: { type: 'match-start', after: '0s', repeatEvery: null },
+						commands: ['AdminBroadcast SCHED_WELCOME'],
+					},
+				],
+			},
+		})
+		expect(saved).toMatchObject({ code: 'ok' })
+		expect((await jobs()).map((j) => [j.id, j.label])).toEqual([
+			['gg', 'GG'],
+			['unpopulated', 'Unpopulated'],
+			['welcome-broadcast', 'Welcome broadcast'],
+		])
+		expect(await target('gg')).toMatchObject({ nextRunAt: null, awaiting: 'end' })
+
+		const endedMatch = latestMatch(app)
+		app.emu.world.endMatch()
+		const gg = await app.waitFor(() => runOf('AdminBroadcast SCHED_GG'), { label: 'the round-end command' })
+		expect(gg).toMatchObject({ matchId: endedMatch.id, actorPluginId: 'scheduled-commands' })
+		await app.waitFor(async () => ((await target('unpopulated'))?.last?.state === 'succeeded' ? true : undefined), {
+			label: 'the under-populated round-end run finishing',
+		})
+		expect(runOf('AdminBroadcast SCHED_SKIPPED')).toBeUndefined()
+
+		// the match in progress at the save started within the job's catch-up window, so it may have had a run already
+		app.emu.world.startNewGame()
+		await app.waitFor(() => runs().find((r) => r.command === 'AdminBroadcast SCHED_WELCOME' && r.matchId > endedMatch.id), {
+			label: 'the match-start command on the new match',
+		})
+		await app.waitForRosterSync()
+
+		// Run now ignores minPlayers: an admin asked for it
+		expect(
+			await client.plugins.runJobNow({ pluginId: 'scheduled-commands', jobId: 'unpopulated', serverId: app.serverId, key: null }),
+		).toEqual({
+			code: 'ok',
+		})
+		await app.waitFor(() => runOf('AdminBroadcast SCHED_SKIPPED'), { label: 'the command run by hand' })
+
+		await client.plugins.setEnabled({ pluginId: 'scheduled-commands', enabled: false })
+	})
+
 	it('disabling over oRPC deactivates the plugin and stops its subscriptions', async () => {
 		const victim = app.emu.world.connectPlayer(makePlayer({ name: ' tk_victim_after', teamId: 1 }))
 		const attacker = app.emu.world.connectPlayer(makePlayer({ name: ' tk_attacker_after', teamId: 1 }))

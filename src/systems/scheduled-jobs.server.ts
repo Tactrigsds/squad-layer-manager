@@ -34,6 +34,7 @@ import * as Sql from '@/server/sql'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as MatchHistory from '@/systems/match-history.server'
+import * as Settings from '@/systems/settings.server'
 import * as SquadServerActions from '@/systems/squad-server-actions.server'
 
 const module = initModule('scheduled-jobs')
@@ -407,7 +408,8 @@ type AnyJob = SJOB.Job<any, any, any>
 export type Host = {
 	pluginId: string
 	log: CS.Logger
-	jobs: ReadonlyMap<string, AnyJob>
+	// read on every use: a plugin can derive its jobs from its config, which changes while it runs
+	jobs: () => ReadonlyMap<string, AnyJob>
 	// the decoded config, or null while it does not parse
 	config: () => unknown
 	// a loaded server's ctx, or the plugin's for null; null while that server is not loaded
@@ -525,9 +527,15 @@ function specFor(host: Host, job: AnyJob, serverId: string | null): SJOB.Spec | 
 	const cfg = host.config()
 	if (cfg === null) return null
 	try {
-		const spec = job.when(cfg, serverId)
-		if (!spec) return null
-		const error = SJOB.specError(spec)
+		const declared = job.when(cfg, serverId)
+		if (!declared) return null
+		const spec = resolveServerZone(declared, serverId)
+		const error =
+			SJOB.isMatchSpec(spec) && serverId === null
+				? 'only a server job can follow a match'
+				: 'cron' in spec && spec.timezone === 'server'
+					? "only a server job can use its server's time zone"
+					: SJOB.specError(spec)
 		if (error) {
 			host.log.warn('job %s has an unusable schedule: %s', job.id, error)
 			return null
@@ -537,6 +545,18 @@ function specFor(host: Host, job: AnyJob, serverId: string | null): SJOB.Spec | 
 		host.log.error(err, 'job %s: reading its schedule failed', job.id)
 		return null
 	}
+}
+
+function resolveServerZone(spec: SJOB.Spec, serverId: string | null): SJOB.Spec {
+	if (!('cron' in spec) || spec.timezone !== 'server' || serverId === null) return spec
+	return { ...spec, timezone: Settings.getServerEntry(serverId)?.timeZone ?? 'UTC' }
+}
+
+// the current match on a job's server, for a match-relative spec; null for any other
+function matchFor(host: Host, spec: SJOB.Spec, serverId: string | null): SJOB.MatchTimes {
+	if (!SJOB.isMatchSpec(spec) || serverId === null) return null
+	const server = managedServerCtx(host.ctxFor(serverId))
+	return server ? SJOB.matchTimes(MatchHistory.peekCurrentMatch(server)) : null
 }
 
 function targetsOf(host: Host, job: AnyJob): (string | null)[] {
@@ -567,14 +587,15 @@ async function tick(now: number): Promise<number> {
 	const last = lastRecurringRuns(ctx)
 
 	for (const host of hosts.values()) {
-		for (const job of host.jobs.values()) {
+		for (const job of host.jobs().values()) {
 			if (!job.when) continue
 			for (const serverId of targetsOf(host, job)) {
 				const spec = specFor(host, job, serverId)
 				if (!spec) continue
 				const key = flightKey(host.pluginId, toServerId(serverId), job.id)
 				const prev = last.get(key) ?? null
-				const due = SJOB.dueOccurrence(spec, now, SJOB.catchUpMs(job), prev)
+				const match = matchFor(host, spec, serverId)
+				const due = SJOB.dueOccurrence(spec, now, SJOB.catchUpMs(job), prev, match)
 				const runCtx = due === null ? null : host.ctxFor(serverId)
 				if (due !== null && runCtx && !inFlight.has(key)) {
 					inFlight.add(key)
@@ -590,7 +611,7 @@ async function tick(now: number): Promise<number> {
 						if (!started) inFlight.delete(key)
 					}
 				}
-				const upcoming = SJOB.nextOccurrence(spec, now, prev)
+				const upcoming = SJOB.nextOccurrence(spec, now, prev, match)
 				if (upcoming !== null) next = Math.min(next, upcoming)
 			}
 		}
@@ -599,7 +620,7 @@ async function tick(now: number): Promise<number> {
 	const open = DB.all(ctx, Q.openRuns({}))
 	for (const row of open) {
 		const host = hosts.get(row.pluginId)
-		const job = host?.jobs.get(row.jobId)
+		const job = host?.jobs().get(row.jobId)
 		if (!host || !job) continue
 		const key = flightKey(row.pluginId, row.serverId, row.jobId)
 		if (inFlight.has(key)) continue
@@ -1052,7 +1073,7 @@ export function scheduleOnce(
 	payload: unknown,
 	key: string | undefined,
 ): ScheduleResult {
-	const job = hosts.get(pluginId)?.jobs.get(jobId)
+	const job = hosts.get(pluginId)?.jobs().get(jobId)
 	if (!job) return { code: 'err:unknown-job', message: `${pluginId} lists no job "${jobId}" in its jobs export` }
 	if (job.when) return { code: 'err:unknown-job', message: `job "${jobId}" is recurring; its runs come from its schedule` }
 	if ((job.scope === 'server') !== (serverId !== null)) {
@@ -1123,7 +1144,7 @@ export function cancel(pluginId: string, serverId: string | null, jobId: string,
  */
 export async function runNow(pluginId: string, serverId: string | null, jobId: string, key: string | null, userId: USR.UserId) {
 	const host = hosts.get(pluginId)
-	const job = host?.jobs.get(jobId)
+	const job = host?.jobs().get(jobId)
 	if (!host || !job) return { code: 'err:not-found' as const, message: 'the plugin is not running, or has no such job' }
 	if (key === null && job.payload) {
 		return { code: 'err:not-found' as const, message: 'a job that takes a payload can only run one of its scheduled runs' }
@@ -1169,8 +1190,9 @@ export function listJobs(pluginId: string): SJOB.JobView[] {
 	const latestFinished = DB.all(ctx, Q.latestFinishedOfPlugin({ pluginId }))
 	const open = DB.all(ctx, Q.openRunsOfPlugin({ pluginId }))
 	const last = lastRecurringRuns(ctx, pluginId)
-	return [...host.jobs.values()].map((job): SJOB.JobView => ({
+	return [...host.jobs().values()].map((job): SJOB.JobView => ({
 		id: job.id,
+		label: job.label ?? null,
 		scope: job.scope,
 		recurring: !!job.when,
 		// where the job is scheduled, or has run: a server the plugin is switched off for is left out
@@ -1181,10 +1203,14 @@ export function listJobs(pluginId: string): SJOB.JobView[] {
 			if (!spec && !latest && ofTarget.length === 0) return []
 			const blocked = ofTarget.find((r) => r.kind === 'recurring' && r.state === 'blocked')
 			const going = ofTarget.find((r) => r.state === 'running')
+			const match = spec ? matchFor(host, spec, serverId) : null
 			return [
 				{
 					serverId,
-					nextRunAt: spec ? SJOB.nextOccurrence(spec, now, last.get(flightKey(pluginId, toServerId(serverId), job.id)) ?? null) : null,
+					nextRunAt: spec
+						? SJOB.nextOccurrence(spec, now, last.get(flightKey(pluginId, toServerId(serverId), job.id)) ?? null, match)
+						: null,
+					awaiting: spec ? SJOB.awaitedBoundary(spec, match) : null,
 					blockedReason: blocked?.blockedReason ?? null,
 					running: going ? { key: going.key, cancelling: going.cancelRequested } : null,
 					last: latest

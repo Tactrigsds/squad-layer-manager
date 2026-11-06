@@ -50,9 +50,9 @@ pnpm install
 Write your plugin in its own directory. `plugins/<id>/` is the natural place, and your plugin's own git repo can
 be kept there without either repo noticing the other. See [Repo layouts](#repo-layouts).
 
-Four working plugins are already there to read. `test/fixtures/plugin-hello` touches every part of the contract.
-`plugins/afk-kicker`, `plugins/teamkill-warns` and `plugins/scoreboard` are real ones, with a server half and no client
-half. `plugins/scoreboard` posts embeds and charts to Discord.
+Five working plugins are already there to read. `test/fixtures/plugin-hello` touches every part of the contract.
+`plugins/afk-kicker`, `plugins/teamkill-warns`, `plugins/scoreboard` and `plugins/scheduled-commands` are real ones,
+with a server half and no client half. `plugins/scoreboard` posts embeds and charts to Discord.
 
 ## The files
 
@@ -707,8 +707,38 @@ export const jobs = [create, add]
 
 A `server` job runs once per server with that server's ctx. A `plugin` job runs once, with the plugin ctx. `when`
 schedules a recurring job: `Schedule.weekly(weekday, 'HH:MM', timezone)` and `Schedule.daily('HH:MM', timezone)`
-turn settings fields into a schedule, `{ cron, timezone }` takes a cron pattern, and `{ every: '6h' }` runs the job
+turn settings fields into a schedule, `{ cron, timezone }` takes a cron pattern, read in the time zone of the job's
+server when `timezone` is `'server'`, and `{ every: '6h' }` runs the job
 that long after its last run finished. Return null from `when` to leave the job unscheduled on that server.
+
+A `server` job can also follow the server's current match. `Schedule.afterMatchStart('5m')` runs five minutes after
+each match starts, and `Schedule.afterMatchStart('0s', { every: '10m' })` runs at the start and every ten minutes until
+the match ends. `Schedule.afterMatchEnd('30s')` runs 30 seconds after each match ends, unless the next match has
+started by then. These follow the catch-up rules of a cron job: a missed occurrence runs if it is still within
+`catchUp`, and an occurrence that has run never runs twice.
+
+`jobs` can be a function of your config instead of a list, for jobs an admin defines, such as one per entry in a
+list setting. SLM calls it at activation and again whenever the config is saved, and refuses a save whose jobs are
+invalid. Give each job a stable `id`, since its run history is kept under it, and a `label`, which admins see in place
+of the id:
+
+```ts
+export function jobs(cfg: Config) {
+	return cfg.reminders.map((r) =>
+		Schedule.job({
+			id: r.id,
+			label: r.name,
+			scope: 'server',
+			when: (_cfg, serverId) => (r.servers.includes(serverId!) ? Schedule.afterMatchStart(r.after) : null),
+			run: async (sctx) => {
+				await SquadRcon.broadcast(sctx, r.message)
+			},
+		}),
+	)
+}
+```
+
+`plugins/scheduled-commands` derives its jobs this way.
 
 `Schedule.at` stores one run with its payload. The payload is checked against the job's schema when it is
 scheduled and again when it runs, and is limited to 16 KB: store an id, not the data it names. Scheduling again under
@@ -869,7 +899,7 @@ absent.
 | `slm/server/instrumentation`                               | `spanOp`, `durableSub`                       |
 | `slm/server/logger`                                        | `childModule`                                |
 | `slm/server/svg-raster`                                    | drawing an SVG to a PNG                      |
-| `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management  |
+| `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, players, raw rcon  |
 | `slm/systems/squad-server`                                 | the live event stream, ending a match, kicks |
 | `slm/systems/player-activity`                              | who SLM counts as idle, and since when       |
 | `slm/systems/discord`                                      | posting text, embeds and files to a channel  |
@@ -1180,6 +1210,10 @@ in `errored` with the reason shown in settings. SLM keeps running.
 
 **Uninstalling leaves your data.** The plugin's row and its tables survive so that reinstalling restores an
 admin's settings. Admins delete leftovers explicitly from the settings page.
+
+**Raw rcon commands are audited.** `SquadRcon.execute(sctx, command)` runs any rcon command and returns the server's
+reply. The audit log and the activity feed record each one as an `RCON_COMMAND_RUN` naming your plugin. Use the typed
+functions where one exists: they parse the reply and record a more specific event.
 
 **Game server reads come from a cache.** `getTeams`, `getServerInfo`, `getLayerStatus` and `getPlayer` in
 `slm/systems/squad-rcon` answer from what SLM last polled, so calling them often adds no RCON traffic. To act on a
