@@ -13,8 +13,14 @@ import * as SchedJobs from '@/systems/scheduled-jobs.server'
  *     export const jobs = [remind]
  *
  * A job with `when` is recurring: `when(config, serverId)` returns its schedule, and is read again whenever the
- * plugin's config is saved. `weekly` and `daily` turn settings fields into a schedule. Any other job runs only when
- * scheduled with `at`, which stores the run and its payload until it comes due.
+ * plugin's config is saved. `weekly` and `daily` turn settings fields into a schedule, and a cron spec's timezone can
+ * be 'server', the time zone of the server a server job runs on. `afterMatchStart` and
+ * `afterMatchEnd` time a server job from that server's current match. Any other job runs only when scheduled with
+ * `at`, which stores the run and its payload until it comes due.
+ *
+ * `jobs` can also be a function of the config, `(config) => Job[]`, for jobs an admin defines, such as one per entry
+ * in a list. It is called at activation and again whenever the config is saved, and a config whose jobs are invalid is
+ * refused. A job's `label` is shown to admins in place of its id.
  *
  * A run that throws is tried again, backing off, until `catchUp` after its time. A run missed while SLM was down is
  * caught up within that window too, and only the latest one of a recurring job; beyond it, it is dropped. A run that
@@ -38,8 +44,18 @@ import * as SchedJobs from '@/systems/scheduled-jobs.server'
  * `run.key` identify the occurrence.
  */
 
-export { daily, weekly } from '@/models/scheduled-jobs.models'
-export type { Blocked, Duration, RunInfo, RunResult, Spec, Subscribable, Unblock } from '@/models/scheduled-jobs.models'
+export { afterMatchEnd, afterMatchStart, daily, weekly } from '@/models/scheduled-jobs.models'
+export type {
+	Blocked,
+	Duration,
+	MatchAnchor,
+	MatchSpec,
+	RunInfo,
+	RunResult,
+	Spec,
+	Subscribable,
+	Unblock,
+} from '@/models/scheduled-jobs.models'
 
 /**
  * The result of a run that cannot do its work yet. `unblock` is a duration, a promise, an async iterable or an

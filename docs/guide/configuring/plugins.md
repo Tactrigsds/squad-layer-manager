@@ -11,11 +11,12 @@ permission.
 
 SLM ships with these plugins. They are installed but stopped by default.
 
-| Plugin         | What it does                                                                  |
-| -------------- | ----------------------------------------------------------------------------- |
-| AFK Kicker     | Kicks AFK players when people are waiting in the queue, longest AFK first     |
-| Teamkill Warns | Warns players when they have been teamkilled                                  |
-| Scoreboard     | Posts a scoreboard to Discord when a match ends, with leaderboards and charts |
+| Plugin             | What it does                                                                            |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| AFK Kicker         | Kicks AFK players when people are waiting in the queue, longest AFK first               |
+| Teamkill Warns     | Warns players when they have been teamkilled                                            |
+| Scoreboard         | Posts a scoreboard to Discord when a match ends, with leaderboards and charts           |
+| Scheduled Commands | Runs RCON commands on a timer, at set times, or a set time after a match starts or ends |
 
 ## Installing a plugin
 
@@ -46,6 +47,9 @@ plugin written for a different version of SLM.
 A plugin's settings and in-game commands are edited in its row. Its commands take triggers like SLM's own (see
 [Command triggers](command_triggers.md)). If another command already owns one of its triggers, SLM warns that the trigger does
 nothing. Set a different one.
+
+A plugin can schedule jobs, such as each task of Scheduled Commands. The plugin's row lists each job with its next
+run and how its last run went. Click _Run now_ to run a job straight away, outside its schedule.
 
 A plugin can define actions of its own that need a permission. Grant them to a role under _Plugin Grants_ (see
 [Assigning permissions to roles](permissions.md#assigning-permissions-to-roles)).

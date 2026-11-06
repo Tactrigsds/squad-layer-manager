@@ -123,6 +123,10 @@ export const jobNextRun = def('Next run {time}', (time: string) => ({ time }))
 
 export const jobNotScheduled = def('Not scheduled')
 
+export const jobAwaitingMatchStart = def('Waits for the next match to start')
+
+export const jobAwaitingMatchEnd = def('Waits for the current match to end')
+
 export const jobLastSucceeded = def('Last run succeeded {time}', (time: string) => ({ time }))
 
 export const jobLastSucceededManual = def('Last run, by hand, succeeded {time}', (time: string) => ({ time }))

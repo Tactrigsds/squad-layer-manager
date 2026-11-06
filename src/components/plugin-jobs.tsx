@@ -4,6 +4,7 @@ import * as Icons from 'lucide-react'
 
 import * as Typo from '@/components/typography'
 import { Button } from '@/components/ui/button'
+import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import type * as SJOB from '@/models/scheduled-jobs.models'
@@ -75,24 +76,37 @@ function StopButton(props: { disabled: boolean; label: string; onClick: () => vo
 	)
 }
 
+function nextRun(target: SJOB.JobView['targets'][number]) {
+	if (target.nextRunAt !== null) return tr.text(PLUGINS_Msgs.jobNextRun(when(target.nextRunAt)))
+	switch (target.awaiting) {
+		case 'start':
+			return tr.text(PLUGINS_Msgs.jobAwaitingMatchStart())
+		case 'end':
+			return tr.text(PLUGINS_Msgs.jobAwaitingMatchEnd())
+		case null:
+			return tr.text(PLUGINS_Msgs.jobNotScheduled())
+		default:
+			assertNever(target.awaiting)
+	}
+}
+
 function JobEntry(props: { pluginId: string; job: SJOB.JobView }) {
 	const { job, pluginId } = props
 	const serverName = useServerName()
+	const name = job.label ?? job.id
 	return (
 		<li className="space-y-1.5 rounded border p-2">
-			<p className="font-mono text-sm ltr-isolate">{job.id}</p>
+			{job.label === null ? (
+				<p className="font-mono text-sm ltr-isolate">{job.id}</p>
+			) : (
+				<p className="text-sm font-medium">{job.label}</p>
+			)}
 			{job.targets.length > 0 && (
 				<ul className="space-y-1">
 					{job.targets.map((target) => (
 						<li key={target.serverId ?? ''} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
 							<span className="font-medium">{serverName(target.serverId)}</span>
-							{job.recurring && (
-								<span className="text-muted-foreground">
-									{target.nextRunAt === null
-										? tr.text(PLUGINS_Msgs.jobNotScheduled())
-										: tr.text(PLUGINS_Msgs.jobNextRun(when(target.nextRunAt)))}
-								</span>
-							)}
+							{job.recurring && <span className="text-muted-foreground">{nextRun(target)}</span>}
 							{target.blockedReason !== null && (
 								<span className="text-warning">{tr.text(PLUGINS_Msgs.jobWaiting(target.blockedReason))}</span>
 							)}
@@ -108,7 +122,7 @@ function JobEntry(props: { pluginId: string; job: SJOB.JobView }) {
 							{target.running && (
 								<StopButton
 									disabled={target.running.cancelling}
-									label={tr.text(PLUGINS_Msgs.jobStopLabel(job.id, serverName(target.serverId)))}
+									label={tr.text(PLUGINS_Msgs.jobStopLabel(name, serverName(target.serverId)))}
 									onClick={() => void PluginsClient.Actions.cancelJobRun(pluginId, job.id, target.serverId, target.running!.key)}
 								/>
 							)}
@@ -116,7 +130,7 @@ function JobEntry(props: { pluginId: string; job: SJOB.JobView }) {
 								<Button
 									size="sm"
 									variant="outline"
-									aria-label={tr.text(PLUGINS_Msgs.jobRunNowLabel(job.id, serverName(target.serverId)))}
+									aria-label={tr.text(PLUGINS_Msgs.jobRunNowLabel(name, serverName(target.serverId)))}
 									onClick={() => void PluginsClient.Actions.runJobNow(pluginId, job.id, target.serverId, null)}
 								>
 									<Icons.Play />
@@ -141,7 +155,7 @@ function JobEntry(props: { pluginId: string; job: SJOB.JobView }) {
 									size="sm"
 									variant="outline"
 									disabled={run.state === 'running'}
-									aria-label={tr.text(PLUGINS_Msgs.jobRunNowLabel(`${job.id} ${run.key}`, serverName(run.serverId)))}
+									aria-label={tr.text(PLUGINS_Msgs.jobRunNowLabel(`${name} ${run.key}`, serverName(run.serverId)))}
 									onClick={() => void PluginsClient.Actions.runJobNow(pluginId, job.id, run.serverId, run.key)}
 								>
 									<Icons.Play />
@@ -150,14 +164,14 @@ function JobEntry(props: { pluginId: string; job: SJOB.JobView }) {
 								{run.state === 'running' ? (
 									<StopButton
 										disabled={run.cancelling}
-										label={tr.text(PLUGINS_Msgs.jobStopLabel(`${job.id} ${run.key}`, serverName(run.serverId)))}
+										label={tr.text(PLUGINS_Msgs.jobStopLabel(`${name} ${run.key}`, serverName(run.serverId)))}
 										onClick={() => void PluginsClient.Actions.cancelJobRun(pluginId, job.id, run.serverId, run.key)}
 									/>
 								) : (
 									<Button
 										size="sm"
 										variant="ghost"
-										aria-label={tr.text(PLUGINS_Msgs.jobCancelLabel(run.key, job.id))}
+										aria-label={tr.text(PLUGINS_Msgs.jobCancelLabel(run.key, name))}
 										onClick={() => void PluginsClient.Actions.cancelJobRun(pluginId, job.id, run.serverId, run.key)}
 									>
 										<Icons.X />

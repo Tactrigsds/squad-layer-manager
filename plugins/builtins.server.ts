@@ -6,6 +6,7 @@ import type * as PLG from '@/models/plugins.models'
 import type { BuiltinPlugin, ServerModule } from '@/systems/plugins.server'
 
 import afkKicker from './afk-kicker/plugin.ts'
+import scheduledCommands from './scheduled-commands/plugin.ts'
 import scoreboard from './scoreboard/plugin.ts'
 import teamkillWarns from './teamkill-warns/plugin.ts'
 
@@ -26,6 +27,11 @@ export const BUILTIN_PLUGINS: BuiltinPlugin[] = [
 	{
 		manifest: scoreboard,
 		server: () => import('./scoreboard/server.ts'),
+		hasClient: false,
+	},
+	{
+		manifest: scheduledCommands,
+		server: () => import('./scheduled-commands/server.ts'),
 		hasClient: false,
 	},
 ]

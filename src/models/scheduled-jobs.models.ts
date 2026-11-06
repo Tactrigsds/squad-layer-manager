@@ -3,17 +3,28 @@
 // scheduledJobRuns. This module holds the job's shape and the timing rules, which are pure.
 import { Cron } from 'croner'
 
+import * as TZ from '@/lib/time-zones'
+import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
+import type * as MH from '@/models/match-history.models'
 
 export type Scope = 'server' | 'plugin'
 
 // milliseconds, or a duration such as '6h'
 export type Duration = number | string
 
-// When a recurring job runs: at the times a cron pattern names, read in an IANA timezone, or every so long after its
-// last run finished.
-export type Spec = { cron: string; timezone: string } | { every: Duration }
+// When a recurring job runs: at the times a cron pattern names, read in an IANA timezone or in the job's server's own
+// zone for 'server', every so long after its last run finished, or relative to the current match on the job's server.
+export type Spec = { cron: string; timezone: string } | { every: Duration } | MatchSpec
+
+// `after` the current match starts or ends, then again every `every` while the match is still in that phase: until
+// it ends for 'start', and until the next one starts for 'end'. Only a server job can take one.
+export type MatchSpec = { match: MatchAnchor; after: Duration; every?: Duration | null }
+export type MatchAnchor = 'start' | 'end'
+
+// what a MatchSpec is measured from: when the server's current match started, or when it ended
+export type MatchTimes = { status: 'in-progress'; startTime: number } | { status: 'post-game'; endTime: number } | null
 
 export type RunInfo = {
 	// the time the run was due, which identifies the occurrence: a stable key for idempotent work
@@ -44,6 +55,8 @@ export type RunResult = void | Blocked
 
 export type Job<Ctx = any, P = undefined, Cfg = any> = {
 	id: string
+	// what admins see the job as, in place of its id
+	label?: string
 	scope: Scope
 	// the shape of the data a one-off run carries. A recurring job takes none.
 	payload?: z.ZodType<P>
@@ -73,12 +86,15 @@ export type RunKind = 'once' | 'recurring' | 'manual'
 // what the settings page shows of one job
 export type JobView = {
 	id: string
+	label: string | null
 	scope: Scope
 	recurring: boolean
 	targets: {
 		serverId: string | null
 		// null while the job is not scheduled there
 		nextRunAt: number | null
+		// the match boundary a match-relative job waits for before its next run can be timed
+		awaiting: MatchAnchor | null
 		// what the current occurrence is waiting for, while it is blocked
 		blockedReason: string | null
 		// the run going there now, of the recurring job or a Run now of it
@@ -152,6 +168,24 @@ export function daily(time: string, timezone: string): Spec {
 	return { cron: `${minute} ${hour} * * *`, timezone }
 }
 
+export function afterMatchStart(after: Duration, opts?: { every?: Duration }): Spec {
+	return { match: 'start', after, every: opts?.every ?? null }
+}
+
+export function afterMatchEnd(after: Duration): Spec {
+	return { match: 'end', after }
+}
+
+export function isMatchSpec(spec: Spec): spec is MatchSpec {
+	return 'match' in spec
+}
+
+export function matchTimes(match: MH.MatchDetails | undefined): MatchTimes {
+	if (!match) return null
+	if (match.status === 'in-progress') return match.startTime ? { status: 'in-progress', startTime: match.startTime.getTime() } : null
+	return match.endTime instanceof Date ? { status: 'post-game', endTime: match.endTime.getTime() } : null
+}
+
 const crons = new Map<string, Cron>()
 function cronFor(spec: { cron: string; timezone: string }): Cron {
 	const k = `${spec.timezone}|${spec.cron}`
@@ -166,47 +200,94 @@ function cronFor(spec: { cron: string; timezone: string }): Cron {
 // the reason a spec cannot be used, or null
 export function specError(spec: Spec): string | null {
 	try {
-		if ('cron' in spec) cronFor(spec)
-		else if (!(durationMs(spec.every) > 0)) return 'the interval must be positive'
+		if ('cron' in spec) {
+			if (!TZ.isValid(spec.timezone)) return `"${spec.timezone}" is not a time zone`
+			cronFor(spec)
+		} else if (isMatchSpec(spec)) {
+			if (!(durationMs(spec.after) >= 0)) return 'the delay after the match boundary must not be negative'
+			if (spec.every != null && !(durationMs(spec.every) > 0)) return 'the interval must be positive'
+		} else if (!(durationMs(spec.every) > 0)) return 'the interval must be positive'
 		return null
 	} catch (err) {
 		return err instanceof Error ? err.message : String(err)
 	}
 }
 
+// The first occurrence of a match-relative spec in the current match's phase, and the interval it repeats at.
+function matchSeries(spec: MatchSpec, match: MatchTimes): { first: number; every: number | null } | null {
+	const every = spec.every == null ? null : durationMs(spec.every)
+	switch (spec.match) {
+		case 'start':
+			return match?.status === 'in-progress' ? { first: match.startTime + durationMs(spec.after), every } : null
+		case 'end':
+			return match?.status === 'post-game' ? { first: match.endTime + durationMs(spec.after), every } : null
+		default:
+			assertNever(spec.match)
+	}
+}
+
 /**
- * The occurrence of a recurring job that should run now, or null. `last` is the job's most recent recurring run there.
+ * The occurrence of a recurring job that should run now, or null. `last` is the job's most recent recurring run there,
+ * and `match` the times of the current match on the job's server, which only a match-relative spec reads.
  *
- * For a cron spec, it is the latest occurrence within the catch-up window that has not run, so a job that was down
- * for three weeks runs once, not three times, and one outside the window leaves no trace. For an interval, it is due
- * once the interval has passed since the last run finished, or straight away when there has never been one.
+ * For a cron or match-relative spec, it is the latest occurrence within the catch-up window that has not run, so a job
+ * that was down for three weeks runs once, not three times, and one outside the window leaves no trace. For an
+ * interval, it is due once the interval has passed since the last run finished, or straight away when there has never
+ * been one.
  */
 export function dueOccurrence(
 	spec: Spec,
 	now: number,
 	catchUp: number,
 	last: { dueAt: number; finishedAt: number | null } | null,
+	match: MatchTimes = null,
 ): number | null {
+	let latest: number | null
 	if ('cron' in spec) {
 		// croner works in whole seconds and looks strictly before the reference, so one second past now includes now
-		const [latest] = cronFor(spec).previousRuns(1, new Date(now + 1000))
-		if (!latest) return null
-		const at = latest.getTime()
-		if (at > now || at <= now - catchUp) return null
-		if (last && at <= last.dueAt) return null
-		return at
+		latest =
+			cronFor(spec)
+				.previousRuns(1, new Date(now + 1000))[0]
+				?.getTime() ?? null
+	} else if (isMatchSpec(spec)) {
+		const series = matchSeries(spec, match)
+		if (!series || series.first > now) return null
+		latest = series.every === null ? series.first : series.first + Math.floor((now - series.first) / series.every) * series.every
+	} else {
+		if (!last) return now
+		// a run still going has no finish to anchor to, and is not overlapped
+		if (last.finishedAt === null) return null
+		const at = last.finishedAt + durationMs(spec.every)
+		return at <= now ? at : null
 	}
-	if (!last) return now
-	// a run still going has no finish to anchor to, and is not overlapped
-	if (last.finishedAt === null) return null
-	const at = last.finishedAt + durationMs(spec.every)
-	return at <= now ? at : null
+	if (latest === null || latest > now || latest <= now - catchUp) return null
+	if (last && latest <= last.dueAt) return null
+	return latest
 }
 
-// when a recurring job next comes due after `now`, for the settings page and the timer
-export function nextOccurrence(spec: Spec, now: number, last: { dueAt: number; finishedAt: number | null } | null): number | null {
+// when a recurring job next comes due after `now`, for the settings page and the timer. A match-relative job has
+// none while the current match is not in the phase it waits for.
+export function nextOccurrence(
+	spec: Spec,
+	now: number,
+	last: { dueAt: number; finishedAt: number | null } | null,
+	match: MatchTimes = null,
+): number | null {
 	if ('cron' in spec) return cronFor(spec).nextRun(new Date(now))?.getTime() ?? null
+	if (isMatchSpec(spec)) {
+		const series = matchSeries(spec, match)
+		if (!series) return null
+		if (series.first > now) return series.first
+		if (series.every === null) return null
+		return series.first + (Math.floor((now - series.first) / series.every) + 1) * series.every
+	}
 	if (!last) return now
 	if (last.finishedAt === null) return null
 	return last.finishedAt + durationMs(spec.every)
+}
+
+// the match boundary a match-relative spec is waiting for, or null when it is timed or is not match-relative
+export function awaitedBoundary(spec: Spec, match: MatchTimes): MatchAnchor | null {
+	if (!isMatchSpec(spec)) return null
+	return matchSeries(spec, match) ? null : spec.match
 }

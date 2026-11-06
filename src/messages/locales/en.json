@@ -2819,6 +2819,8 @@
 	"Waiting for you to send it in game...": "Waiting for you to send it in game...",
 	"Waiting until {time}: {reason}": "Waiting until {time}: {reason}",
 	"Waiting: {reason}": "Waiting: {reason}",
+	"Waits for the current match to end": "Waits for the current match to end",
+	"Waits for the next match to start": "Waits for the next match to start",
 	"Warn": "Warn",
 	"Warn For": "Warn For",
 	"Warn Squad": "Warn Squad",

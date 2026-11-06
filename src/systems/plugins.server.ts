@@ -113,9 +113,13 @@ export type RpcCtx<M extends PLG.Manifest<any> = PLG.Manifest> = ServerCtx<M> & 
 export type ServerModule = {
 	activate: (ctx: Ctx<any>) => void | Promise<void>
 	migrations?: PLG.PluginMigration[]
-	// the jobs the plugin schedules (see slm/plugin/schedule), read at activation so stored runs find their job on boot
-	jobs?: SJOB.Job<any, any, any>[]
+	// the jobs the plugin schedules (see slm/plugin/schedule), read at activation so stored runs find their job on boot.
+	// A function derives them from the config, and is called again whenever the config is saved.
+	jobs?: JobsExport
 }
+
+type AnyJob = SJOB.Job<any, any, any>
+export type JobsExport = AnyJob[] | ((cfg: any) => AnyJob[])
 
 // how a builtin registers itself (plugins/builtins.server.ts)
 export type BuiltinPlugin = {
@@ -176,7 +180,9 @@ type Runtime = {
 	// the plugin's oRPC router, registered at activation. Procedures receive a ServerCtx.
 	router: AnyRouter | null
 	// the jobs the server module exports, by id, while the plugin is active
-	jobs: Map<string, SJOB.Job<any, any, any>>
+	jobs: Map<string, AnyJob>
+	// the server module's jobs export, while the plugin is active, to derive jobs again from a new config
+	jobsExport: JobsExport | null
 }
 
 const plugins = new Map<string, Runtime>()
@@ -290,6 +296,7 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 		abort: null,
 		serverSetups: [],
 		jobs: new Map(),
+		jobsExport: null,
 		instances: new Map(),
 		permissions: new Map(),
 		commands: new Map(),
@@ -427,12 +434,12 @@ async function activateLocked(rt: Runtime) {
 		const mod = await rt.entry.server()
 		const migrations = rt.entry.migrations ? (await rt.entry.migrations()).migrations : (mod.migrations ?? [])
 		if (migrations.length > 0) await applyPluginMigrations(id, migrations)
-		const jobs = mod.jobs ?? []
-		const jobErrors = SchedJobs.jobListErrors(jobs)
-		if (jobErrors.length > 0) throw new Error(`invalid jobs:\n${jobErrors.join('\n')}`)
+		const jobs = deriveJobs(mod.jobs ?? [], rt.config)
+		if (jobs.code !== 'ok') throw new Error(`invalid jobs:\n${jobs.message}`)
 		rt.abort = new AbortController()
 		rt.cleanup = []
-		rt.jobs = new Map(jobs.map((job) => [job.id, job]))
+		rt.jobs = jobs.jobs
+		rt.jobsExport = mod.jobs ?? null
 		await mod.activate(mkCtx(rt))
 		rt.status = 'active'
 		SchedJobs.attach(schedulerHost(rt))
@@ -460,6 +467,7 @@ async function deactivateLocked(rt: Runtime) {
 async function teardownLocked(rt: Runtime) {
 	SchedJobs.detach(rt.ref.id)
 	rt.jobs = new Map()
+	rt.jobsExport = null
 	rt.abort?.abort()
 	rt.abort = null
 	// instance disposals are once-wrapped members of rt.cleanup, so this covers them too
@@ -530,13 +538,31 @@ export function registerServerSetup(ctx: Ctx<any>, cb: ServerSetupFn) {
 	}
 }
 
+function deriveJobs(
+	jobsExport: JobsExport,
+	cfg: unknown,
+): { code: 'ok'; jobs: Map<string, AnyJob> } | { code: 'err:invalid-jobs'; message: string } {
+	let jobs: AnyJob[]
+	try {
+		jobs = typeof jobsExport === 'function' ? jobsExport(cfg) : jobsExport
+	} catch (err) {
+		return {
+			code: 'err:invalid-jobs',
+			message: `deriving the jobs from the config failed: ${err instanceof Error ? err.message : String(err)}`,
+		}
+	}
+	const errors = SchedJobs.jobListErrors(jobs)
+	if (errors.length > 0) return { code: 'err:invalid-jobs', message: errors.join('\n') }
+	return { code: 'ok', jobs: new Map(jobs.map((job) => [job.id, job])) }
+}
+
 // The scheduler's view of an active plugin: its jobs, its config, and the ctx each run gets. A server's run gets the
 // same ctx the plugin's procedures get on that server.
 function schedulerHost(rt: Runtime): SchedJobs.Host {
 	return {
 		pluginId: rt.ref.id,
 		log: rt.log,
-		jobs: rt.jobs,
+		jobs: () => rt.jobs,
 		config: () => rt.config,
 		ctxFor: (serverId) => {
 			if (rt.status !== 'active' || !rt.abort) return null
@@ -552,6 +578,9 @@ function schedulerHost(rt: Runtime): SchedJobs.Host {
 // called from setupManagedServer, alongside the other per-server subsystem hooks
 export function setupServerInstances(managedServer: C.ManagedServer) {
 	SchedJobs.wake()
+	// a match-relative job comes due when the current match starts or ends
+	const matchChanges = managedServer.matchHistory.update$.subscribe(() => SchedJobs.wake())
+	managedServer.cleanup.push(() => matchChanges.unsubscribe())
 	for (const rt of plugins.values()) {
 		if (rt.status !== 'active' && rt.status !== 'activating') continue
 		if (rt.serverSetups.length === 0) continue
@@ -1070,10 +1099,14 @@ export const router = {
 				if (issues.length > 0) return { code: 'err:invalid-config' as const, message: issues.map((i) => i.message).join('\n') }
 				rt.commandConfigs = input.commands
 			}
+			const live = rt.status === 'active' || rt.status === 'activating'
+			const jobs = parsed && live && rt.jobsExport ? deriveJobs(rt.jobsExport, parsed.data) : null
+			if (jobs && jobs.code !== 'ok') return { code: 'err:invalid-config' as const, message: jobs.message }
 			if (input.config && parsed) {
 				rt.configInput = input.config
 				// active plugins read config through getConfig on every use, so this takes effect immediately
-				if (rt.status === 'active' || rt.status === 'activating') rt.config = parsed.data
+				if (live) rt.config = parsed.data
+				if (jobs) rt.jobs = jobs.jobs
 				// a recurring job's schedule is read from the config
 				SchedJobs.wake()
 			}
