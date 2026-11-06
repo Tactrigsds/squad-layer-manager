@@ -13,6 +13,7 @@ export const VARIABLES = {
 	players: 'how many players are on the server',
 	maxPlayers: 'how many player slots the server has',
 	queue: 'how many players are waiting to join',
+	matchId: "the current match's id in SLM, which the history page can be filtered by",
 	matchMinutes: 'whole minutes since the match started',
 	time: "the time of day, as HH:MM in the server's time zone",
 	task: "the task's name",

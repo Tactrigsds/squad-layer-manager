@@ -173,7 +173,7 @@ describe('plugin host', () => {
 						description: 'Thanks players at round end',
 						servers: [app.serverId],
 						trigger: { type: 'round-end', after: '0s' },
-						commands: ['AdminBroadcast SCHED_GG {{task}} on {{map}}'],
+						commands: ['AdminBroadcast SCHED_GG {{task}} on {{map}} match {{matchId}}'],
 					},
 					{
 						name: 'Unpopulated',
@@ -210,7 +210,7 @@ describe('plugin host', () => {
 		const endedMatch = latestMatch(app)
 		app.emu.world.endMatch()
 		const gg = await app.waitFor(() => runStartingWith('AdminBroadcast SCHED_GG'), { label: 'the round-end command' })
-		expect(gg.command).toMatch(/^AdminBroadcast SCHED_GG GG on \S+$/)
+		expect(gg.command).toMatch(new RegExp(`^AdminBroadcast SCHED_GG GG on \\S+ match ${endedMatch.id}$`))
 		expect(gg).toMatchObject({ matchId: endedMatch.id, actorPluginId: 'scheduled-commands' })
 		await app.waitFor(async () => ((await target('unpopulated'))?.last?.state === 'succeeded' ? true : undefined), {
 			label: 'the under-populated round-end run finishing',

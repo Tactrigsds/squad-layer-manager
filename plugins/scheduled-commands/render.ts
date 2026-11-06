@@ -24,9 +24,10 @@ export async function readVariables(ctx: Ctx, taskName: string, used: ReadonlySe
 	if (used.has('server')) vars.server = Settings.listServers().find((s) => s.id === ctx.serverId)?.displayName ?? ctx.serverId
 	if (used.has('time')) vars.time = formatInTimeZone(Date.now(), Settings.server(ctx.serverId)?.timeZone ?? 'UTC', 'HH:mm')
 
-	if (uses('layer', 'map', 'gamemode', 'team1', 'team2', 'matchMinutes')) {
+	if (uses('layer', 'map', 'gamemode', 'team1', 'team2', 'matchId', 'matchMinutes')) {
 		const match = await MatchHistory.getCurrentMatch(ctx)
 		if (match) {
+			vars.matchId = String(match.historyEntryId)
 			const layer = toLayerOrNull(match.layerId)
 			vars.layer = layerName(layer?.Layer ?? L.toLayerText(match.layerId))
 			vars.map = layer?.Map ?? ''
