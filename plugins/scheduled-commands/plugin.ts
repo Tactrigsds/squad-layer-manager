@@ -4,6 +4,8 @@ import * as ZU from 'slm/lib/zod-utils'
 import { definePlugin } from 'slm/plugin'
 import { Fields } from 'slm/plugin/fields'
 
+import * as Vars from './variables.ts'
+
 const MIN_INTERVAL_MS = 10_000
 
 // a task's job id, which the scheduler keys its runs by
@@ -45,9 +47,26 @@ const Trigger = z.discriminatedUnion('type', [
 const Task = z
 	.object({
 		name: z.string().trim().min(1).describe('Names the task in settings. Must be unique.'),
+		description: z.string().trim().prefault('').describe('What the task is for. Shown under its name in the list of jobs.'),
 		servers: Fields.serverIds().prefault([]).describe('Servers the task runs on. Empty runs on none.'),
 		trigger: Trigger.prefault({ type: 'interval' }).describe('When the commands run'),
-		commands: z.array(z.string().trim().min(1)).min(1).describe('RCON commands, run in order, such as "AdminBroadcast Join our discord"'),
+		commands: z
+			.array(
+				z
+					.string()
+					.trim()
+					.min(1)
+					.superRefine((command, ctx) => {
+						const error = Vars.commandError(command)
+						if (error) ctx.addIssue({ code: 'custom', message: error })
+					}),
+			)
+			.min(1)
+			.describe(
+				`RCON commands, run in order, such as "AdminBroadcast Now playing {{layer}}". Variables: ${Object.keys(Vars.VARIABLES)
+					.map((name) => `{{${name}}}`)
+					.join(', ')}`,
+			),
 		minPlayers: z.int().min(0).prefault(0).describe('Skip a scheduled run while fewer players than this are on the server'),
 	})
 	.refine((t) => jobIdOf(t.name) !== '', { message: 'A task name needs at least one letter or number', path: ['name'] })
@@ -63,7 +82,7 @@ const Task = z
 export default definePlugin({
 	id: 'scheduled-commands',
 	name: 'Scheduled Commands',
-	version: '1.0.0',
+	version: '1.1.0',
 	apiVersion: '^0.22.2',
 	description: 'Runs RCON commands on a timer, at set times, or a set time after a match starts or ends.',
 	configSchema: z.object({

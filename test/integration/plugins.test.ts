@@ -156,6 +156,7 @@ describe('plugin host', () => {
 				`SELECT json_extract(data, '$.json.command') AS command, matchId, actorPluginId FROM appEvents WHERE type = 'RCON_COMMAND_RUN'`,
 			)
 		const runOf = (command: string) => runs().find((r) => r.command === command)
+		const runStartingWith = (prefix: string) => runs().find((r) => r.command.startsWith(prefix))
 		const jobs = async () => {
 			const res = await client.plugins.listJobs({ pluginId: 'scheduled-commands' })
 			return res.code === 'ok' ? res.jobs : []
@@ -167,7 +168,13 @@ describe('plugin host', () => {
 			pluginId: 'scheduled-commands',
 			config: {
 				tasks: [
-					{ name: 'GG', servers: [app.serverId], trigger: { type: 'round-end', after: '0s' }, commands: ['AdminBroadcast SCHED_GG'] },
+					{
+						name: 'GG',
+						description: 'Thanks players at round end',
+						servers: [app.serverId],
+						trigger: { type: 'round-end', after: '0s' },
+						commands: ['AdminBroadcast SCHED_GG {{task}} on {{map}}'],
+					},
 					{
 						name: 'Unpopulated',
 						servers: [app.serverId],
@@ -185,16 +192,25 @@ describe('plugin host', () => {
 			},
 		})
 		expect(saved).toMatchObject({ code: 'ok' })
+		const unknownVariable = await client.plugins.updateSettings({
+			pluginId: 'scheduled-commands',
+			config: {
+				tasks: [{ name: 'Typo', servers: [], trigger: { type: 'round-end', after: '0s' }, commands: ['AdminBroadcast {{mapp}}'] }],
+			},
+		})
+		expect(unknownVariable).toMatchObject({ code: 'err:invalid-config', message: expect.stringContaining('{{mapp}}') })
 		expect((await jobs()).map((j) => [j.id, j.label])).toEqual([
 			['gg', 'GG'],
 			['unpopulated', 'Unpopulated'],
 			['welcome-broadcast', 'Welcome broadcast'],
 		])
+		expect((await jobs()).map((j) => j.description)).toEqual(['Thanks players at round end', null, null])
 		expect(await target('gg')).toMatchObject({ nextRunAt: null, awaiting: 'end' })
 
 		const endedMatch = latestMatch(app)
 		app.emu.world.endMatch()
-		const gg = await app.waitFor(() => runOf('AdminBroadcast SCHED_GG'), { label: 'the round-end command' })
+		const gg = await app.waitFor(() => runStartingWith('AdminBroadcast SCHED_GG'), { label: 'the round-end command' })
+		expect(gg.command).toMatch(/^AdminBroadcast SCHED_GG GG on \S+$/)
 		expect(gg).toMatchObject({ matchId: endedMatch.id, actorPluginId: 'scheduled-commands' })
 		await app.waitFor(async () => ((await target('unpopulated'))?.last?.state === 'succeeded' ? true : undefined), {
 			label: 'the under-populated round-end run finishing',

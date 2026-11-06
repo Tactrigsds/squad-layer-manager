@@ -1,3 +1,4 @@
+import * as Templating from 'slm/lib/templating'
 import type * as P from 'slm/plugin'
 import * as Schedule from 'slm/plugin/schedule'
 import * as Settings from 'slm/systems/settings'
@@ -6,6 +7,8 @@ import * as SquadServer from 'slm/systems/squad-server'
 
 import type manifest from './plugin.ts'
 import { jobIdOf } from './plugin.ts'
+import * as Render from './render.ts'
+import * as Vars from './variables.ts'
 
 type Config = P.Config<typeof manifest>
 type Task = Config['tasks'][number]
@@ -18,9 +21,11 @@ export function jobs(cfg: Config) {
 }
 
 function taskJob(task: Task) {
+	const used = Vars.usedVariables(task.commands)
 	return Schedule.job({
 		id: jobIdOf(task.name),
 		label: task.name,
+		...(task.description ? { description: task.description } : {}),
 		scope: 'server',
 		// a broadcast meant for the start of a match is wrong ten minutes in
 		catchUp: '1m',
@@ -31,8 +36,10 @@ function taskJob(task: Task) {
 				sctx.log.info('skipping %s: %d players, %d required', task.name, playerCount, task.minPlayers)
 				return
 			}
+			const vars = used.size > 0 ? await Render.readVariables(sctx, task.name, used) : {}
 			const failures: string[] = []
-			for (const command of task.commands) {
+			for (const template of task.commands) {
+				const command = used.size > 0 ? Templating.renderTemplate(template, vars) : template
 				const res = await SquadRcon.execute(sctx, command)
 				if (res.code !== 'ok') failures.push(`"${command}": ${res.msg}`)
 			}

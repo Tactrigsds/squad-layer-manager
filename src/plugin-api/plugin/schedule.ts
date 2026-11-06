@@ -20,7 +20,7 @@ import * as SchedJobs from '@/systems/scheduled-jobs.server'
  *
  * `jobs` can also be a function of the config, `(config) => Job[]`, for jobs an admin defines, such as one per entry
  * in a list. It is called at activation and again whenever the config is saved, and a config whose jobs are invalid is
- * refused. A job's `label` is shown to admins in place of its id.
+ * refused. A job's `label` is shown to admins in place of its id, and its `description` under the label.
  *
  * A run that throws is tried again, backing off, until `catchUp` after its time. A run missed while SLM was down is
  * caught up within that window too, and only the latest one of a recurring job; beyond it, it is dropped. A run that

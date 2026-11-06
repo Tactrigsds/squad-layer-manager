@@ -29,9 +29,12 @@ import { tr } from '@/systems/messages.client'
 
 // The JSON Schema projection of a settings schema (z.toJSONSchema, io: 'input'), narrowed to the keys the form walks.
 // Annotations such as schema docs and plugin field controls are read through SDoc and PLG.
+export type SchemaType = 'object' | 'array' | 'string' | 'number' | 'integer' | 'boolean' | 'null'
+
 export type SchemaNode = {
 	[key: string]: unknown
-	type?: 'object' | 'array' | 'string' | 'number' | 'integer' | 'boolean' | 'null'
+	// an array only for a nullable primitive, `["string", "null"]`, which stripNullable turns back into one type
+	type?: SchemaType | SchemaType[]
 	enum?: (string | number)[]
 	const?: string | number | boolean | null
 	default?: unknown
@@ -88,7 +91,14 @@ export function useReset(reset$: Rx.Observable<void>, fn: () => void) {
 	}, [reset$])
 }
 
+// Zod writes a nullable primitive as `type: [T, "null"]`, and anything else that is nullable as `anyOf: [..., { type:
+// "null" }]`.
 export function stripNullable(node: SchemaNode): { inner: SchemaNode; nullable: boolean } {
+	if (Array.isArray(node?.type)) {
+		const others = node.type.filter((t) => t !== 'null')
+		const nullable = others.length < node.type.length
+		return { inner: { ...node, type: others.length === 1 ? others[0] : others }, nullable }
+	}
 	if (node?.anyOf) {
 		const nulls = node.anyOf.filter((b: SchemaNode) => b.type === 'null')
 		const others = node.anyOf.filter((b: SchemaNode) => b.type !== 'null')
