@@ -44,7 +44,10 @@ function readRows<T>(query: string, ...params: unknown[]): T[] {
 // Ends the current match and rolls. The roll waits for the recorded outcome first: ending and rolling back-to-back
 // can land the ROUND_ENDED in the same ingest batch as the new match, which attributes it to the wrong match.
 async function rollToNext() {
-	const oldMatch = latestMatch(app)
+	// right after boot the app may not have recorded the emulator's match yet
+	const oldMatch = await app.waitFor(() => latestMatch(app) as ReturnType<typeof latestMatch> | undefined, {
+		label: 'a match being recorded',
+	})
 	app.emu.world.endMatch()
 	await app.waitFor(
 		() => readRows<{ outcome: string | null }>(`SELECT outcome FROM matchHistory WHERE id = ?`, oldMatch.id)[0]?.outcome ?? undefined,
@@ -173,7 +176,7 @@ describe('plugin host', () => {
 						description: 'Thanks players at round end',
 						servers: [app.serverId],
 						trigger: { type: 'round-end', after: '0s' },
-						commands: ['AdminBroadcast SCHED_GG {{task}} on {{map}} match {{matchId}}'],
+						commands: ['AdminBroadcast SCHED_GG {{task}} on {{layer}} ({{fullLayerName}}) match {{matchId}}'],
 					},
 					{
 						name: 'Unpopulated',
@@ -210,7 +213,9 @@ describe('plugin host', () => {
 		const endedMatch = latestMatch(app)
 		app.emu.world.endMatch()
 		const gg = await app.waitFor(() => runStartingWith('AdminBroadcast SCHED_GG'), { label: 'the round-end command' })
-		expect(gg.command).toMatch(new RegExp(`^AdminBroadcast SCHED_GG GG on \\S+ match ${endedMatch.id}$`))
+		expect(gg.command).toBe(
+			`AdminBroadcast SCHED_GG GG on ${endedMatch.layerId.split(':')[0]} (${endedMatch.layerId.replaceAll(':', '__').replaceAll('+', '-')}) match ${endedMatch.id}`,
+		)
 		expect(gg).toMatchObject({ matchId: endedMatch.id, actorPluginId: 'scheduled-commands' })
 		await app.waitFor(async () => ((await target('unpopulated'))?.last?.state === 'succeeded' ? true : undefined), {
 			label: 'the under-populated round-end run finishing',

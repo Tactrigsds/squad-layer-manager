@@ -3,12 +3,14 @@ import * as Templating from 'slm/lib/templating'
 // the {{variables}} a task's commands can use, and what each renders as
 export const VARIABLES = {
 	server: "the server's name in SLM",
-	layer: 'the current layer, such as "Gorodok RAAS v1"',
+	layer: 'the current layer, as the game names it, such as "Gorodok_RAAS_v2"',
+	fullLayerName:
+		'the current layer and both teams in a form safe for a file name, such as "Gorodok_RAAS_v2__USA-CombinedArms__RGF-CombinedArms"',
 	map: 'the current map',
 	gamemode: 'the current gamemode',
 	team1: 'the faction on team 1 this match',
 	team2: 'the faction on team 2 this match',
-	nextLayer: 'the layer set next on the game server',
+	nextLayer: 'the layer set next on the game server, as the game names it',
 	nextMap: 'the map set next on the game server',
 	players: 'how many players are on the server',
 	maxPlayers: 'how many player slots the server has',
