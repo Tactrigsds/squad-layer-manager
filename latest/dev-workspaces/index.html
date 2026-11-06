@@ -127,11 +127,19 @@ admins role, so their permission-gated in-game commands work.</p>
 <h2 id="what-a-dev-instance-cannot-reach" class="docs-heading">What a dev instance cannot reach<a href="#what-a-dev-instance-cannot-reach" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/dev_instances.md#what-a-dev-instance-cannot-reach" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>Blocked deliberately, via env overrides in <code>src/dev/instance.ts</code>:</p>
 <ul>
-<li><strong>Discord</strong> is off (<code>DISCORD_ENABLED=false</code>). The oauth callback is built from <code>ORIGIN</code>, so real login would need
+<li>
+<p><strong>Discord</strong> is off (<code>DISCORD_ENABLED=false</code>). The oauth callback is built from <code>ORIGIN</code>, so real login would need
 every slot&#x27;s port registered as a redirect uri on the discord app. <code>QUERY_PARAM_AUTH_BYPASS</code> stands in. RBAC roles
-that come from discord are unavailable as a result, but the <code>SUPER_USERS</code> bootstrap still applies.</li>
-<li><strong>BattleMetrics</strong> points at the emulator&#x27;s stub, and provisioning writes the stub&#x27;s org id and a dummy token into
-the workspace&#x27;s settings. The real API would write flags and notes to the live org.</li>
+that come from discord are unavailable as a result, but the <code>SUPER_USERS</code> bootstrap still applies.</p>
+<p>To work on something that posts to Discord, put a test bot&#x27;s <code>DISCORD_CLIENT_ID</code>, <code>DISCORD_BOT_TOKEN</code> and
+<code>DISCORD_HOME_GUILD_ID</code> in <code>.env.dev-discord</code> at the checkout&#x27;s root. The instance then connects that bot to that
+guild. Sign-in stays on <code>QUERY_PARAM_AUTH_BYPASS</code>. Git ignores the file, and a worktree does not share it with the
+main checkout. Use a guild made for testing, since the instance posts there for real.</p>
+</li>
+<li>
+<p><strong>BattleMetrics</strong> points at the emulator&#x27;s stub, and provisioning writes the stub&#x27;s org id and a dummy token into
+the workspace&#x27;s settings. The real API would write flags and notes to the live org.</p>
+</li>
 </ul>
 <p>Telemetry does go to the shared collector, tagged <code>slm.worktree=&lt;name&gt;</code> and <code>slm.dev.slot=&lt;n&gt;</code> so one grafana can
 serve every instance.</p>
