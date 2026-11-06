@@ -484,19 +484,19 @@ function MapSet(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, {
 }
 
 type DestroyedEvent = Extract<CHAT.EventEnriched, { type: 'VEHICLE_DESTROYED' | 'DEPLOYABLE_DESTROYED' }>
-type TargetedEvent = DestroyedEvent | Extract<CHAT.EventEnriched, { type: 'FOB_RADIO_DAMAGED' }>
+type TargetedEvent = DestroyedEvent | Extract<CHAT.EventEnriched, { type: 'FOB_RADIO_DAMAGED' | 'VEHICLE_DAMAGED' }>
 
 // The owning side's faction, the vehicle's canonical name and its class. The blueprint is the tooltip, since two
 // camo copies of one vehicle read the same here.
 function TargetDisplay(props: { ctx: RC.RenderCtx; event: TargetedEvent }) {
 	const { ctx, event } = props
 	const target = SE.targetOf(event)
-	const [vehicleName] =
-		event.type === 'VEHICLE_DESTROYED'
-			? withThrown(() => VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(target.className)?.vehicle)
-			: [undefined]
+	const isVehicle = event.type === 'VEHICLE_DESTROYED' || event.type === 'VEHICLE_DAMAGED'
+	const [vehicleName] = isVehicle
+		? withThrown(() => VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(target.className)?.vehicle)
+		: [undefined]
 	const name = event.type === 'FOB_RADIO_DAMAGED' ? tr.text(CHAT_Msgs.fobRadio()) : (vehicleName ?? DSTR.prettyClassName(target.className))
-	const typeCode = event.type === 'VEHICLE_DESTROYED' && target.targetType ? LC.vehicleTypeShortCode(target.targetType) : undefined
+	const typeCode = isVehicle && target.targetType ? LC.vehicleTypeShortCode(target.targetType) : undefined
 	return (
 		<span className="whitespace-nowrap">
 			{event.teamId !== null && (
@@ -590,6 +590,26 @@ function Destroyed(props: { ctx: RC.RenderCtx; event: DestroyedEvent }) {
 						),
 					)}
 				</span>
+			)}
+		</Atoms.EventLine>
+	)
+}
+
+function VehicleDamaged(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'VEHICLE_DAMAGED' }> }) {
+	const { ctx, event } = props
+	const tone = event.variant === 'teamkill' ? 'text-danger' : event.variant === 'suicide' ? 'text-warn' : 'text-muted-foreground'
+	const weaponSuffix = event.weapon ? (
+		<span className="text-muted-foreground/70">{tr.text(CHAT_Msgs.withWeapon(event.weapon))}</span>
+	) : undefined
+	return (
+		<Atoms.EventLine time={event.time} icon={<Icon name="Crosshair" className={`h-4 w-4 shrink-0 ${tone}`} />}>
+			{tr.richText(
+				CHAT_Msgs.vehicleHit(
+					<Atoms.PlayerDisplay ctx={ctx} showTeam player={event.attacker} matchId={event.matchId} />,
+					<TargetDisplay ctx={ctx} event={event} />,
+					Math.round(event.damage),
+					weaponSuffix,
+				),
 			)}
 		</Atoms.EventLine>
 	)
@@ -846,9 +866,22 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 		case 'PLAYER_DIED':
 		case 'PLAYER_WOUNDED':
 			return <WoundedOrDied ctx={ctx} event={event} />
+		case 'PLAYER_REVIVED':
+			return (
+				<Atoms.EventLine time={event.time} icon={<Icon name="HeartPulse" className="h-4 w-4 text-ok shrink-0" />}>
+					{tr.richText(
+						CHAT_Msgs.playerRevived(
+							<Atoms.PlayerDisplay ctx={ctx} showTeam player={event.reviver} matchId={event.matchId} />,
+							<Atoms.PlayerDisplay ctx={ctx} showTeam player={event.revived} matchId={event.matchId} />,
+						),
+					)}
+				</Atoms.EventLine>
+			)
 		case 'VEHICLE_DESTROYED':
 		case 'DEPLOYABLE_DESTROYED':
 			return <Destroyed ctx={ctx} event={event} />
+		case 'VEHICLE_DAMAGED':
+			return <VehicleDamaged ctx={ctx} event={event} />
 		case 'FOB_RADIO_DAMAGED':
 			return <RadioDamaged ctx={ctx} event={event} />
 		case 'MAP_SET':

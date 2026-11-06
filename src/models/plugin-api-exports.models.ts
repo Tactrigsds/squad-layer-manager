@@ -236,8 +236,9 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	'slm/server/db': ['afterCommit', 'all', 'forModule', 'get', 'run', 'transaction'],
 	'slm/server/instrumentation': ['durableSub', 'recordGenericError', 'setSpanOpAttrs', 'setSpanStatus', 'spanOp'],
 	'slm/server/logger': ['childModule'],
+	'slm/server/svg-raster': ['FONT_FAMILIES', 'svgToPng'],
 	'slm/systems/app-events': ['emit'],
-	'slm/systems/discord': ['deleteMessage', 'isEnabled', 'postMessage'],
+	'slm/systems/discord': ['deleteMessage', 'isEnabled', 'postMessage', 'sendMessage'],
 	'slm/systems/filter-entity': [
 		'addContributor',
 		'changes',
@@ -262,7 +263,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'scoreRanges',
 	],
 	'slm/systems/layer-queue': ['dispatchOp', 'editSaved', 'editsSettled', 'getSavedBackburner', 'getSavedQueue', 'getSlmUpdatesEnabled'],
-	'slm/systems/match-history': ['getCurrentMatch', 'getMatchById', 'getPublicMatchHistoryState', 'getRecentMatches'],
+	'slm/systems/match-history': ['getCurrentMatch', 'getMatchById', 'getMatchEvents', 'getPublicMatchHistoryState', 'getRecentMatches'],
 	'slm/systems/player-activity': ['idlePlayers', 'idleThresholdMs', 'isIdle', 'lastActive'],
 	'slm/systems/post-roll-reminders': ['register'],
 	'slm/systems/rbac': ['checkCaller', 'checkPlayer', 'describe'],
@@ -281,7 +282,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'search',
 		'update',
 	],
-	'slm/systems/settings': ['global', 'globalChanges', 'server', 'serverChanges', 'updateGlobal', 'updateServer'],
+	'slm/systems/settings': ['global', 'globalChanges', 'listServers', 'server', 'serverChanges', 'updateGlobal', 'updateServer'],
 	'slm/systems/squad-rcon': [
 		'MIN_TTL_MS',
 		'adminRenameSquad',

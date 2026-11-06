@@ -323,6 +323,11 @@ export function logDie(victim: PlayerLike, attacker: PlayerLike, damage: number,
 	)} from ${attacker.controllerId} (Online IDs: ${idsStr(attacker)} | Contoller ID: ${attacker.controllerId}) caused by ${causer}`
 }
 
+// the real line pads each name with a run of spaces
+export function logRevive(reviver: PlayerLike, revived: PlayerLike): string {
+	return `LogSquad:  ${reviver.name.trim()} (Online IDs: ${idsStr(reviver)}) has revived  ${revived.name.trim()} (Online IDs: ${idsStr(revived)}).`
+}
+
 // ---------- vehicles and deployables. `actor` is a blueprint class with its `_C_<instance>` suffix.
 
 export function logVehicleEntered(p: PlayerLike, actor: string, seat: number): string {

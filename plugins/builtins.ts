@@ -3,6 +3,7 @@ import { clients, manifests } from 'virtual:slm-dev-plugins'
 import type { BuiltinClientPlugin } from '@/systems/plugins.client'
 
 import afkKicker from './afk-kicker/plugin.ts'
+import scoreboard from './scoreboard/plugin.ts'
 import teamkillWarns from './teamkill-warns/plugin.ts'
 
 // The client-safe half of the builtin registry: manifests plus lazy client entries. Server/migration
@@ -10,7 +11,7 @@ import teamkillWarns from './teamkill-warns/plugin.ts'
 // repo belong here; a packaged plugin is found in PLUGINS_DIR at runtime and registers nothing.
 // A plugin with no client half still belongs here: the config editor renders from the manifest, and a
 // builtin has no manifestEntry for the client to fetch one from.
-const SHIPPED: BuiltinClientPlugin[] = [{ manifest: teamkillWarns }, { manifest: afkKicker }]
+const SHIPPED: BuiltinClientPlugin[] = [{ manifest: teamkillWarns }, { manifest: afkKicker }, { manifest: scoreboard }]
 
 export const BUILTIN_PLUGIN_CLIENTS: BuiltinClientPlugin[] = [...SHIPPED, ...discoverSourceClients()]
 

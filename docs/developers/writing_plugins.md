@@ -50,8 +50,9 @@ pnpm install
 Write your plugin in its own directory. `plugins/<id>/` is the natural place, and your plugin's own git repo can
 be kept there without either repo noticing the other. See [Repo layouts](#repo-layouts).
 
-Three working plugins are already there to read. `test/fixtures/plugin-hello` touches every part of the contract.
-`plugins/afk-kicker` and `plugins/teamkill-warns` are real ones, with a server half and no client half.
+Four working plugins are already there to read. `test/fixtures/plugin-hello` touches every part of the contract.
+`plugins/afk-kicker`, `plugins/teamkill-warns` and `plugins/scoreboard` are real ones, with a server half and no client
+half. `plugins/scoreboard` posts embeds and charts to Discord.
 
 ## The files
 
@@ -867,12 +868,13 @@ absent.
 | `slm/components/icons`                                     | the icon set, as one `Icons` namespace       |
 | `slm/server/instrumentation`                               | `spanOp`, `durableSub`                       |
 | `slm/server/logger`                                        | `childModule`                                |
+| `slm/server/svg-raster`                                    | drawing an SVG to a PNG                      |
 | `slm/systems/squad-rcon`                                   | reads, warns, broadcasts, player management  |
 | `slm/systems/squad-server`                                 | the live event stream, ending a match, kicks |
 | `slm/systems/player-activity`                              | who SLM counts as idle, and since when       |
-| `slm/systems/discord`                                      | posting to a channel                         |
+| `slm/systems/discord`                                      | posting text, embeds and files to a channel  |
 | `slm/systems/layer-queue`                                  | queue reads and edits                        |
-| `slm/systems/match-history`                                | match reads                                  |
+| `slm/systems/match-history`                                | match reads, and a match's activity feed     |
 | `slm/systems/filter-entity`                                | filter reads and writes                      |
 | `slm/systems/rotation`                                     | rotation reads and writes                    |
 | `slm/systems/repeat-ruleset`                               | repeat ruleset reads and writes              |

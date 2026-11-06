@@ -1647,6 +1647,22 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 			break
 		}
 
+		case 'PLAYER_REVIVED': {
+			const reviverId = SM.PlayerIds.getPlayerId(pendingEvent.reviverIds)
+			const revivedId = SM.PlayerIds.getPlayerId(pendingEvent.revivedIds)
+			if (!state.currTeams.players.has(reviverId) || !state.currTeams.players.has(revivedId)) {
+				log.warn(
+					'Revive with a player missing from currTeams: %s revived %s',
+					SM.PlayerIds.prettyPrint(pendingEvent.reviverIds),
+					SM.PlayerIds.prettyPrint(pendingEvent.revivedIds),
+				)
+				break
+			}
+			state.lastWounds.delete(revivedId)
+			await emit(state, pass, { ...base, type: 'PLAYER_REVIVED', reviver: reviverId, revived: revivedId })
+			break
+		}
+
 		case 'DAMAGE_APPLIED':
 		case 'VEHICLE_ENTERED':
 		case 'VEHICLE_EXITED':
@@ -1667,9 +1683,15 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				case 'VEHICLE_EXITED':
 					DSTR.onVehicleExited(tracker, pendingEvent)
 					break
-				case 'VEHICLE_HEALTH_CHANGED':
-					destruction = DSTR.onVehicleHealthChanged(tracker, pendingEvent)
+				case 'VEHICLE_HEALTH_CHANGED': {
+					const outcome = DSTR.onVehicleHealthChanged(tracker, pendingEvent)
+					if (outcome.hit) {
+						const damaged = vehicleDamagedEvent(state as StateWithCurrentMatchAndPlayers, base, outcome.hit)
+						if (damaged) await emit(state, pass, damaged)
+					}
+					destruction = outcome.destruction
 					break
+				}
 				case 'DEPLOYABLE_HEALTH_CHANGED': {
 					const outcome = DSTR.onDeployableHealthChanged(tracker, pendingEvent)
 					if (outcome?.kind === 'radio-damaged') {
@@ -1757,18 +1779,15 @@ function destroyedEvent(
 	destruction: DSTR.Destruction,
 ): SE.NewEvent {
 	const { className, instanceId } = destruction.actor
-	const vehicleInfo = VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(className)
-	const deployableType = DSTR.deployableType(className)
-	const isVehicle = source === 'vehicle' && (vehicleInfo !== undefined || deployableType === 'DEPLOYABLE')
 	const attacker = destruction.attacker ? state.currTeams.players.get(destruction.attacker) : undefined
 	const crew = destruction.crew.filter((id) => state.currTeams.players.has(id))
-	const layer = L.toLayer(state.currentMatch.layerId)
+	const vehicle = source === 'vehicle' ? asVehicle(state, className, crew) : null
 
 	let teamId: SM.TeamId | null
-	if (isVehicle) {
-		teamId = vehicleTeam(layer, className)
-		teamId ??= crew.map((id) => state.currTeams.players.get(id)!.teamId).find((t) => t !== null) ?? null
+	if (vehicle) {
+		teamId = vehicle.teamId
 	} else {
+		const layer = L.toLayer(state.currentMatch.layerId)
 		teamId = DSTR.teamOfBlueprint(className, [layer.Faction_1, layer.Faction_2])
 	}
 
@@ -1781,15 +1800,51 @@ function destroyedEvent(
 		variant: targetVariant(attacker, teamId, crew),
 		...(attacker ? { attacker: SM.PlayerIds.getPlayerId(attacker.ids) } : {}),
 	}
-	if (isVehicle) {
-		return {
-			type: 'VEHICLE_DESTROYED',
-			...shared,
-			vehicle: { className, instanceId, targetType: vehicleInfo?.vehicleType ?? null },
-			crew,
-		}
+	if (vehicle) {
+		return { type: 'VEHICLE_DESTROYED', ...shared, vehicle: { className, instanceId, targetType: vehicle.targetType }, crew }
 	}
-	return { type: 'DEPLOYABLE_DESTROYED', ...shared, deployable: { className, instanceId, targetType: deployableType } }
+	return {
+		type: 'DEPLOYABLE_DESTROYED',
+		...shared,
+		deployable: { className, instanceId, targetType: DSTR.deployableType(className) },
+	}
+}
+
+// The vehicle's type and side, or null when the actor reads as an emplacement (see destroyedEvent).
+function asVehicle(
+	state: StateWithCurrentMatchAndPlayers,
+	className: string,
+	crew: SM.PlayerId[],
+): { targetType: string | null; teamId: SM.TeamId | null } | null {
+	const vehicleInfo = VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(className)
+	if (vehicleInfo === undefined && DSTR.deployableType(className) !== 'DEPLOYABLE') return null
+	let teamId = vehicleTeam(L.toLayer(state.currentMatch.layerId), className)
+	teamId ??= crew.map((id) => state.currTeams.players.get(id)!.teamId).find((t) => t !== null) ?? null
+	return { targetType: vehicleInfo?.vehicleType ?? null, teamId }
+}
+
+// null for a hit on an emplacement, or by an attacker missing from the roster
+function vehicleDamagedEvent(
+	state: StateWithCurrentMatchAndPlayers,
+	base: { matchId: number; time: number },
+	hit: DSTR.VehicleHit,
+): SE.NewEvent | null {
+	const attacker = state.currTeams.players.get(hit.attacker)
+	if (!attacker) return null
+	const crew = hit.crew.filter((id) => state.currTeams.players.has(id))
+	const vehicle = asVehicle(state, hit.actor.className, crew)
+	if (!vehicle) return null
+	return {
+		type: 'VEHICLE_DAMAGED',
+		...base,
+		vehicle: { ...hit.actor, targetType: vehicle.targetType },
+		teamId: vehicle.teamId,
+		damage: hit.damage,
+		damageType: hit.damageType,
+		weapon: hit.weapon,
+		variant: targetVariant(attacker, vehicle.teamId, crew),
+		attacker: SM.PlayerIds.getPlayerId(attacker.ids),
+	}
 }
 
 function radioDamagedEvent(

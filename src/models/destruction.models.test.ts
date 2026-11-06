@@ -25,6 +25,7 @@ async function replayAll(lines: string[], state = DSTR.init()) {
 	DSTR.resetForMatch(state, 1)
 	const destructions: DSTR.Destruction[] = []
 	const radioDamage: DSTR.RadioDamage[] = []
+	const hits: DSTR.VehicleHit[] = []
 	for (const event of await parse(lines)) {
 		let destruction: DSTR.Destruction | null = null
 		switch (event.type) {
@@ -37,9 +38,12 @@ async function replayAll(lines: string[], state = DSTR.init()) {
 			case 'VEHICLE_EXITED':
 				DSTR.onVehicleExited(state, event)
 				break
-			case 'VEHICLE_HEALTH_CHANGED':
-				destruction = DSTR.onVehicleHealthChanged(state, event)
+			case 'VEHICLE_HEALTH_CHANGED': {
+				const outcome = DSTR.onVehicleHealthChanged(state, event)
+				if (outcome.hit) hits.push(outcome.hit)
+				destruction = outcome.destruction
 				break
+			}
 			case 'DEPLOYABLE_HEALTH_CHANGED': {
 				const outcome = DSTR.onDeployableHealthChanged(state, event)
 				if (outcome?.kind === 'radio-damaged') {
@@ -54,7 +58,7 @@ async function replayAll(lines: string[], state = DSTR.init()) {
 		}
 		if (destruction) destructions.push(destruction)
 	}
-	return { destructions, radioDamage }
+	return { destructions, radioDamage, hits }
 }
 
 const TRIMM = '0002915f0c1c482e95f1a94a000f3ec6'
@@ -89,6 +93,29 @@ describe('vehicles', () => {
 		const later =
 			'[2026.09.27-11.16.15:883][300]LogSquadTrace: [DedicatedServer]TraceAndMessageClient(): BP_UH60_TLF_PKM_C_2147386709: 50.00 damage taken by causer BP_Hydra70_Proj2_C_2147383921 instigator (Online Ids: jse.frog) EOS: 00020ce2bd8e413c93588ffbbddacd6e steam: 76561198132409257 health remaining -180.00'
 		expect(await replay([TRIMM_ENTERS_UH60, ...UH60_SHOT_DOWN, later])).toHaveLength(1)
+	})
+
+	it("reports a player's hits, including the one that destroys, and none on the wreck", async () => {
+		const later =
+			'[2026.09.27-11.16.15:883][300]LogSquadTrace: [DedicatedServer]TraceAndMessageClient(): BP_UH60_TLF_PKM_C_2147386709: 50.00 damage taken by causer BP_Hydra70_Proj2_C_2147383921 instigator (Online Ids: jse.frog) EOS: 00020ce2bd8e413c93588ffbbddacd6e steam: 76561198132409257 health remaining -180.00'
+		const { hits } = await replayAll([TRIMM_ENTERS_UH60, ...UH60_SHOT_DOWN, later])
+		expect(hits).toEqual([
+			{
+				actor: { className: 'BP_UH60_TLF_PKM', instanceId: 2147386709 },
+				damage: 960,
+				damageType: 'BP_BasicHeatDamageType',
+				weapon: 'BP_Hydra70_Proj2',
+				attacker: JSE,
+				crew: [TRIMM],
+			},
+		])
+	})
+
+	it('reports no hit for a vehicle burning, even with an instigator', async () => {
+		const { hits } = await replayAll([
+			'[2026.09.29-17.35.56:456][910]LogSquadTrace: [DedicatedServer]TraceAndMessageClient(): BP_M60T_Desert_C_2147462719: 2.40 damage taken by causer BP_M60T_Desert_C_2147462719 instigator (Online Ids: GhillieStealth) EOS: 000295a46f3f43e594b7ab700aa1b4a0 steam: 76561198067479807 health remaining 86.61',
+		])
+		expect(hits).toEqual([])
 	})
 
 	it('leaves an unattributed burn-out with nobody credited', async () => {

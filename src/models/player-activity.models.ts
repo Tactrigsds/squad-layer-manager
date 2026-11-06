@@ -69,10 +69,15 @@ export function actors(event: AnyEvent): SM.PlayerId[] {
 		case 'PLAYER_WOUNDED':
 			ids.push(event.victim, event.attacker)
 			break
+		// being revived takes no input
+		case 'PLAYER_REVIVED':
+			ids.push(event.reviver)
+			break
 		case 'SQUAD_CREATED':
 			if (!event.synthesized) ids.push(event.squad.creator)
 			break
 		case 'VEHICLE_DESTROYED':
+		case 'VEHICLE_DAMAGED':
 		case 'DEPLOYABLE_DESTROYED':
 		case 'FOB_RADIO_DAMAGED':
 			ids.push(event.attacker)

@@ -1,3 +1,4 @@
+import * as dotenv from 'dotenv'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
@@ -71,6 +72,7 @@ export function envOverrides(slot: Slots.Slot): Record<string, string> {
 		DISCORD_CLIENT_SECRET: 'dev',
 		DISCORD_BOT_TOKEN: 'dev',
 		DISCORD_HOME_GUILD_ID: '0',
+		...discordBotOverrides(),
 
 		// The stub the emulator host serves. Pointing at the real battlemetrics api would let a worktree write
 		// flags and notes to the live org, which is never what an experiment wants. The token and org id the
@@ -85,4 +87,18 @@ export function envOverrides(slot: Slots.Slot): Record<string, string> {
 			`slm.dev.slot=${slot.slot}`,
 		].join(','),
 	}
+}
+
+// Opts a checkout into a real discord bot, for work on posting to discord. Sign-in stays on the bypass: only the
+// bot connects, to the guild the file names. The `.env*` rule in .gitignore keeps the file out of git.
+export const DISCORD_BOT_ENV_PATH = path.join(Paths.PROJECT_ROOT, '.env.dev-discord')
+
+const DISCORD_BOT_KEYS = ['DISCORD_CLIENT_ID', 'DISCORD_BOT_TOKEN', 'DISCORD_HOME_GUILD_ID'] as const
+
+function discordBotOverrides(): Record<string, string> {
+	if (!fs.existsSync(DISCORD_BOT_ENV_PATH)) return {}
+	const vars = dotenv.parse(fs.readFileSync(DISCORD_BOT_ENV_PATH, 'utf8'))
+	const missing = DISCORD_BOT_KEYS.filter((key) => !vars[key])
+	if (missing.length > 0) throw new Error(`${DISCORD_BOT_ENV_PATH} is missing ${missing.join(', ')}`)
+	return { DISCORD_ENABLED: 'true', ...Object.fromEntries(DISCORD_BOT_KEYS.map((key) => [key, vars[key]])) }
 }

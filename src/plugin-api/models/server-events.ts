@@ -26,6 +26,7 @@ export type {
 	PlayerLeftSquad,
 	PlayerPromotedToLeader,
 	PlayerReconciled,
+	PlayerRevived,
 	PlayerWarned,
 	PlayerWounded,
 	PossessedAdminCamera,
@@ -40,5 +41,6 @@ export type {
 	TeamsPolledUpdate,
 	TicketsChanged,
 	UnpossessedAdminCamera,
+	VehicleDamaged,
 	VehicleDestroyed,
 } from '@/models/server-events.models'

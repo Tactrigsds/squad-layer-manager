@@ -512,10 +512,38 @@ export async function listGuildChannels() {
 }
 
 /**
- * Posts to a channel as SLM. Needs the bot in the guild with Send Messages there, which is the usual cause
- * of an err:discord here; the id naming nothing reachable is the other.
+ * A rich embed, as discord renders it. `color` is 0xRRGGBB. An image attached to the same message is
+ * referenced as `attachment://<file name>`.
+ */
+export type Embed = {
+	// shown in small text above the title
+	author?: { name: string }
+	title?: string
+	description?: string
+	url?: string
+	color?: number
+	fields?: { name: string; value: string; inline?: boolean }[]
+	image?: { url: string }
+	thumbnail?: { url: string }
+	footer?: { text: string }
+	// ISO 8601
+	timestamp?: string
+}
+
+export type MessageFile = { name: string; data: Uint8Array }
+
+export type Message = { content?: string; embeds?: Embed[]; files?: MessageFile[] }
+
+/**
+ * Posts plain text to a channel as SLM. Needs the bot in the guild with Send Messages there, which is the usual
+ * cause of an err:discord here; the id naming nothing reachable is the other.
  */
 export async function postMessage(channelId: string, content: string) {
+	return await sendMessage(channelId, { content })
+}
+
+/** `postMessage` for a message with embeds and files, which also need Embed Links and Attach Files in the channel. */
+export async function sendMessage(channelId: string, message: Message) {
 	const client = await clientReady.promise
 	if (!client) return { code: 'err:disabled' as const, msg: 'discord integration disabled' }
 	try {
@@ -523,8 +551,15 @@ export async function postMessage(channelId: string, content: string) {
 		if (!channel?.isTextBased() || !channel.isSendable()) {
 			return { code: 'err:not-postable' as const, msg: `channel ${channelId} is not one this bot can post to` }
 		}
-		const message = await channel.send(content)
-		return { code: 'ok' as const, messageId: message.id }
+		const sent = await channel.send({
+			content: message.content,
+			embeds: message.embeds,
+			files: message.files?.map(
+				(file) =>
+					new D.AttachmentBuilder(Buffer.from(file.data.buffer, file.data.byteOffset, file.data.byteLength), { name: file.name }),
+			),
+		})
+		return { code: 'ok' as const, messageId: sent.id }
 	} catch (err) {
 		log.warn({ err }, 'Failed to post to channel %s', channelId)
 		if (err instanceof D.DiscordAPIError) return { code: 'err:discord' as const, msg: err.message }

@@ -122,7 +122,7 @@ export const COLUMN_DEFS = {
 	// does VEHICLE_DESTROYED, whose victims are the crew aboard.
 	'event.attacker': { key: 'event.attacker', domain: { kind: 'player' } },
 	'event.victim': { key: 'event.victim', domain: { kind: 'player' } },
-	// What a VEHICLE_DESTROYED or DEPLOYABLE_DESTROYED destroyed, or a FOB_RADIO_DAMAGED hit, three ways: the exact
+	// What a VEHICLE_DESTROYED or DEPLOYABLE_DESTROYED destroyed, or a VEHICLE_DAMAGED or FOB_RADIO_DAMAGED hit, three ways: the exact
 	// blueprint, the canonical vehicle every camo and faction copy of it shares (the layer filters' Vehicle_*
 	// vocabulary), and its class (a vehicle type, or a DSTR.DeployableType). Only those events have one, so these read
 	// as false against everything else. A blueprint is in the damage sources' vocabulary, since a vehicle is often one
@@ -754,8 +754,10 @@ function rangeNodes(column: string, min: number | undefined, max: number | undef
 }
 
 const KILL_TYPES = ['PLAYER_DIED', 'PLAYER_WOUNDED']
-// vehicles and deployables destroyed, and FOB radios attacked (SE.TargetedEvent)
-const TARGETED_TYPES = ['VEHICLE_DESTROYED', 'DEPLOYABLE_DESTROYED', 'FOB_RADIO_DAMAGED']
+// too many per match for the default view, teamkills included
+const HIGH_VOLUME_TYPES = ['PLAYER_REVIVED', 'VEHICLE_DAMAGED']
+// vehicles hit, vehicles and deployables destroyed, and FOB radios attacked (SE.TargetedEvent)
+const TARGETED_TYPES = ['VEHICLE_DESTROYED', 'VEHICLE_DAMAGED', 'DEPLOYABLE_DESTROYED', 'FOB_RADIO_DAMAGED']
 const SQUAD_MEMBERSHIP_TYPES = ['PLAYER_JOINED_SQUAD', 'PLAYER_LEFT_SQUAD']
 // the in-game counterparts of an admin's actions, which the audit trail records from the other side
 const ADMIN_ACTION_TYPES = ['PLAYER_KICKED', 'PLAYER_BANNED', 'POSSESSED_ADMIN_CAMERA', 'UNPOSSESSED_ADMIN_CAMERA']
@@ -806,6 +808,7 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 				children: [
 					// a targeted event with no variant is not a teamkill, which is what the negation's IS NOT TRUE says
 					{ type: 'and', children: [comp('event.type', [...KILL_TYPES, ...TARGETED_TYPES]), NOT_TEAMKILL] },
+					comp('event.type', HIGH_VOLUME_TYPES),
 					comp('event.type', SQUAD_MEMBERSHIP_TYPES),
 					comp('event.type', BOOKKEEPING_TYPES),
 				],
@@ -825,7 +828,7 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 				],
 			}
 		case 'KILLFEED':
-			return comp('event.type', [...KILL_TYPES, ...TARGETED_TYPES])
+			return comp('event.type', [...KILL_TYPES, 'PLAYER_REVIVED', ...TARGETED_TYPES])
 		case 'VEHICLES':
 			return comp('event.type', TARGETED_TYPES)
 		default:

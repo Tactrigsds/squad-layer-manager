@@ -239,7 +239,7 @@ describe('log lines parse via LogEvents matchers', () => {
 		local.dispose()
 	})
 
-	it('scenario emits parseable MAP_SET, ADMIN_BROADCAST, LAYER_CHANGED, wounds and deaths', async () => {
+	it('scenario emits parseable MAP_SET, ADMIN_BROADCAST, LAYER_CHANGED, wounds, revives and deaths', async () => {
 		const local = new Emulator()
 		const a = local.world.connectPlayer(makePlayer({ name: ' alice' }))
 		const b = local.world.connectPlayer(makePlayer({ name: ' bob' }))
@@ -248,6 +248,7 @@ describe('log lines parse via LogEvents matchers', () => {
 		local.world.handleCommand('AdminSetNextLayer Sumari_Seed_v1 RGF VDV')
 		local.world.handleCommand('AdminChangeLayer Sumari_Seed_v1')
 		local.world.woundPlayer(a, b)
+		local.world.revivePlayer(a, b)
 		local.world.killPlayer(a, b)
 		const events = await collectLogEvents(local.logLines)
 		const types = events.map((e) => e.type)
@@ -256,6 +257,10 @@ describe('log lines parse via LogEvents matchers', () => {
 		expect(types).toContain('LAYER_CHANGED')
 		expect(types).toContain('PLAYER_WOUNDED')
 		expect(types).toContain('PLAYER_DIED')
+		expect(events.find((e) => e.type === 'PLAYER_REVIVED')).toMatchObject({
+			reviverIds: { eos: b.eos, username: 'bob' },
+			revivedIds: { eos: a.eos, username: 'alice' },
+		})
 		// LAYER_CHANGED is typed as chain-member-only (NonChainEvent excludes it), but parseLogStream
 		// emits chain members standalone when their group has no primary event
 		const layerChanged = events.find((e) => (e.type as string) === 'LAYER_CHANGED')! as unknown as SM.LogEvents.LayerChanged
@@ -264,7 +269,7 @@ describe('log lines parse via LogEvents matchers', () => {
 		local.dispose()
 	})
 
-	it('vehicle and deployable destructions parse and read as destroyed', async () => {
+	it('vehicle hits, and vehicle and deployable destructions, parse and read as such', async () => {
 		const local = new Emulator()
 		const a = local.world.connectPlayer(makePlayer({ name: ' alice' }))
 		const b = local.world.connectPlayer(makePlayer({ name: ' bob' }))
@@ -273,17 +278,21 @@ describe('log lines parse via LogEvents matchers', () => {
 		local.world.destroyVehicle(a, 'BP_BTR80_Militia', [b, c])
 		local.world.destroyDeployable(a, 'BP_Ammocrate_RGF')
 		local.world.damageRadio(a, 'BP_FOBRadio_RGF')
+		local.world.damageVehicle(b, 'BP_Tigr_RWS', 600)
+		local.world.damageVehicle(b, 'BP_Tigr_RWS', 600)
 		const tracker = DSTR.init()
 		DSTR.resetForMatch(tracker, 1)
 		const destructions: DSTR.Destruction[] = []
+		const hits: DSTR.VehicleHit[] = []
 		const radioDamage: DSTR.RadioDamage[] = []
 		for (const event of await collectLogEvents(local.logLines)) {
 			if (event.type === 'DAMAGE_APPLIED') DSTR.onDamageApplied(tracker, event)
 			if (event.type === 'VEHICLE_ENTERED') DSTR.onVehicleEntered(tracker, event)
 			if (event.type === 'VEHICLE_EXITED') DSTR.onVehicleExited(tracker, event)
 			if (event.type === 'VEHICLE_HEALTH_CHANGED') {
-				const destruction = DSTR.onVehicleHealthChanged(tracker, event)
-				if (destruction) destructions.push(destruction)
+				const outcome = DSTR.onVehicleHealthChanged(tracker, event)
+				if (outcome.hit) hits.push(outcome.hit)
+				if (outcome.destruction) destructions.push(outcome.destruction)
 			}
 			if (event.type === 'DEPLOYABLE_HEALTH_CHANGED') {
 				const outcome = DSTR.onDeployableHealthChanged(tracker, event)
@@ -294,6 +303,12 @@ describe('log lines parse via LogEvents matchers', () => {
 		expect(destructions.map((d) => [d.actor.className, d.attacker, d.crew])).toEqual([
 			['BP_BTR80_Militia', a.eos, [b.eos, c.eos]],
 			['BP_Ammocrate_RGF', a.eos, []],
+			['BP_Tigr_RWS', b.eos, []],
+		])
+		expect(hits.map((h) => [h.actor.className, h.attacker, h.damage])).toEqual([
+			['BP_BTR80_Militia', a.eos, 1050],
+			['BP_Tigr_RWS', b.eos, 600],
+			['BP_Tigr_RWS', b.eos, 600],
 		])
 		expect(radioDamage.map((d) => [d.actor.className, d.attacker, d.bottomedOut])).toEqual([
 			['BP_FOBRadio_RGF', a.eos, false],

@@ -337,6 +337,27 @@ export const getMatchById = Instr.spanOp(
 	},
 )
 
+/**
+ * A past match's activity feed, replayed on the server so every reader of the match sees what the activity
+ * feed shows: the same suppression patterns, the same folding, and the same revival of events whose players are
+ * gone.
+ */
+export async function getMatchEvents(ctx: C.Db & MEC.Ctx & CS.AbortSignal, matchId: number): Promise<CHAT.EventEnriched[]> {
+	const enriched = await MatchEventsCache.getEnrichedEventsForMatches(ctx, Settings.GLOBAL_SETTINGS.chat, matchId)
+	return MatchEventsCache.reviveNoops(ctx, enriched, { keepSuppressed: false })
+}
+
+/**
+ * `getMatchEvents`, read fresh rather than through the match events cache. The cache never sees events recorded
+ * after its first read of a match, so a read of the latest match, which still gains events after it ends, must not
+ * fill it.
+ */
+export async function readMatchEvents(ctx: C.Db & CS.AbortSignal, matchId: number): Promise<CHAT.EventEnriched[]> {
+	const feeds = await MatchEventsCache.readMatchFeeds({ ...ctx, log }, [matchId])
+	const enriched = MatchEventsCache.enrichMatchFeed(feeds.get(matchId) ?? [], Settings.GLOBAL_SETTINGS.chat)
+	return MatchEventsCache.reviveNoops(ctx, enriched, { keepSuppressed: false })
+}
+
 function readCurrentMatch(ctx: C.Db & MH.Ctx) {
 	const match = DB.get(ctx, Q.latestMatch({ serverId: ctx.serverId }))
 	if (!match) return null
@@ -386,13 +407,8 @@ export const matchHistoryRouter = {
 			match = MH.matchHistoryEntryToMatchDetails(matchRaw, false)
 		}
 
-		// Replayed here, not on the client, so a past match reads exactly as the results feed reads it: the same
-		// suppression patterns, the same folding, the same revival of events whose players are gone. Wire-encoded
-		// because enrichment embeds a player object per event, which is most of what a busy match costs to send.
-		const enriched = await MatchEventsCache.getEnrichedEventsForMatches(ctx, Settings.GLOBAL_SETTINGS.chat, match.historyEntryId)
-		const events = MatchEventsCache.reviveNoops(ctx, enriched, { keepSuppressed: false })
-
-		return { events: CHAT.Wire.encode(events) }
+		// Wire-encoded because enrichment embeds a player object per event, which is most of what a busy match costs to send.
+		return { events: CHAT.Wire.encode(await getMatchEvents(ctx, match.historyEntryId)) }
 	}),
 
 	getPlayerDetails: orpcBase
