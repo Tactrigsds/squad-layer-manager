@@ -24,11 +24,13 @@ export async function readVariables(ctx: Ctx, taskName: string, used: ReadonlySe
 	if (used.has('server')) vars.server = Settings.listServers().find((s) => s.id === ctx.serverId)?.displayName ?? ctx.serverId
 	if (used.has('time')) vars.time = formatInTimeZone(Date.now(), Settings.server(ctx.serverId)?.timeZone ?? 'UTC', 'HH:mm')
 
-	if (uses('layer', 'map', 'gamemode', 'team1', 'team2', 'matchMinutes')) {
+	if (uses('layer', 'fullLayerName', 'map', 'gamemode', 'team1', 'team2', 'matchId', 'matchMinutes')) {
 		const match = await MatchHistory.getCurrentMatch(ctx)
 		if (match) {
+			vars.matchId = String(match.historyEntryId)
 			const layer = toLayerOrNull(match.layerId)
-			vars.layer = layerName(layer?.Layer ?? L.toLayerText(match.layerId))
+			vars.layer = layer?.Layer ?? ''
+			vars.fullLayerName = layer ? fullLayerName(layer) : ''
 			vars.map = layer?.Map ?? ''
 			vars.gamemode = layer?.Gamemode ?? ''
 			vars.team1 = MH.getTeamFaction(match, 1) ?? ''
@@ -44,7 +46,7 @@ export async function readVariables(ctx: Ctx, taskName: string, used: ReadonlySe
 		const next = status.code === 'ok' ? status.data.nextLayer : null
 		if (status.code !== 'ok') ctx.log.warn('could not read the next layer: %s', status.msg)
 		if (next) {
-			vars.nextLayer = layerName(next.Layer)
+			vars.nextLayer = next.Layer
 			vars.nextMap = next.Map ?? ''
 		}
 	}
@@ -61,8 +63,15 @@ export async function readVariables(ctx: Ctx, taskName: string, used: ReadonlySe
 	return vars
 }
 
-function layerName(layerText: string) {
-	return layerText.replaceAll('_', ' ')
+// The layer, then each team's faction-unit, joined by `__`. Safe as a file name on every OS and in a URL: anything
+// outside [A-Za-z0-9._-] in a part becomes `_`.
+function fullLayerName(layer: L.UnvalidatedLayer) {
+	const safe = (part: string) => part.replace(/[^A-Za-z0-9._-]/g, '_')
+	const team = (faction: string | undefined, unit: string | undefined) =>
+		faction ? (unit ? `${safe(faction)}-${safe(unit)}` : safe(faction)) : null
+	return [safe(layer.Layer), team(layer.Faction_1, layer.Unit_1), team(layer.Faction_2, layer.Unit_2)]
+		.filter((part) => part !== null)
+		.join('__')
 }
 
 function toLayerOrNull(id: L.LayerId) {
