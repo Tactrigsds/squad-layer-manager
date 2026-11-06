@@ -101,6 +101,7 @@ function JobEntry(props: { pluginId: string; job: SJOB.JobView }) {
 			) : (
 				<p className="text-sm font-medium">{job.label}</p>
 			)}
+			{job.description !== null && <p className="text-xs text-muted-foreground whitespace-pre-line">{job.description}</p>}
 			{job.targets.length > 0 && (
 				<ul className="space-y-1">
 					{job.targets.map((target) => (

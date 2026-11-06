@@ -57,6 +57,8 @@ export type Job<Ctx = any, P = undefined, Cfg = any> = {
 	id: string
 	// what admins see the job as, in place of its id
 	label?: string
+	// what the job does, shown to admins under its label
+	description?: string
 	scope: Scope
 	// the shape of the data a one-off run carries. A recurring job takes none.
 	payload?: z.ZodType<P>
@@ -87,6 +89,7 @@ export type RunKind = 'once' | 'recurring' | 'manual'
 export type JobView = {
 	id: string
 	label: string | null
+	description: string | null
 	scope: Scope
 	recurring: boolean
 	targets: {

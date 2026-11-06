@@ -1193,6 +1193,7 @@ export function listJobs(pluginId: string): SJOB.JobView[] {
 	return [...host.jobs().values()].map((job): SJOB.JobView => ({
 		id: job.id,
 		label: job.label ?? null,
+		description: job.description ?? null,
 		scope: job.scope,
 		recurring: !!job.when,
 		// where the job is scheduled, or has run: a server the plugin is switched off for is left out

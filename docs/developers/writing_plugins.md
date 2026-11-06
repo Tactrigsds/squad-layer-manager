@@ -720,7 +720,7 @@ started by then. These follow the catch-up rules of a cron job: a missed occurre
 `jobs` can be a function of your config instead of a list, for jobs an admin defines, such as one per entry in a
 list setting. SLM calls it at activation and again whenever the config is saved, and refuses a save whose jobs are
 invalid. Give each job a stable `id`, since its run history is kept under it, and a `label`, which admins see in place
-of the id:
+of the id. An optional `description` is shown under the label:
 
 ```ts
 export function jobs(cfg: Config) {
@@ -728,6 +728,7 @@ export function jobs(cfg: Config) {
 		Schedule.job({
 			id: r.id,
 			label: r.name,
+			description: r.note,
 			scope: 'server',
 			when: (_cfg, serverId) => (r.servers.includes(serverId!) ? Schedule.afterMatchStart(r.after) : null),
 			run: async (sctx) => {
