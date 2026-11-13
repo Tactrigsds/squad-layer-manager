@@ -819,7 +819,14 @@ describe('the event archive', () => {
 		expect(teamkill.rowsHtml[0]).toContain('teammate')
 
 		// the vehicles filter: the three destroyed, the killing hit on each vehicle, and two reports of each radio attack
-		expect((await total({ feed: 'VEHICLES' })).total).toBe(9)
+		const targeted = ['VEHICLE_DESTROYED', 'VEHICLE_DAMAGED', 'DEPLOYABLE_DESTROYED', 'FOB_RADIO_DAMAGED'] as const
+		expect((await total({ feed: 'VEHICLES', types: [...targeted] })).total).toBe(9)
+		// and each crew member getting in and bailing out: three of each. The last exit is held until its tick is
+		// over, so it lands after the destruction it follows.
+		await app.waitFor(
+			async () => ((await total({ feed: 'VEHICLES', types: ['PLAYER_VEHICLE_CHANGED'] })).total === 6 ? true : undefined),
+			{ label: 'every crew enter and exit reaching the vehicles filter' },
+		)
 	})
 
 	it('records previous usernames and finds a player by one', async () => {

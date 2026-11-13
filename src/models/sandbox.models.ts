@@ -265,6 +265,26 @@ export const SANDBOX_VERBS = {
 		},
 		mutatesWorld: true,
 	}),
+	board: def({
+		usage: 'board <name> <blueprint> [seat]',
+		summary: 'a player gets into a seat of a vehicle, e.g. BP_BTR80_Militia, seat 0 by default. Boarding again moves them to that seat',
+		input: z.object({ name: PlayerNameSchema, blueprint: z.string().min(1), seat: z.number().int().nonnegative().prefault(0) }),
+		tokens: ([name, blueprint, seat]) => {
+			requireTokens([name, blueprint], 2, 'board <name> <blueprint> [seat]')
+			return { name, blueprint, seat: seat === undefined ? undefined : Number(seat) }
+		},
+		mutatesWorld: true,
+	}),
+	'get-out': def({
+		usage: 'get-out <name>',
+		summary: 'a player gets out of the vehicle they boarded',
+		input: z.object({ name: PlayerNameSchema }),
+		tokens: ([name]) => {
+			requireTokens([name], 1, 'get-out <name>')
+			return { name }
+		},
+		mutatesWorld: true,
+	}),
 	'damage-vehicle': def({
 		usage: 'damage-vehicle <attacker> <blueprint> [damage]',
 		summary: 'a player hits an empty vehicle, e.g. BP_BTR80_Militia, for 100 damage by default. Repeated hits wear one vehicle down',

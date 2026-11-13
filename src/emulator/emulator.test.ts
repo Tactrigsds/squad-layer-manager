@@ -4,6 +4,7 @@ import { matchLog } from '@/lib/log-parsing'
 import * as DSTR from '@/models/destruction.models'
 import * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
+import * as VS from '@/models/vehicle-seats.models'
 import * as Env from '@/server/env'
 import { ensureLoggerSetup } from '@/server/logger'
 import Rcon from '@/systems/core-rcon.server'
@@ -315,6 +316,46 @@ describe('log lines parse via LogEvents matchers', () => {
 			['BP_FOBRadio_RGF', a.eos, true],
 		])
 		expect(tracker.occupants.size).toBe(0)
+		local.dispose()
+	})
+
+	it('boarding, moving seats and getting out read as one enter, one move and one exit', async () => {
+		const local = new Emulator()
+		const a = local.world.connectPlayer(makePlayer({ name: ' alice' }))
+		local.logLines.length = 0
+		local.world.board(a, 'BP_M60T_Desert', 0)
+		local.world.board(a, 'BP_M60T_Desert', 1)
+		local.world.getOut(a)
+		const tracker = DSTR.init()
+		DSTR.resetForMatch(tracker, 1)
+		const seats = VS.init()
+		VS.resetForMatch(seats, 1)
+		const changes: (VS.Change | null)[] = []
+		for (const event of await collectLogEvents(local.logLines)) {
+			if (event.type === 'VEHICLE_ENTERED' || event.type === 'VEHICLE_EXITED') changes.push(...VS.flush(seats, event))
+			if (event.type === 'VEHICLE_ENTERED') {
+				DSTR.onVehicleEntered(tracker, event)
+				const vehicle = DSTR.vehicleOfOccupant(tracker, a.eos)
+				const to = {
+					className: 'BP_M60T_Desert',
+					instanceId: vehicle?.instanceId ?? null,
+					targetType: null,
+					seat: event.seat,
+					pawn: event.pawn,
+				}
+				changes.push(VS.onEntered(seats, a.eos, to, event))
+			}
+			if (event.type === 'VEHICLE_EXITED') VS.onExited(seats, a.eos, event)
+		}
+		changes.push(...VS.flush(seats, null, Number.MAX_SAFE_INTEGER))
+		expect(changes.map((c) => c && [c.from?.seat ?? null, c.to?.seat ?? null])).toEqual([
+			[null, 0],
+			[0, 1],
+			[1, null],
+		])
+		// the turret seat is placed on the vehicle the driver's seat named
+		expect(changes[1]!.to!.instanceId).toBe(changes[0]!.to!.instanceId)
+		expect(changes[1]!.to!.instanceId).not.toBeNull()
 		local.dispose()
 	})
 

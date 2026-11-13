@@ -196,6 +196,13 @@ function vehicleOfPawn(state: State, occupant: Occupant): string | null {
 	return best?.name ?? null
 }
 
+// the vehicle actor a player's seat belongs to, null when they are on foot or the vehicle cannot be placed
+export function vehicleOfOccupant(state: State, playerId: SM.PlayerId): Actor | null {
+	const occupant = state.occupants.get(playerId)
+	const name = occupant && vehicleOfPawn(state, occupant)
+	return name ? parseActor(name) : null
+}
+
 function vehicleOfOccupantName(state: State, username: string): string | null {
 	for (const occupant of state.occupants.values()) {
 		if (occupant.username === username) return vehicleOfPawn(state, occupant)

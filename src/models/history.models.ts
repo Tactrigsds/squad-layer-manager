@@ -755,7 +755,7 @@ function rangeNodes(column: string, min: number | undefined, max: number | undef
 
 const KILL_TYPES = ['PLAYER_DIED', 'PLAYER_WOUNDED']
 // too many per match for the default view, teamkills included
-const HIGH_VOLUME_TYPES = ['PLAYER_REVIVED', 'VEHICLE_DAMAGED']
+const HIGH_VOLUME_TYPES = ['PLAYER_REVIVED', 'VEHICLE_DAMAGED', 'PLAYER_VEHICLE_CHANGED']
 // vehicles hit, vehicles and deployables destroyed, and FOB radios attacked (SE.TargetedEvent)
 const TARGETED_TYPES = ['VEHICLE_DESTROYED', 'VEHICLE_DAMAGED', 'DEPLOYABLE_DESTROYED', 'FOB_RADIO_DAMAGED']
 const SQUAD_MEMBERSHIP_TYPES = ['PLAYER_JOINED_SQUAD', 'PLAYER_LEFT_SQUAD']
@@ -830,7 +830,7 @@ export function feedFilterNode(feed: CHAT.SecondaryFilterState): Node | undefine
 		case 'KILLFEED':
 			return comp('event.type', [...KILL_TYPES, 'PLAYER_REVIVED', ...TARGETED_TYPES])
 		case 'VEHICLES':
-			return comp('event.type', TARGETED_TYPES)
+			return comp('event.type', [...TARGETED_TYPES, 'PLAYER_VEHICLE_CHANGED'])
 		default:
 			assertNever(feed)
 	}

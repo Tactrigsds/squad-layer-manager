@@ -313,6 +313,16 @@ export const targetsDestroyed = def((attacker: Rendered, vehicles: boolean, coun
 	),
 )
 
+// `moved` is to another seat of the same vehicle
+export const vehicleChanged = def((player: Rendered, kind: 'entered' | 'exited' | 'moved', vehicle: Rendered, seat?: Rendered) =>
+	rt(
+		'{kind, select, entered {{player} got into {vehicle}, {seat}} exited {{player} got out of {vehicle}} other {{player} moved to {seat} of {vehicle}}}',
+		{ player, kind, vehicle, seat },
+	),
+)
+
+export const vehicleSeat = def('seat {seat}', (seat: number) => ({ seat }))
+
 export const fobRadio = def('FOB radio')
 
 // `bottomedOut` is the radio reaching the minimum health a radio is ever logged at

@@ -465,6 +465,31 @@ export const FOB_RADIO_DAMAGED_META = meta<FobRadioDamaged<AnyPlayer>>({
 	players: [{ assocType: 'attacker', get: (e) => e.attacker }],
 })
 
+// A seat a player sits in. Every seat is a pawn of its own: the vehicle's actor for its own seats, else a turret,
+// periscope or passenger pawn on the vehicle.
+export type VehicleSeat = {
+	// the vehicle's blueprint without `_C`, as TargetActor spells it
+	className: string
+	// the vehicle's actor instance. Null for a turret seat whose vehicle SLM cannot place (see DSTR.vehicleOfPawn).
+	instanceId: number | null
+	targetType: string | null
+	seat: number
+	// the seat's pawn blueprint without `_C`
+	pawn: string
+}
+
+// A player getting into a vehicle (`from` null), out of one (`to` null), or moving to another of its seats.
+export type PlayerVehicleChanged<P = SM.PlayerId> = {
+	type: 'PLAYER_VEHICLE_CHANGED'
+	from: VehicleSeat | null
+	to: VehicleSeat | null
+} & SM.PlayerAssoc<'player', P> &
+	Base
+
+export const PLAYER_VEHICLE_CHANGED_META = meta<PlayerVehicleChanged<AnyPlayer>>({
+	players: [{ assocType: 'player', get: (e) => e.player }],
+})
+
 export type TargetedEvent<P = SM.PlayerId> = VehicleDestroyed<P> | VehicleDamaged<P> | DeployableDestroyed<P> | FobRadioDamaged<P>
 
 export function targetOf(event: TargetedEvent<any>): TargetActor {
@@ -530,6 +555,7 @@ export type Event<P = SM.PlayerId> =
 	| PlayerRevived<P>
 	| VehicleDestroyed<P>
 	| VehicleDamaged<P>
+	| PlayerVehicleChanged<P>
 	| DeployableDestroyed<P>
 	| FobRadioDamaged<P>
 	// synthetic
@@ -648,6 +674,18 @@ export const VehicleDestroyedSchema = event('VEHICLE_DESTROYED', {
 	vehicle: TargetActorSchema,
 	crew: z.array(SM.PlayerIdSchema),
 })
+const VehicleSeatSchema = z.object({
+	className: z.string(),
+	instanceId: z.number().nullable(),
+	targetType: z.string().nullable(),
+	seat: z.number(),
+	pawn: z.string(),
+})
+export const PlayerVehicleChangedSchema = event('PLAYER_VEHICLE_CHANGED', {
+	from: VehicleSeatSchema.nullable(),
+	to: VehicleSeatSchema.nullable(),
+	player: SM.PlayerIdSchema,
+})
 export const VehicleDamagedSchema = event('VEHICLE_DAMAGED', {
 	vehicle: TargetActorSchema,
 	teamId: SM.TeamIdSchema.nullable(),
@@ -723,6 +761,7 @@ export const EventSchema = z.discriminatedUnion('type', [
 	PlayerRevivedSchema,
 	VehicleDestroyedSchema,
 	VehicleDamagedSchema,
+	PlayerVehicleChangedSchema,
 	DeployableDestroyedSchema,
 	FobRadioDamagedSchema,
 	PlayerDetailsChangedSchema,
@@ -776,6 +815,7 @@ export const EVENT_META = {
 	PLAYER_REVIVED: PLAYER_REVIVED_META,
 	VEHICLE_DESTROYED: VEHICLE_DESTROYED_META,
 	VEHICLE_DAMAGED: VEHICLE_DAMAGED_META,
+	PLAYER_VEHICLE_CHANGED: PLAYER_VEHICLE_CHANGED_META,
 	DEPLOYABLE_DESTROYED: DEPLOYABLE_DESTROYED_META,
 	FOB_RADIO_DAMAGED: FOB_RADIO_DAMAGED_META,
 	TEAMS_POLLED_UPDATE: TEAMS_POLLED_UPDATE_META,

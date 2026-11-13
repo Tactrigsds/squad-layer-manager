@@ -243,3 +243,28 @@ describe('bursts render on every path', () => {
 		expect(() => renderStatic(createElement(Row, { ctx: CTX, event }))).not.toThrow()
 	})
 })
+
+describe('vehicle changes render on every path', () => {
+	const seat = (n: number) => ({ className: 'BP_BTR80_Militia', instanceId: 1, targetType: null, seat: n, pawn: 'BP_BTR80_Militia' })
+	const change = (from: number | null, to: number | null) =>
+		({
+			type: 'PLAYER_VEHICLE_CHANGED',
+			id: 1,
+			time: 1_700_000_000_000,
+			matchId: MATCH_ID,
+			player: player('eos1', 'Driver'),
+			from: from === null ? null : seat(from),
+			to: to === null ? null : seat(to),
+		}) as unknown as CHAT.EventEnriched
+
+	it.each([
+		['an enter', null, 0, /got into .* seat 0/],
+		['a move', 0, 2, /moved to seat 2 of /],
+		['an exit', 1, null, /got out of /],
+	] as const)('%s', (_, from, to, text) => {
+		const event = change(from, to)
+		const html = renderToStaticMarkup(createElement(Row, { ctx: CTX, event }))
+		expect(html.replace(/<[^>]+>/g, '')).toMatch(text)
+		expect(() => renderStatic(createElement(Row, { ctx: CTX, event }))).not.toThrow()
+	})
+})

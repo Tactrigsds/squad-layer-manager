@@ -11,6 +11,7 @@ import type * as MH from '@/models/match-history.models'
 import type { ActionSource } from '@/models/server-events-base.models'
 import * as SE from '@/models/server-events.models'
 import * as SM from '@/models/squad.models'
+import * as VS from '@/models/vehicle-seats.models'
 import * as VEH from '@/models/vehicles.models'
 // `time` is when the poll's response was received; it drives ordering, staleness and the log-lead guard exactly
 // as any other event. `polledAt` is when the underlying ListPlayers request was issued (see TeamsRes.polledAt) --
@@ -273,6 +274,9 @@ export type State = {
 	// vehicle and deployable health and crews, for working out what was destroyed (see destruction.models.ts)
 	destruction: DSTR.State
 
+	// the seat each player sits in, for PLAYER_VEHICLE_CHANGED (see vehicle-seats.models.ts)
+	vehicleSeats: VS.State
+
 	// the tickets the last TICKETS_CHANGED reported, so a poll only emits one when they move
 	lastTickets: { matchId: number; tickets: SM.Tickets } | null
 
@@ -342,6 +346,7 @@ export function init(opts: {
 		staleTeamsFromDisconnect: null,
 		unassignedPlayers: new Set(),
 		destruction: DSTR.init(),
+		vehicleSeats: VS.init(),
 		lastTickets: null,
 		teamsPolledThrough: null,
 		nonSyncedSince: null,
@@ -639,6 +644,11 @@ export async function process(state: State, time: number): Promise<SE.Event[]> {
 		}
 	}
 	if (teamsReady > 0) state.teamsPolledThrough = Math.max(state.teamsPolledThrough ?? 0, teamsUpdates[teamsReady - 1].polledAt)
+	// a tick's lines are written together, so its last line is in once a later one is, or once the lead time has passed
+	if (state.lastKnownLogEventTime !== null) {
+		const closedBefore = Math.max(state.lastKnownLogEventTime, time - state.minSafeLeadTimeForOtherEventsSinceLog)
+		await emitVehicleChanges(state, pass, VS.flush(state.vehicleSeats, null, closedBefore))
+	}
 	return pass.events
 }
 
@@ -1122,6 +1132,11 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		time: pendingEvent.time,
 	}
 
+	VS.resetForMatch(state.vehicleSeats, base.matchId)
+	if ('chainID' in pendingEvent && typeof pendingEvent.chainID === 'number') {
+		await emitVehicleChanges(state, pass, VS.flush(state.vehicleSeats, pendingEvent))
+	}
+
 	switch (pendingEvent.type) {
 		case 'INGAME_VOTE_CHAIN': {
 			const started = pendingEvent.events.INGAME_VOTE_STARTED
@@ -1461,6 +1476,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 		}
 
 		case 'PLAYER_DISCONNECTED': {
+			VS.forget(state.vehicleSeats, SM.PlayerIds.getPlayerId(pendingEvent.playerIds))
 			if (!state.currTeams) break
 			const player = state.currTeams.players.get(SM.PlayerIds.getPlayerId(pendingEvent.playerIds))
 			if (player) {
@@ -1663,9 +1679,23 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 			break
 		}
 
+		case 'VEHICLE_ENTERED': {
+			DSTR.resetForMatch(state.destruction, base.matchId)
+			DSTR.onVehicleEntered(state.destruction, pendingEvent)
+			const playerId = SM.PlayerIds.getPlayerId(pendingEvent.playerIds)
+			const change = VS.onEntered(state.vehicleSeats, playerId, vehicleSeat(state, playerId, pendingEvent), pendingEvent)
+			if (change) await emitVehicleChanges(state, pass, [change])
+			break
+		}
+
+		case 'VEHICLE_EXITED': {
+			DSTR.resetForMatch(state.destruction, base.matchId)
+			DSTR.onVehicleExited(state.destruction, pendingEvent)
+			VS.onExited(state.vehicleSeats, SM.PlayerIds.getPlayerId(pendingEvent.playerIds), pendingEvent)
+			break
+		}
+
 		case 'DAMAGE_APPLIED':
-		case 'VEHICLE_ENTERED':
-		case 'VEHICLE_EXITED':
 		case 'VEHICLE_HEALTH_CHANGED':
 		case 'DEPLOYABLE_HEALTH_CHANGED': {
 			if (state.hooks.skipDestroyedOnTrainingLayers() && L.toLayer(state.currentMatch.layerId).Gamemode === 'Training') break
@@ -1676,12 +1706,6 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 			switch (pendingEvent.type) {
 				case 'DAMAGE_APPLIED':
 					DSTR.onDamageApplied(tracker, pendingEvent)
-					break
-				case 'VEHICLE_ENTERED':
-					DSTR.onVehicleEntered(tracker, pendingEvent)
-					break
-				case 'VEHICLE_EXITED':
-					DSTR.onVehicleExited(tracker, pendingEvent)
 					break
 				case 'VEHICLE_HEALTH_CHANGED': {
 					const outcome = DSTR.onVehicleHealthChanged(tracker, pendingEvent)
@@ -1811,6 +1835,34 @@ function destroyedEvent(
 }
 
 // The vehicle's type and side, or null when the actor reads as an emplacement (see destroyedEvent).
+function vehicleSeat(state: State, playerId: SM.PlayerId, event: SM.LogEvents.VehicleEntered): SE.VehicleSeat {
+	const className = event.assetClass.replace(/_C$/, '')
+	return {
+		className,
+		instanceId: DSTR.vehicleOfOccupant(state.destruction, playerId)?.instanceId ?? null,
+		targetType: VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(className)?.vehicleType ?? null,
+		seat: event.seat,
+		pawn: DSTR.parseActor(event.pawn)?.className ?? event.pawn,
+	}
+}
+
+// for the players still on the roster: a change for someone who has left describes nobody the feed can name
+async function emitVehicleChanges(state: State, pass: Pass, changes: VS.Change[]) {
+	const matchId = state.vehicleSeats.matchId
+	if (changes.length === 0 || matchId === null || state.syncState.type !== 'synced' || !state.currTeams) return
+	for (const change of changes) {
+		if (!state.currTeams.players.has(change.player)) continue
+		await emit(state, pass, {
+			type: 'PLAYER_VEHICLE_CHANGED',
+			matchId,
+			time: change.time,
+			player: change.player,
+			from: change.from,
+			to: change.to,
+		})
+	}
+}
+
 function asVehicle(
 	state: StateWithCurrentMatchAndPlayers,
 	className: string,
