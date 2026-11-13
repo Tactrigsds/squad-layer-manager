@@ -66,18 +66,15 @@ describe('buildIndex', () => {
 			],
 		)
 		expect([...index.keys()].sort()).toEqual(['gen', 'matches', 'misses', 'pool', 'selectable', 'warn'])
-		expect(index.get('pool')).toEqual([{ type: 'pool-config', serverId: 'server-1', key: 'poolFilter', via: [] }])
+		expect(index.get('pool')).toEqual([{ type: 'pool-config', serverId: 'server-1', key: 'poolFilter' }])
 	})
 
-	test('a pool reaches the filters its configured filter applies, recording the hops', () => {
+	test('a filter the pool filter only reaches through apply-filter is referenced by the filter applying it', () => {
 		const index = FR.buildIndex(
 			[filter('pool', FB.and([FB.includedIn('mid')])), filter('mid', FB.and([FB.includedIn('leaf')])), filter('leaf', FB.and([]))],
 			[poolConfig({ poolFilter: { filterId: 'pool', mode: 'include' } })],
 		)
-		expect(index.get('leaf')).toEqual([
-			{ type: 'filter-entity', filterId: 'mid' },
-			{ type: 'pool-config', serverId: 'server-1', key: 'poolFilter', via: ['pool', 'mid'] },
-		])
+		expect(index.get('leaf')).toEqual([{ type: 'filter-entity', filterId: 'mid' }])
 	})
 
 	test('a filter referenced by nothing has no entry', () => {
@@ -127,17 +124,7 @@ describe('plugin config references', () => {
 
 	test("a plugin's config field references the filter it names", () => {
 		const index = FR.buildIndex([], [], refs([{ path: 'seedPool', filterId: 'seeding' }]))
-		expect(index.get('seeding')).toEqual([{ type: 'plugin-config', pluginId: 'seed-roller', path: 'seedPool', via: [] }])
-	})
-
-	// the same reachability pool configs get: a plugin naming a filter holds everything that filter applies
-	test('reaches through apply-filter, recording the hops', () => {
-		const index = FR.buildIndex(
-			[filter('base', FB.and([])), filter('pool', FB.and([FB.includedIn('base')]))],
-			[],
-			refs([{ path: 'seedPool', filterId: 'pool' }]),
-		)
-		expect(index.get('base')).toContainEqual({ type: 'plugin-config', pluginId: 'seed-roller', path: 'seedPool', via: ['pool'] })
+		expect(index.get('seeding')).toEqual([{ type: 'plugin-config', pluginId: 'seed-roller', path: 'seedPool' }])
 	})
 })
 

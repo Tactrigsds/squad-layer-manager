@@ -17,14 +17,15 @@ export type PoolConfigKey = (typeof POOL_CONFIG_KEYS)[number]
 export type Reference =
 	// the tree of `filterId` applies the referenced filter through an apply-filter operator
 	| { type: 'filter-entity'; filterId: F.FilterEntityId }
-	// a server's pool configuration reaches the referenced filter. `via` is the chain of apply-filter hops from
-	// the configured filter down to it, empty when the pool names it directly.
-	| { type: 'pool-config'; serverId: string; key: PoolConfigKey; via: F.FilterEntityId[] }
+	// a server's pool configuration names the referenced filter
+	| { type: 'pool-config'; serverId: string; key: PoolConfigKey }
 	// an active plugin's config names the referenced filter through a Fields.filterId/filterIds field. `path` is
 	// the dotted config path, which is also the settings anchor the filter's page links to.
-	| { type: 'plugin-config'; pluginId: string; path: string; via: F.FilterEntityId[] }
+	| { type: 'plugin-config'; pluginId: string; path: string }
 
-// filter id -> everything referencing it. A filter with no entry is referenced by nothing.
+// filter id -> everything referencing it directly. A filter with no entry is referenced by nothing. A filter
+// reached only through a chain of apply-filter hops is left out: the last filter in the chain references it
+// directly, and that reference alone blocks its deletion.
 export type Index = Map<F.FilterEntityId, Reference[]>
 
 export type ServerPoolConfig = { serverId: string; mainPool: SETTINGS.PoolConfiguration }
@@ -80,25 +81,6 @@ export function buildIndex(
 		else index.set(filterId, [reference])
 	}
 
-	// a configured filter and everything it reaches through apply-filter, each recording the shortest chain of
-	// hops that got there. `seen` also stops a cycle among the filters from looping forever.
-	const reachable = (from: F.FilterEntityId, record: (id: F.FilterEntityId, via: F.FilterEntityId[]) => void) => {
-		const seen = new Set<F.FilterEntityId>([from])
-		let frontier: { id: F.FilterEntityId; via: F.FilterEntityId[] }[] = [{ id: from, via: [] }]
-		while (frontier.length > 0) {
-			const next: typeof frontier = []
-			for (const { id, via } of frontier) {
-				record(id, via)
-				for (const appliedId of graph.get(id) ?? []) {
-					if (seen.has(appliedId)) continue
-					seen.add(appliedId)
-					next.push({ id: appliedId, via: [...via, id] })
-				}
-			}
-			frontier = next
-		}
-	}
-
 	for (const [filterId, applied] of graph) {
 		for (const appliedId of applied) {
 			add(appliedId, { type: 'filter-entity', filterId })
@@ -118,14 +100,14 @@ export function buildIndex(
 	for (const { serverId, mainPool } of servers) {
 		for (const key of POOL_CONFIG_KEYS) {
 			for (const configuredId of poolConfigFilterIds(mainPool, key)) {
-				reachable(configuredId, (id, via) => add(id, { type: 'pool-config', serverId, key, via }))
+				add(configuredId, { type: 'pool-config', serverId, key })
 			}
 		}
 	}
 
 	for (const { pluginId, fields } of plugins) {
 		for (const { path, filterId } of fields) {
-			reachable(filterId, (id, via) => add(id, { type: 'plugin-config', pluginId, path, via }))
+			add(filterId, { type: 'plugin-config', pluginId, path })
 		}
 	}
 
@@ -136,10 +118,9 @@ export function referencesFor(index: Index, filterId: F.FilterEntityId): Referen
 	return index.get(filterId) ?? []
 }
 
-// This filter is what decides a server's pool membership. Being reached through the pool filter is not the same
-// thing, so a reference with hops behind it does not qualify.
+// This filter is what decides a server's pool membership
 export function isPoolFilterReference(reference: Reference): boolean {
-	return reference.type === 'pool-config' && reference.key === 'poolFilter' && reference.via.length === 0
+	return reference.type === 'pool-config' && reference.key === 'poolFilter'
 }
 
 export function poolFilterServerIds(references: Reference[]): string[] {

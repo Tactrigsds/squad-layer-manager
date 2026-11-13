@@ -60,7 +60,7 @@ export function FilterReferences(props: { filterId: F.FilterEntityId }) {
 						<div className="flex items-center gap-2 flex-wrap">
 							<Label className={Typo.Label}>{tr.text(F_Msgs.referencingPoolsLabel())}</Label>
 							{fromPools.map((ref) => (
-								<PoolReferenceBadge key={`${ref.serverId}:${ref.key}:${ref.via.join('>')}`} reference={ref} />
+								<PoolReferenceBadge key={`${ref.serverId}:${ref.key}`} reference={ref} />
 							))}
 						</div>
 					)}
@@ -68,7 +68,7 @@ export function FilterReferences(props: { filterId: F.FilterEntityId }) {
 						<div className="flex items-center gap-2 flex-wrap">
 							<Label className={Typo.Label}>{tr.text(F_Msgs.referencingPluginsLabel())}</Label>
 							{fromPlugins.map((ref) => (
-								<PluginReferenceBadge key={`${ref.pluginId}:${ref.path}:${ref.via.join('>')}`} reference={ref} />
+								<PluginReferenceBadge key={`${ref.pluginId}:${ref.path}`} reference={ref} />
 							))}
 						</div>
 					)}
@@ -123,12 +123,10 @@ function ServerBadgeLink(props: { serverId: string; variant: 'secondary' | 'info
 }
 
 function PoolReferenceBadge(props: { reference: Extract<FR.Reference, { type: 'pool-config' }> }) {
-	const via = props.reference.via
 	return (
 		<ServerBadgeLink serverId={props.reference.serverId} variant="secondary">
 			<Icons.Dot className="h-3 w-3" />
 			<span>{tr.text(F_Msgs.poolConfigKeyNames[props.reference.key])}</span>
-			{via.length > 0 && <span className="font-normal opacity-70">{tr.text(F_Msgs.referenceVia(via.join(' -> ')))}</span>}
 		</ServerBadgeLink>
 	)
 }
@@ -136,7 +134,7 @@ function PoolReferenceBadge(props: { reference: Extract<FR.Reference, { type: 'p
 // Links to the config field itself rather than the plugin's section: what an admin has to change to free the
 // filter is one setting, and the plugin's section can be long.
 function PluginReferenceBadge(props: { reference: Extract<FR.Reference, { type: 'plugin-config' }> }) {
-	const { pluginId, path, via } = props.reference
+	const { pluginId, path } = props.reference
 	const pluginName = Zus.useStore(PluginsClient.Store, (s) => s.plugins.find((p) => p.id === pluginId)?.name ?? pluginId)
 	return (
 		<Link to="/settings" hash={SettingsNav.pluginSettingAnchor(pluginId, path)}>
@@ -144,7 +142,6 @@ function PluginReferenceBadge(props: { reference: Extract<FR.Reference, { type: 
 				<span>{pluginName}</span>
 				<Icons.Dot className="h-3 w-3" />
 				<span className="font-mono text-xs ltr-isolate">{path}</span>
-				{via.length > 0 && <span className="font-normal opacity-70">{tr.text(F_Msgs.referenceVia(via.join(' -> ')))}</span>}
 				<LinkIndicator />
 			</Badge>
 		</Link>

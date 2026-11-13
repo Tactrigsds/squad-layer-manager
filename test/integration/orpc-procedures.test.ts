@@ -104,7 +104,6 @@ describe('deleteFilter', () => {
 			type: 'pool-config',
 			serverId: app.serverId,
 			key: 'poolFilter',
-			via: [],
 		})
 	})
 
