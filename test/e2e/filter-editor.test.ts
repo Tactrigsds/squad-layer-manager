@@ -97,11 +97,10 @@ test.describe('filter references', () => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
 
 		const references = page.getByRole('region', { name: 'References' })
-		await expect(references).toContainText('2 references', { timeout: 20_000 })
-		// referenced directly by raas-harju, and transitively by the pool filter that applies it
+		// the pool reaches this filter only through raas-harju, so raas-harju is the one reference listed
+		await expect(references).toContainText('1 reference', { timeout: 20_000 })
 		await expect(references).toContainText('RAAS on Harju')
-		await expect(references).toContainText('Pool filter')
-		await expect(references).toContainText('via raas-harju')
+		await expect(references).not.toContainText('Pool filter')
 
 		await expect(page.getByRole('button', { name: 'Delete' })).toBeDisabled()
 

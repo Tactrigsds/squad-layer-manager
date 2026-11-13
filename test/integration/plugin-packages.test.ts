@@ -368,7 +368,7 @@ describe('packaged plugins', () => {
 			},
 			{ label: 'the plugin config to reach the reference index' },
 		)
-		expect(refused.references).toContainEqual({ type: 'plugin-config', pluginId: 'hello', path: 'pool', via: [] })
+		expect(refused.references).toContainEqual({ type: 'plugin-config', pluginId: 'hello', path: 'pool' })
 
 		// clearing the field releases it, so an admin is never stuck with a filter they cannot remove
 		await client.plugins.updateSettings({ pluginId: 'hello', config: { greeting: 'hello', pool: '' } })
