@@ -161,6 +161,48 @@ describe('in-game admin commands', () => {
 			layerQueue: queue(LAYERS.sumariSeed),
 		})
 	})
+
+	it('does not start a vote whose autostart was cancelled', async () => {
+		const orpc = await createOrpcClient(app)
+		const autoStartVoteDelay = 8_000
+		await rearrange(app, {
+			serverSettings: (s) => {
+				s.vote.autoStartVoteDelay = autoStartVoteDelay
+			},
+			layerQueue: [...queue(LAYERS.harjuRaas), voteQueueItem([LAYERS.gorodokRaas, LAYERS.narvaRaas])],
+		})
+		await app.waitFor(() => app.emu.world.nextLayer?.layer === 'Harju_RAAS_v1' || undefined, {
+			label: 'the queue head set as next',
+		})
+		const oldMatchId = latestMatch(app).id
+
+		app.emu.world.endMatch()
+		app.emu.world.startNewGame()
+
+		const newMatchId = await app.waitFor(() => (latestMatch(app).id !== oldMatchId ? latestMatch(app).id : undefined), {
+			label: 'the new match',
+		})
+		await app.waitFor(async () => (await orpc.vote.cancelVoteAutostart({ serverId: app.serverId })).code === 'ok' || undefined, {
+			label: 'the autostart cancelled',
+		})
+		// the match started before the cancel landed, so the autostart was due no later than this
+		const autostartDueBy = Date.now() + autoStartVoteDelay
+		await app.waitFor(() => Date.now() > autostartDueBy || undefined, {
+			label: 'the cancelled autostart due',
+			timeoutMs: autoStartVoteDelay + 5_000,
+		})
+
+		const startRes = await orpc.vote.startVote({ serverId: app.serverId })
+		expect(startRes.code).toBe('ok')
+		expect(appEventTypes(app, newMatchId).filter((t) => t === 'VOTE_STARTED')).toHaveLength(1)
+
+		await rearrange(app, {
+			serverSettings: (s) => {
+				s.vote.autoStartVoteDelay = null
+			},
+			layerQueue: queue(LAYERS.sumariSeed),
+		})
+	})
 })
 
 // A note reaches BattleMetrics from in game or from the web, and the web reads them back on demand. The stub stands

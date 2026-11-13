@@ -458,6 +458,9 @@ export const cancelVoteAutostart = Instr.spanOp(
 			return { code: 'err:vote-not-queued' as const, msg: 'No vote is currently scheduled' }
 		}
 
+		ctx.vote.autostartVoteSub?.unsubscribe()
+		ctx.vote.autostartVoteSub = null
+
 		const newVoteState = Obj.deepClone(ctx.vote.state)
 		newVoteState.autostartCancelled = true
 		delete newVoteState.autostartTime
