@@ -14,6 +14,11 @@
 <p><strong>Fixed:</strong> Cancelling a vote&#x27;s automatic start stops the vote from starting.</p>
 </li>
 </ul>
+<details><summary>Smaller fixes and tweaks</summary>
+<ul>
+<li><strong>Changed:</strong> A filter&#x27;s References section lists only what references the filter directly. A layer pool or plugin that reaches the filter through another filter is no longer listed.</li>
+</ul>
+</details>
 <h2 id="for-operators" class="docs-heading">For operators<a href="#for-operators" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/changes#for-operators" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <ul>
 <li><strong>Added:</strong> Plugin API 0.22.2 lets a plugin time jobs from a match and derive its jobs from its config. <code>afterMatchStart</code> and <code>afterMatchEnd</code> in <code>slm/plugin/schedule</code> run a server job a set time after the server&#x27;s match starts or ends. The server module&#x27;s <code>jobs</code> export can be a function of the config, called again on each save, and a job&#x27;s <code>label</code> and <code>description</code> name and describe it on the settings page. <code>execute</code> in <code>slm/systems/squad-rcon</code> runs a raw RCON command and records it in the audit log. Plugins built for 0.22.1 keep working.</li>
