@@ -171,3 +171,75 @@ describe('a destroyed vehicle folds a large crew away', () => {
 		expect(() => renderStatic(createElement(Row, { ctx: CTX, event: destroyed(15) }))).not.toThrow()
 	})
 })
+
+describe('bursts render on every path', () => {
+	const attacker = player('eos0', 'Attacker')
+	const envelope = (id: number) => ({ id, time: 1_700_000_000_000 + id, matchId: MATCH_ID })
+	const target = { className: 'BP_BTR80_Militia', instanceId: 1, targetType: null }
+	const member: Record<CHAT.BurstKind, (id: number) => object> = {
+		PLAYER_WARNED: (id) => ({ type: 'PLAYER_WARNED', ...envelope(id), reason: 'stop', player: player(`eos${id}`, `Warned${id}`) }),
+		PLAYER_WOUNDED: (id) => ({
+			type: 'PLAYER_WOUNDED',
+			...envelope(id),
+			damage: 100,
+			damageSource: 'BP_Mortar',
+			variant: 'normal',
+			victim: player(`eos${id}`, `Victim${id}`),
+			attacker,
+		}),
+		PLAYER_DIED: (id) => ({
+			type: 'PLAYER_DIED',
+			...envelope(id),
+			damage: 100,
+			deathVariant: 'killed',
+			damageSource: 'BP_Mortar',
+			variant: 'teamkill',
+			victim: player(`eos${id}`, `Victim${id}`),
+			attacker,
+		}),
+		VEHICLE_DAMAGED: (id) => ({
+			type: 'VEHICLE_DAMAGED',
+			...envelope(id),
+			vehicle: target,
+			teamId: null,
+			damage: 40.4,
+			damageType: null,
+			weapon: 'BP_RPG7',
+			variant: 'normal',
+			attacker,
+		}),
+		VEHICLE_DESTROYED: (id) => ({
+			type: 'VEHICLE_DESTROYED',
+			...envelope(id),
+			vehicle: { ...target, instanceId: id },
+			teamId: null,
+			cause: 'weapon',
+			damageType: null,
+			weapon: 'BP_RPG7',
+			variant: 'normal',
+			crew: [],
+			attacker,
+		}),
+		DEPLOYABLE_DESTROYED: (id) => ({
+			type: 'DEPLOYABLE_DESTROYED',
+			...envelope(id),
+			deployable: { className: 'BP_Ammocrate_PLA', instanceId: id, targetType: 'AMMO_CRATE' },
+			teamId: null,
+			cause: 'weapon',
+			damageType: null,
+			weapon: null,
+			variant: 'normal',
+			attacker,
+		}),
+	}
+
+	it.each(Object.keys(member) as CHAT.BurstKind[])('%s', (kind) => {
+		// past the inline limit, so a warn burst renders its collapsed <details> too
+		const events = [1, 2, 3, 4, 5].map(member[kind])
+		const event = { type: 'BURST', ...envelope(1), kind, events } as unknown as CHAT.EventEnriched
+		const html = renderToStaticMarkup(createElement(Row, { ctx: CTX, event }))
+		expect(html).toContain('<details')
+		expect(html).toContain('5')
+		expect(() => renderStatic(createElement(Row, { ctx: CTX, event }))).not.toThrow()
+	})
+})

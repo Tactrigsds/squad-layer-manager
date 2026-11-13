@@ -165,34 +165,95 @@ function ChatMessage(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnrich
 // how many players a row names inline before it folds them into an expandable list
 const INLINE_PLAYER_LIMIT = 4
 
-// several standalone warns sharing the same text + source, collapsed into one entry. Few targets are named inline;
-// larger groups use an expandable <details> listing everyone warned.
-function WarnsAggregated(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'WARNS_AGGREGATED' }> }) {
+// A run of alike events from one actor (see CHAT.Burst). Warns name their few targets inline. Every other burst
+// sums up its members in one line and lists them, each as its own row, inside a <details>.
+function Burst(props: { ctx: RC.RenderCtx; event: CHAT.Burst }) {
 	const { ctx, event } = props
-	const count = event.warns.length
+	if (event.kind === 'PLAYER_WARNED') return <WarnBurst ctx={ctx} event={event} />
+
+	const count = event.events.length
+	const first = event.events[0]
+	const attacker = <Atoms.PlayerDisplay ctx={ctx} showTeam player={first.attacker!} matchId={event.matchId} />
+	const weapon = (() => {
+		const name = 'damageSource' in first ? first.damageSource : first.weapon
+		return name ? <span className="text-muted-foreground/70">{tr.text(CHAT_Msgs.withWeapon(name))}</span> : undefined
+	})()
+	const teamkill = first.variant === 'teamkill'
+	const tone = teamkill ? 'text-danger' : 'text-foreground'
+
+	const [icon, summary] = (() => {
+		switch (event.kind) {
+			case 'PLAYER_WOUNDED':
+			case 'PLAYER_DIED': {
+				const died = event.kind === 'PLAYER_DIED'
+				return [
+					<Icon key="icon" name={died ? 'Skull' : 'HeartPulse'} className={`h-4 w-4 shrink-0 ${tone}`} />,
+					tr.richText(CHAT_Msgs.playersHarmed(attacker, died, teamkill, count, weapon)),
+				] as const
+			}
+			case 'VEHICLE_DAMAGED': {
+				let damage = 0
+				for (const hit of event.events) damage += hit.damage
+				return [
+					<Icon key="icon" name="Crosshair" className={`h-4 w-4 shrink-0 ${teamkill ? tone : 'text-muted-foreground'}`} />,
+					tr.richText(
+						CHAT_Msgs.vehicleHitRepeatedly(
+							attacker,
+							<TargetDisplay ctx={ctx} event={event.events[0]} />,
+							count,
+							Math.round(damage),
+							weapon,
+						),
+					),
+				] as const
+			}
+			case 'VEHICLE_DESTROYED':
+			case 'DEPLOYABLE_DESTROYED': {
+				const vehicles = event.kind === 'VEHICLE_DESTROYED'
+				return [
+					<Icon key="icon" name={vehicles ? 'Bomb' : 'Package'} className={`h-4 w-4 shrink-0 ${tone}`} />,
+					tr.richText(CHAT_Msgs.targetsDestroyed(attacker, vehicles, count, teamkill, weapon)),
+				] as const
+			}
+			default:
+				return assertNever(event)
+		}
+	})()
+
+	return (
+		<Details time={event.time} icon={icon} summary={summary}>
+			<div className="ps-6 pt-1 flex flex-col">
+				{event.events.map((member) => (
+					<Row key={member.id} ctx={ctx} event={member} />
+				))}
+			</div>
+		</Details>
+	)
+}
+
+function WarnBurst(props: { ctx: RC.RenderCtx; event: Extract<CHAT.Burst, { kind: 'PLAYER_WARNED' }> }) {
+	const { ctx, event } = props
+	const count = event.events.length
+	const reason = event.events[0].reason
 	const iconElt = <Icon name="AlertTriangle" className="h-4 w-4 text-warn shrink-0" />
 
 	if (count <= INLINE_PLAYER_LIMIT) {
 		const warnees = I18n.nodeList(
-			event.warns.map((warn, i) => (
-				// eslint-disable-next-line react/no-array-index-key
-				<Atoms.PlayerDisplay key={i} ctx={ctx} showTeam player={warn.player} matchId={event.matchId} />
-			)),
+			event.events.map((warn) => <Atoms.PlayerDisplay key={warn.id} ctx={ctx} showTeam player={warn.player} matchId={event.matchId} />),
 			tr.locale,
 		)
 		return (
 			<Atoms.EventLine time={event.time} icon={iconElt}>
-				{tr.richText(CHAT_Msgs.playersWarned(warnees, event.reason))}
+				{tr.richText(CHAT_Msgs.playersWarned(warnees, reason))}
 			</Atoms.EventLine>
 		)
 	}
 
 	return (
-		<Details time={event.time} icon={iconElt} summary={tr.richText(CHAT_Msgs.playerCountWarned(count, event.reason))}>
+		<Details time={event.time} icon={iconElt} summary={tr.richText(CHAT_Msgs.playerCountWarned(count, reason))}>
 			<div className="ps-6 pt-1 flex flex-col gap-0.5">
-				{event.warns.map((warn, i) => (
-					// eslint-disable-next-line react/no-array-index-key
-					<Atoms.PlayerDisplay key={i} ctx={ctx} showTeam player={warn.player} matchId={event.matchId} />
+				{event.events.map((warn) => (
+					<Atoms.PlayerDisplay key={warn.id} ctx={ctx} showTeam player={warn.player} matchId={event.matchId} />
 				))}
 			</div>
 		</Details>
@@ -757,8 +818,8 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 					)}
 				</Atoms.EventLine>
 			)
-		case 'WARNS_AGGREGATED':
-			return <WarnsAggregated ctx={ctx} event={event} />
+		case 'BURST':
+			return <Burst ctx={ctx} event={event} />
 		case 'NEW_GAME':
 			return <NewGame ctx={ctx} event={event} />
 		case 'ROUND_ENDED':

@@ -327,7 +327,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
 	const [activityExpanded, setActivityExpanded] = React.useState(false)
 	const [wrapLines, setWrapLines] = React.useState(true)
-	const filteredEvents = allEvents.filter((e) => CHAT.showEventInFeed(e, filterState))
+	const filteredEvents = CHAT.groupBursts(allEvents.filter((e) => CHAT.showEventInFeed(e, filterState)))
 	// the player's events on this server through the same filter, newest first, so a selection of recent rows has its
 	// ends on the first pages of the history results
 	const linkToRows = HistoryClient.useRowsLink(() => ({

@@ -122,8 +122,8 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 		const events = isCurrentMatchSquad ? currentMatchEvents : (data?.events ?? [])
 		// the events are already scoped to this squad instance; the toggle just hides member chat outside the squad
 		// channel, i.e. any chat message not directly associated with the squad (team/all chat).
-		if (!squadMessagesOnly) return events
-		return events.filter((e) => !(e.type === 'CHAT_MESSAGE' && !CHAT.hasAssocSquad(e, uniqueSquadId)))
+		if (!squadMessagesOnly) return CHAT.groupBursts(events)
+		return CHAT.groupBursts(events.filter((e) => !(e.type === 'CHAT_MESSAGE' && !CHAT.hasAssocSquad(e, uniqueSquadId))))
 	}, [isCurrentMatchSquad, currentMatchEvents, data?.events, squadMessagesOnly, uniqueSquadId])
 	// History has no squad filter, so the link opens the squad's match, every event of it, with the selection in it.
 	// The match is read off the selected events, which all carry one, whether the squad is live or long gone.

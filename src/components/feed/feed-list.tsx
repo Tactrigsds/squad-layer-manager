@@ -66,7 +66,7 @@ function collectFacts(map: Map<string, PG.PlayerFactsSource>, event: CHAT.EventE
 	for (const key of fields?.playerLists ?? []) {
 		if (Array.isArray(record[key])) for (const value of record[key] as unknown[]) put(value)
 	}
-	if (event.type === 'WARNS_AGGREGATED') for (const warn of event.warns) put(warn.player)
+	if (event.type === 'BURST') for (const member of event.events) collectFacts(map, member)
 }
 
 // The history page's link to rows of this log (see HQ.activityLogQuery). Stable, and reads what the log is

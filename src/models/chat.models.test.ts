@@ -285,87 +285,100 @@ describe('mergeAppEvents', () => {
 	})
 })
 
-describe('standalone warn burst aggregation', () => {
-	function seededState(players: SM.Player[]): CHAT.ChatState {
+describe('burst grouping', () => {
+	function bufferOf(players: SM.Player[], events: SE.Event[]): CHAT.ChatState {
 		const state = CHAT.getInitialChatState()
 		state.interpolatedState.players = SM.toLiveTeams({ players, squads: [] }).players
+		for (const event of events) CHAT.handleEvent(state, event)
 		return state
 	}
 	const rcon = { type: 'rcon' } as const
 	const admin = (eos: string): SE.PlayerWarned['source'] => ({ type: 'player', playerIds: { eos, username: eos, steam: eos } })
+	const warnAt = (player: SM.PlayerId, reason: string, id: number, time: number): SE.PlayerWarned => ({
+		...warnServerEvent(player, reason, id, rcon),
+		time,
+	})
+	const vehicle = (instanceId: number): SE.TargetActor => ({ className: 'BP_BTR82A', instanceId, targetType: 'IFV' })
+	const hit = (id: number, time: number, attacker: SM.Player, instanceId: number): CHAT.EventEnriched => ({
+		type: 'VEHICLE_DAMAGED',
+		id,
+		time,
+		matchId: 1,
+		vehicle: vehicle(instanceId),
+		teamId: 2,
+		damage: 40,
+		damageType: null,
+		weapon: 'BP_RPG7',
+		variant: 'normal',
+		attacker,
+	})
+	const wound = (id: number, victim: SM.Player, attacker: SM.Player, variant: SE.PlayerWoundedOrDiedVariant): CHAT.EventEnriched => ({
+		type: 'PLAYER_WOUNDED',
+		id,
+		time: 100 + id,
+		matchId: 1,
+		damage: 100,
+		damageSource: 'BP_Mortar',
+		variant,
+		victim,
+		attacker,
+	})
+	const types = (entries: CHAT.EventEnriched[]) => entries.map((e) => e.type)
+	function onlyBurst(entries: CHAT.EventEnriched[]): CHAT.Burst {
+		expect(entries).toHaveLength(1)
+		if (entries[0].type !== 'BURST') throw new Error(`expected BURST, got ${entries[0].type}`)
+		return entries[0]
+	}
 
-	it('merges same-text same-source warns within the window into one WARNS_AGGREGATED entry', () => {
-		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
-		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, rcon))
-		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 2, rcon))
-
-		expect(state.eventBuffer).toHaveLength(1)
-		const entry = state.eventBuffer[0]
-		if (entry.type !== 'WARNS_AGGREGATED') throw new Error('expected WARNS_AGGREGATED')
-		expect(entry.warns.map((w) => w.player.ids.eos)).toEqual(['eos-1', 'eos-2'])
-		// tracks the latest absorbed warn's id; time anchored to the first
-		expect(entry.id).toBe(2)
-		expect(entry.time).toBe(101)
+	it('keeps warns raw in the buffer', () => {
+		const state = bufferOf(
+			[makePlayer('eos-1'), makePlayer('eos-2')],
+			[warnServerEvent('eos-1', 'stop', 1, rcon), warnServerEvent('eos-2', 'stop', 2, rcon)],
+		)
+		expect(types(state.eventBuffer)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
 	})
 
-	it('appends a third matching warn to the existing group', () => {
-		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2'), makePlayer('eos-3')])
-		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, rcon))
-		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 2, rcon))
-		CHAT.handleEvent(state, warnServerEvent('eos-3', 'stop', 3, rcon))
-
-		expect(state.eventBuffer).toHaveLength(1)
-		const entry = state.eventBuffer[0]
-		if (entry.type !== 'WARNS_AGGREGATED') throw new Error('expected WARNS_AGGREGATED')
-		expect(entry.warns).toHaveLength(3)
-		expect(entry.id).toBe(3)
+	it('folds same-text same-source warns into one burst, identified and timed by its first member', () => {
+		const players = [makePlayer('eos-1'), makePlayer('eos-2'), makePlayer('eos-3')]
+		const state = bufferOf(
+			players,
+			[1, 2, 3].map((id) => warnServerEvent(`eos-${id}`, 'stop', id, rcon)),
+		)
+		const burst = onlyBurst(CHAT.groupBursts(state.eventBuffer))
+		expect(burst.kind).toBe('PLAYER_WARNED')
+		expect(burst.events.map((e) => e.id)).toEqual([1, 2, 3])
+		expect(burst.id).toBe(1)
+		expect(burst.time).toBe(101)
+		expect([...CHAT.iterContainedEventIds(burst)]).toEqual([1, 1, 2, 3])
 	})
 
-	it('keeps warns with different text separate', () => {
-		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
-		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, rcon))
-		CHAT.handleEvent(state, warnServerEvent('eos-2', 'go', 2, rcon))
-
-		expect(state.eventBuffer.map((e) => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
+	it('keeps warns with different text or from different sources separate', () => {
+		const state = bufferOf(
+			[makePlayer('eos-1'), makePlayer('eos-2'), makePlayer('eos-3')],
+			[
+				warnServerEvent('eos-1', 'stop', 1, admin('adminA')),
+				warnServerEvent('eos-2', 'stop', 2, admin('adminB')),
+				warnServerEvent('eos-3', 'go', 3, admin('adminA')),
+			],
+		)
+		expect(types(CHAT.groupBursts(state.eventBuffer))).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED', 'PLAYER_WARNED'])
 	})
 
-	it('keeps same-text warns from different sources separate', () => {
-		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
-		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, admin('adminA')))
-		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 2, admin('adminB')))
-
-		expect(state.eventBuffer.map((e) => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
+	it('measures the window from the latest member', () => {
+		const players = [makePlayer('eos-1'), makePlayer('eos-2'), makePlayer('eos-3'), makePlayer('eos-4')]
+		const window = CHAT.BURST_WINDOW_MS
+		const state = bufferOf(players, [
+			warnAt('eos-1', 'stop', 1, 1000),
+			warnAt('eos-2', 'stop', 2, 1000 + window),
+			warnAt('eos-3', 'stop', 3, 1000 + 2 * window),
+			warnAt('eos-4', 'stop', 4, 1000 + 3 * window + 1),
+		])
+		const grouped = CHAT.groupBursts(state.eventBuffer)
+		expect(types(grouped)).toEqual(['BURST', 'PLAYER_WARNED'])
+		expect(grouped[1].id).toBe(4)
 	})
 
-	it('does not merge warns further apart than the aggregation window', () => {
-		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
-		const first: SE.PlayerWarned = {
-			type: 'PLAYER_WARNED',
-			id: 1,
-			time: 1000,
-			matchId: 1,
-			reason: 'stop',
-			player: 'eos-1',
-			source: rcon,
-		}
-		const late: SE.PlayerWarned = {
-			type: 'PLAYER_WARNED',
-			id: 2,
-			time: 1000 + 6000,
-			matchId: 1,
-			reason: 'stop',
-			player: 'eos-2',
-			source: rcon,
-		}
-		CHAT.handleEvent(state, first)
-		CHAT.handleEvent(state, late)
-
-		expect(state.eventBuffer.map((e) => e.type)).toEqual(['PLAYER_WARNED', 'PLAYER_WARNED'])
-	})
-
-	it('merges across an interleaving non-warn event within the window', () => {
-		const state = seededState([makePlayer('eos-1'), makePlayer('eos-2')])
-		CHAT.handleEvent(state, warnServerEvent('eos-1', 'stop', 1, rcon))
+	it('folds across an interleaving entry, keeping the burst where its first member was', () => {
 		const chat: SE.ChatMessage = {
 			type: 'CHAT_MESSAGE',
 			id: 2,
@@ -375,13 +388,53 @@ describe('standalone warn burst aggregation', () => {
 			message: 'hi',
 			channel: { type: 'ChatAll' },
 		}
-		CHAT.handleEvent(state, chat)
-		CHAT.handleEvent(state, warnServerEvent('eos-2', 'stop', 3, rcon))
+		const state = bufferOf(
+			[makePlayer('eos-1'), makePlayer('eos-2')],
+			[warnServerEvent('eos-1', 'stop', 1, rcon), chat, warnServerEvent('eos-2', 'stop', 3, rcon)],
+		)
+		expect(types(CHAT.groupBursts(state.eventBuffer))).toEqual(['BURST', 'CHAT_MESSAGE'])
+	})
 
-		expect(state.eventBuffer.map((e) => e.type)).toEqual(['WARNS_AGGREGATED', 'CHAT_MESSAGE'])
-		const entry = state.eventBuffer[0]
-		if (entry.type !== 'WARNS_AGGREGATED') throw new Error('expected WARNS_AGGREGATED')
-		expect(entry.warns).toHaveLength(2)
+	it("folds one attacker's hits on one vehicle, apart from their hits on another", () => {
+		const gunner = makePlayer('gunner')
+		const grouped = CHAT.groupBursts([hit(1, 100, gunner, 7), hit(2, 200, gunner, 7), hit(3, 300, gunner, 8), hit(4, 400, gunner, 7)])
+		expect(types(grouped)).toEqual(['BURST', 'VEHICLE_DAMAGED'])
+		const burst = grouped[0]
+		if (burst.type !== 'BURST') throw new Error('expected BURST')
+		expect(burst.events.map((e) => e.id)).toEqual([1, 2, 4])
+	})
+
+	it("folds one attacker's wounds of a kind, but never suicides", () => {
+		const mortar = makePlayer('mortar')
+		const grouped = CHAT.groupBursts([
+			wound(1, makePlayer('a'), mortar, 'normal'),
+			wound(2, makePlayer('b'), mortar, 'normal'),
+			wound(3, makePlayer('c'), mortar, 'teamkill'),
+			wound(4, mortar, mortar, 'suicide'),
+			wound(5, mortar, mortar, 'suicide'),
+		])
+		expect(types(grouped)).toEqual(['BURST', 'PLAYER_WOUNDED', 'PLAYER_WOUNDED', 'PLAYER_WOUNDED'])
+	})
+
+	it('replaces a burst with a new entry as members join a live feed, leaving earlier results untouched', () => {
+		const gunner = makePlayer('gunner')
+		const state = CHAT.getInitialChatState()
+		const filter = CHAT.createBufferFilter({ groupBursts: true })
+		const keepAll = () => true
+
+		state.eventBuffer.push(hit(1, 100, gunner, 7), hit(2, 200, gunner, 7))
+		const first = filter(state, keepAll, [])
+		const firstBurst = onlyBurst(first)
+		expect(firstBurst.events).toHaveLength(2)
+
+		state.eventBuffer.push(hit(3, 300, gunner, 7))
+		const second = filter(state, keepAll, [])
+		expect(second).not.toBe(first)
+		expect(onlyBurst(second)).not.toBe(firstBurst)
+		expect(onlyBurst(second).events).toHaveLength(3)
+		expect(firstBurst.events).toHaveLength(2)
+
+		expect(filter(state, keepAll, [])).toBe(second)
 	})
 })
 

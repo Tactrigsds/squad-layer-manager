@@ -293,6 +293,26 @@ export const vehicleHit = def((attacker: Rendered, vehicle: Rendered, damage: nu
 	rt('{attacker} hit {vehicle} for {damage}{weapon}', { attacker, vehicle, damage, weapon }),
 )
 
+// -------- bursts: one player's run of alike events, shown as one entry --------
+
+export const playersHarmed = def((attacker: Rendered, died: boolean, teamkill: boolean, count: number, weapon?: Rendered) =>
+	rt(
+		'{attacker} {died, select, yes {killed} other {wounded}} {count, plural, one {# player} other {# players}}{teamkill, select, yes { of their own team} other {}}{weapon}',
+		{ attacker, died: died ? 'yes' : 'no', teamkill: teamkill ? 'yes' : 'no', count, weapon },
+	),
+)
+
+export const vehicleHitRepeatedly = def((attacker: Rendered, vehicle: Rendered, count: number, damage: number, weapon?: Rendered) =>
+	rt('{attacker} hit {vehicle} {count} times for {damage}{weapon}', { attacker, vehicle, count, damage, weapon }),
+)
+
+export const targetsDestroyed = def((attacker: Rendered, vehicles: boolean, count: number, teamkill: boolean, weapon?: Rendered) =>
+	rt(
+		'{attacker} destroyed {vehicles, select, yes {{count, plural, one {# vehicle} other {# vehicles}}} other {{count, plural, one {# deployable} other {# deployables}}}}{teamkill, select, yes { of their own team} other {}}{weapon}',
+		{ attacker, vehicles: vehicles ? 'yes' : 'no', count, teamkill: teamkill ? 'yes' : 'no', weapon },
+	),
+)
+
 export const fobRadio = def('FOB radio')
 
 // `bottomedOut` is the radio reaching the minimum health a radio is ever logged at

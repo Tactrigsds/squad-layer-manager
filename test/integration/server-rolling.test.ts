@@ -588,8 +588,8 @@ describe('the event archive', () => {
 	// reused. Paging past a page boundary in both directions is what exercises the seam.
 	//
 	// Asserted on the times and on id uniqueness rather than on the two id sequences being reverses of each
-	// other: replay folds events (a WARNS_AGGREGATED absorbs several, a collapsed event folds under the app
-	// event that caused it), so which entry stands for a hit depends on what else landed on the page.
+	// other: events fold together (a burst absorbs several, a collapsed event folds under the app event that
+	// caused it), so which entry stands for a hit depends on what else landed on the page.
 	it('pages events from either end of the range, in exactly reversed order', async () => {
 		const pageEvents = async (order: 'newest' | 'oldest') => {
 			const out: { id: string; time: number }[] = []

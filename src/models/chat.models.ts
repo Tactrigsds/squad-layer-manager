@@ -299,7 +299,7 @@ export type EventEnriched =
 	| SE.VehicleDamaged<SM.Player>
 	| SE.DeployableDestroyed<SM.Player>
 	| SE.FobRadioDamaged<SM.Player>
-	| AggregatedWarns
+	| Burst
 
 // Why the event drew nothing. 'unresolved' is a replay that could not name the event's players (see
 // reviveNoops); 'suppressed' is a configured pattern deliberately keeping it out of the feed. Readers that
@@ -316,21 +316,28 @@ export type NoopEvent = {
 	originalEvent: Event
 }
 
-// several standalone PLAYER_WARNED server events (i.e. ones NOT attributed to an app event, which are collapsed
-// under their app-event entry instead) sharing the same warn text and acting source, merged into one feed entry.
-// See mergeOrPushWarn: only warns arriving within WARN_AGGREGATION_WINDOW_MS of each other are grouped.
-export type AggregatedWarns = {
-	type: 'WARNS_AGGREGATED'
-	// tracks the latest absorbed warn's id (server ids are monotonic) so the resume cursor stays sensible
+// Events of one kind that repeat in a burst, such as one admin warning a list of players or one gunner hitting a
+// vehicle over and over. The feed shows a burst as one entry (see createBurstGrouper). Never held in a ChatState's
+// buffer: grouping happens after a feed's filters, so the buffer's readers each see every event.
+export type Burst = {
+	type: 'BURST'
+	// the first member's, so the row keeps its identity as members join
 	id: number
-	// anchored to the first warn's time, keeping the entry in its original buffer position
 	time: number
 	matchId: number
-	reason: string
-	source: SE.PlayerWarned['source']
-	// individual enriched warns, in arrival order (always length >= 2)
-	warns: EnrichedWarn[]
+} & BurstMembers
+
+type BurstableEvents = {
+	PLAYER_WARNED: EnrichedWarn
+	PLAYER_WOUNDED: SE.PlayerWounded<SM.Player>
+	PLAYER_DIED: SE.PlayerDied<SM.Player>
+	VEHICLE_DAMAGED: SE.VehicleDamaged<SM.Player>
+	VEHICLE_DESTROYED: SE.VehicleDestroyed<SM.Player>
+	DEPLOYABLE_DESTROYED: SE.DeployableDestroyed<SM.Player>
 }
+export type BurstKind = keyof BurstableEvents
+// in arrival order, always two or more
+export type BurstMembers = { [K in BurstKind]: { kind: K; events: BurstableEvents[K][] } }[BurstKind]
 
 // The other half of ServerEvent's switch (server-event.tsx): each entry decides, from the event alone, whether that
 // renderer draws anything. Every `return null` in the component that depends only on the event is mirrored here, and
@@ -354,7 +361,7 @@ const RENDERS_IN_FEED = {
 	SQUAD_CREATED: () => true,
 	PLAYER_BANNED: () => true,
 	PLAYER_WARNED: () => true,
-	WARNS_AGGREGATED: () => true,
+	BURST: () => true,
 	// an audit-only MAP_SET repeats the layer its QUEUE_UPDATED already named
 	APP_EVENT: (event) => !(event.appEvent.type === 'MAP_SET' && event.appEvent.reason === 'queue-updated'),
 	NEW_GAME: () => true,
@@ -444,7 +451,7 @@ export namespace Wire {
 		MAP_SET: { players: ['actorPlayer'] },
 		ROUND_ENDED: { players: ['actorPlayer'] },
 		APP_EVENT: { players: ['actorPlayer'], playerLists: ['targetPlayers'], nested: ['collapsed'] },
-		WARNS_AGGREGATED: { nested: ['warns'] },
+		BURST: { nested: ['events'] },
 		NEW_GAME: { rosters: ['state'] },
 		RESET: { rosters: ['state'] },
 		TEAMS_POLLED_UPDATE: {},
@@ -660,11 +667,6 @@ export function handleEvent(state: ChatState, event: Event | LifecycleEvent, opt
 			return
 		}
 	}
-	// standalone warns (not folded into an app event above) get deduplicated by text+source into burst groups
-	if (enriched.type === 'PLAYER_WARNED') {
-		if (mergeOrPushWarn(state.eventBuffer, enriched)) state.bufferEpoch++
-		return
-	}
 	state.eventBuffer.push(enriched)
 }
 
@@ -688,56 +690,6 @@ function findAppEntry(buffer: EventEnriched[], id: AppEvents.AppEventId): Enrich
 		if (entry.type === 'APP_EVENT' && entry.id === id) return entry
 	}
 	return undefined
-}
-
-// warns arriving within this window of an existing matching group are merged into it; anything further apart
-// starts a fresh entry (so unrelated warns that happen to share text stay separate)
-const WARN_AGGREGATION_WINDOW_MS = 5000
-
-// dedup key: identical warn text AND the same acting source (a specific in-game admin, RCON, etc.).
-// NUL joins the two halves because it can't occur in either, so no actor/reason pair can spell another one's key.
-// It's written as an escape rather than the literal byte: inline, it makes this file read as binary to grep, which
-// then reports no matches here rather than an error.
-function warnDedupKey(reason: string, source: SE.PlayerWarned['source']): string {
-	const actor = !source
-		? 'none'
-		: source.type === 'player'
-			? `player:${SM.PlayerIds.getPlayerId(source.playerIds)}`
-			: source.type === 'event'
-				? `event:${source.id}`
-				: source.type
-	return `${actor}\u0000${reason}`
-}
-
-// merge a standalone warn into a recent matching group, upgrading a lone prior warn in place if needed; else append.
-// scans back past interleaving events until the burst window is exceeded (buffer is time-ordered). True when it
-// merged, i.e. changed an existing entry rather than appending.
-function mergeOrPushWarn(buffer: EventEnriched[], warn: SE.PlayerWarned<SM.Player>): boolean {
-	const key = warnDedupKey(warn.reason, warn.source)
-	const cutoff = warn.time - WARN_AGGREGATION_WINDOW_MS
-	for (let i = buffer.length - 1; i >= 0; i--) {
-		const entry = buffer[i]
-		if (entry.time < cutoff) break
-		if (entry.type === 'WARNS_AGGREGATED' && warnDedupKey(entry.reason, entry.source) === key) {
-			entry.warns.push(warn)
-			entry.id = warn.id
-			return true
-		}
-		if (entry.type === 'PLAYER_WARNED' && warnDedupKey(entry.reason, entry.source) === key) {
-			buffer[i] = {
-				type: 'WARNS_AGGREGATED',
-				id: warn.id,
-				time: entry.time,
-				matchId: entry.matchId,
-				reason: entry.reason,
-				source: entry.source,
-				warns: [entry, warn],
-			}
-			return true
-		}
-	}
-	buffer.push(warn)
-	return false
 }
 
 // Interleaves app events into a stream of server events for replay through handleEvent. The server events keep the
@@ -794,14 +746,16 @@ const NO_ENTRIES: EventEnriched[] = []
 /**
  * A filter over a live buffer that scans only the entries appended since its previous call. It rescans from the start
  * when the buffer changed some other way (see ChatState.bufferEpoch) or when any of `deps` changed, since `keep` is
- * assumed to close over them. The result keeps its identity until an entry is kept or dropped.
+ * assumed to close over them. The result keeps its identity until an entry is kept or dropped. With `groupBursts`, the
+ * kept entries are folded into bursts as groupBursts does.
  */
-export function createBufferFilter() {
+export function createBufferFilter(opts: { groupBursts?: boolean } = {}) {
 	let buffer: EventEnriched[] | null = null
 	let epoch = -1
 	let scanned = 0
 	let lastDeps: readonly unknown[] = []
 	let result = NO_ENTRIES
+	let append = opts.groupBursts ? createBurstGrouper() : pushEntry
 	return (state: ChatState, keep: (entry: EventEnriched) => boolean, deps: readonly unknown[]): EventEnriched[] => {
 		if (
 			state.eventBuffer !== buffer ||
@@ -815,15 +769,100 @@ export function createBufferFilter() {
 			lastDeps = deps
 			scanned = 0
 			result = NO_ENTRIES
+			if (opts.groupBursts) append = createBurstGrouper()
 		}
 		const entries = state.eventBuffer
-		let appended: EventEnriched[] | null = null
+		let next: EventEnriched[] | null = null
 		for (; scanned < entries.length; scanned++) {
-			if (keep(entries[scanned])) (appended ??= []).push(entries[scanned])
+			if (!keep(entries[scanned])) continue
+			next ??= result.slice()
+			append(next, entries[scanned])
 		}
-		if (appended) result = result.length === 0 ? appended : result.concat(appended)
+		if (next) result = next
 		return result
 	}
+}
+
+function pushEntry(out: EventEnriched[], entry: EventEnriched) {
+	out.push(entry)
+}
+
+// how long after a burst's latest member another event can still join it
+export const BURST_WINDOW_MS = 5_000
+
+// Events with equal keys join one burst: one kind, from one actor, and alike in everything their burst's row shows
+// once for all of them. Null for an event that never joins a burst. NUL separates the parts because none of them can
+// contain it, so no two sets of parts spell the same key.
+function burstKey(event: EventEnriched): string | null {
+	switch (event.type) {
+		case 'PLAYER_WARNED':
+			return `${event.matchId}\u0000${event.type}\u0000${actionSourceKey(event.source)}\u0000${event.reason}`
+		case 'PLAYER_WOUNDED':
+		case 'PLAYER_DIED':
+			// a suicide has no victims to list, and a death from wounds lands whenever its victim gives up
+			if (event.variant === 'suicide' || (event.type === 'PLAYER_DIED' && event.deathVariant === 'diedOfWounds')) return null
+			return `${event.matchId}\u0000${event.type}\u0000${SM.PlayerIds.getPlayerId(event.attacker.ids)}\u0000${event.variant}\u0000${event.damageSource}`
+		case 'VEHICLE_DAMAGED':
+			return `${event.matchId}\u0000${event.type}\u0000${SM.PlayerIds.getPlayerId(event.attacker.ids)}\u0000${event.variant}\u0000${event.weapon}\u0000${event.vehicle.instanceId}`
+		case 'VEHICLE_DESTROYED':
+		case 'DEPLOYABLE_DESTROYED':
+			// a vehicle's crew finishing it is a crash, one at a time
+			if (!event.attacker || event.variant === 'suicide') return null
+			return `${event.matchId}\u0000${event.type}\u0000${SM.PlayerIds.getPlayerId(event.attacker.ids)}\u0000${event.variant}\u0000${event.cause}\u0000${event.weapon}`
+		default:
+			return null
+	}
+}
+
+function actionSourceKey(source: SE.PlayerWarned['source']): string {
+	if (!source) return 'none'
+	switch (source.type) {
+		case 'player':
+			return `player:${SM.PlayerIds.getPlayerId(source.playerIds)}`
+		case 'event':
+			return `event:${source.id}`
+		default:
+			return source.type
+	}
+}
+
+/**
+ * Folds bursts into a feed's entries as they are appended in order: an event joins the burst of the latest entry
+ * with its key when it lands within BURST_WINDOW_MS of that entry's latest member. Joining replaces the entry with
+ * a new object in place, because the feed rebuilds a row only when its entry changes.
+ */
+export function createBurstGrouper() {
+	// per key, where its latest entry sits in the output and when that entry's latest member happened
+	const open = new Map<string, { index: number; lastTime: number }>()
+	return (out: EventEnriched[], entry: EventEnriched) => {
+		const key = burstKey(entry)
+		if (key === null) {
+			out.push(entry)
+			return
+		}
+		const prev = open.get(key)
+		if (prev && entry.time - prev.lastTime <= BURST_WINDOW_MS) {
+			out[prev.index] = joinBurst(out[prev.index], entry)
+			prev.lastTime = Math.max(prev.lastTime, entry.time)
+			return
+		}
+		open.set(key, { index: out.length, lastTime: entry.time })
+		out.push(entry)
+	}
+}
+
+/** A feed's entries, in order, with their bursts folded (see createBurstGrouper). */
+export function groupBursts(entries: readonly EventEnriched[]): EventEnriched[] {
+	const out: EventEnriched[] = []
+	const append = createBurstGrouper()
+	for (const entry of entries) append(out, entry)
+	return out
+}
+
+// `head` and `member` share a burst key, so they are of one kind
+function joinBurst(head: EventEnriched, member: EventEnriched): Burst {
+	if (head.type === 'BURST') return { ...head, events: [...head.events, member] } as Burst
+	return { type: 'BURST', id: head.id as number, time: head.time, matchId: head.matchId, kind: head.type, events: [head, member] } as Burst
 }
 
 // the unique (instance) id of the squad a player is in per the interpolated state, or undefined if squadless
@@ -1432,9 +1471,9 @@ function isBroadcastEvent(event: EventEnriched): boolean {
 	return event.type === 'APP_EVENT' && event.appEvent.type === 'BROADCAST_SENT'
 }
 
-// in-game and SLM-initiated alike: raw warns, their aggregates, and the app events they collapse under
+// in-game and SLM-initiated alike: raw warns and the app events they collapse under
 function isWarnEvent(event: EventEnriched): boolean {
-	if (event.type === 'PLAYER_WARNED' || event.type === 'WARNS_AGGREGATED') return true
+	if (event.type === 'PLAYER_WARNED') return true
 	return event.type === 'APP_EVENT' && event.appEvent.type === 'PLAYER_WARNED'
 }
 
@@ -1463,6 +1502,8 @@ export type SecondaryFilterContext = {
 }
 
 function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterState): boolean {
+	// a burst's members share every property a filter reads
+	if (event.type === 'BURST') return matchesFilterState(event.events[0], filterState)
 	switch (filterState) {
 		case 'ALL':
 			return true
@@ -1520,10 +1561,8 @@ export function* iterAssocPlayers(
 	playerId?: SM.PlayerId,
 ): Generator<readonly [SM.Player | SM.PlayerId, AssocPlayerType]> {
 	if (event.type === 'NOOP') return
-	if (event.type === 'WARNS_AGGREGATED') {
-		for (const warn of event.warns) {
-			if (!playerId || SM.PlayerIds.getPlayerId(warn.player.ids) === playerId) yield [warn.player, 'player'] as const
-		}
+	if (event.type === 'BURST') {
+		for (const member of event.events) yield* iterAssocPlayers(member, playerId)
 		return
 	}
 	if (event.type === 'APP_EVENT') {
@@ -1559,7 +1598,11 @@ export function hasAnyAssocPlayer(event: EventEnriched, playerIds: ReadonlySet<S
 // squad-association equivalent of iterAssocPlayers: handles the enriched-only event variants (which have no entry in
 // SE.EVENT_META) before delegating to the raw server-event iterator.
 export function* iterAssocSquadUniqueIds(event: EventEnriched): Generator<number> {
-	if (event.type === 'NOOP' || event.type === 'WARNS_AGGREGATED') return
+	if (event.type === 'NOOP') return
+	if (event.type === 'BURST') {
+		for (const member of event.events) yield* iterAssocSquadUniqueIds(member)
+		return
+	}
 	if (event.type === 'APP_EVENT') {
 		if (event.warnSummary.type === 'squads') {
 			for (const squad of event.warnSummary.squads) yield squad.uniqueId
@@ -1589,8 +1632,8 @@ export function isSquadFeedEvent(event: EventEnriched, uniqueSquadId: number, sq
 			return !squadMessagesOnly && event.authorSquadId === uniqueSquadId
 		case 'PLAYER_WARNED':
 			return event.targetSquadId === uniqueSquadId
-		case 'WARNS_AGGREGATED':
-			return event.warns.some((w) => w.targetSquadId === uniqueSquadId)
+		case 'BURST':
+			return event.events.some((member) => isSquadFeedEvent(member, uniqueSquadId, squadMessagesOnly))
 		case 'APP_EVENT':
 			return event.targetSquadIds.includes(uniqueSquadId)
 		default:
