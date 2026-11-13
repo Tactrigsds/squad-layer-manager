@@ -330,8 +330,8 @@ export function logRevive(reviver: PlayerLike, revived: PlayerLike): string {
 
 // ---------- vehicles and deployables. `actor` is a blueprint class with its `_C_<instance>` suffix.
 
-export function logVehicleEntered(p: PlayerLike, actor: string, seat: number): string {
-	const assetClass = actor.replace(/_\d+$/, '')
+// `assetClass` is the vehicle's blueprint, which a turret seat's line names in place of the turret's own
+export function logVehicleEntered(p: PlayerLike, actor: string, seat: number, assetClass = actor.replace(/_\d+$/, '')): string {
 	return `LogSquadTrace: [DedicatedServer]OnPossess(): PC=${p.name.trim()} (Online IDs: ${idsStr(p)}) Entered Vehicle Pawn=${actor} (Asset Name = ${assetClass}) FullPath=${assetClass} /Game/Maps/Emulated:PersistentLevel.${actor} Seat Number=${seat}`
 }
 

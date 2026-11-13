@@ -69,6 +69,9 @@ export function actors(event: AnyEvent): SM.PlayerId[] {
 		case 'PLAYER_WOUNDED':
 			ids.push(event.victim, event.attacker)
 			break
+		case 'PLAYER_VEHICLE_CHANGED':
+			ids.push(event.player)
+			break
 		// being revived takes no input
 		case 'PLAYER_REVIVED':
 			ids.push(event.reviver)

@@ -259,6 +259,15 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 			)
 			return `${attacker} destroyed ${blueprint}${crew.length > 0 ? ` with ${crew.join(', ')} aboard` : ''}`
 		}
+		case 'board': {
+			const { name, blueprint, seat } = input as SB.SandboxVerbInput<'board'>
+			world.board(requirePlayer(host, name), blueprint, seat)
+			return `${name} is in seat ${seat} of ${blueprint}`
+		}
+		case 'get-out': {
+			const { name } = input as SB.SandboxVerbInput<'get-out'>
+			return world.getOut(requirePlayer(host, name)) ? `${name} got out` : `${name} is not in a vehicle`
+		}
 		case 'damage-vehicle': {
 			const { attacker, blueprint, damage } = input as SB.SandboxVerbInput<'damage-vehicle'>
 			const health = world.damageVehicle(requirePlayer(host, attacker), blueprint, damage)

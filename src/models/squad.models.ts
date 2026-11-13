@@ -1911,17 +1911,19 @@ export namespace LogEvents {
 	})
 
 	// `pawn` is the vehicle's actor for its own seats, and a turret's actor for a turret seat. `assetClass` is always
-	// the vehicle's blueprint, which is the only link from a turret back to the vehicle it sits on.
+	// the vehicle's blueprint, which is the only link from a turret back to the vehicle it sits on. Every seat is a
+	// pawn of its own, so no two seats share one.
 	export const VehicleEnteredDef = eventDef('VEHICLE_ENTERED', {
 		...BaseEventProperties,
 		playerIds: PlayerIds.IdFields('eos', 'username'),
 		pawn: z.string(),
 		assetClass: z.string(),
+		seat: z.number(),
 	})
 	export type VehicleEntered = z.infer<(typeof VehicleEnteredDef)['schema']>
 	export const VehicleEnteredMatcher = createLogMatcher({
 		event: VehicleEnteredDef,
-		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer]OnPossess\(\): PC=(.+?) \(Online IDs: ([^)]*)\) Entered Vehicle Pawn=(\S+) \(Asset Name = (\S+)\)/,
+		regex: /^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquadTrace: \[DedicatedServer]OnPossess\(\): PC=(.+?) \(Online IDs: ([^)]*)\) Entered Vehicle Pawn=(\S+) \(Asset Name = (\S+)\).* Seat Number=(\d+)/,
 		onMatch: (args) => {
 			const playerIds = PlayerIds.parse({ username: args[3], idsStr: args[4] })
 			if (!playerIds.eos) return null
@@ -1932,6 +1934,7 @@ export namespace LogEvents {
 				playerIds,
 				pawn: args[5],
 				assetClass: args[6],
+				seat: parseInt(args[7]),
 			}
 		},
 	})

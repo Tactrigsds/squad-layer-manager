@@ -297,6 +297,7 @@ export type EventEnriched =
 	| SE.PlayerRevived<SM.Player>
 	| SE.VehicleDestroyed<SM.Player>
 	| SE.VehicleDamaged<SM.Player>
+	| SE.PlayerVehicleChanged<SM.Player>
 	| SE.DeployableDestroyed<SM.Player>
 	| SE.FobRadioDamaged<SM.Player>
 	| Burst
@@ -385,6 +386,7 @@ const RENDERS_IN_FEED = {
 	PLAYER_REVIVED: () => true,
 	VEHICLE_DESTROYED: () => true,
 	VEHICLE_DAMAGED: () => true,
+	PLAYER_VEHICLE_CHANGED: (event) => event.from !== null || event.to !== null,
 	DEPLOYABLE_DESTROYED: () => true,
 	FOB_RADIO_DAMAGED: () => true,
 	MAP_SET: () => true,
@@ -446,6 +448,7 @@ export namespace Wire {
 		PLAYER_REVIVED: { players: ['reviver', 'revived'] },
 		VEHICLE_DESTROYED: { players: ['attacker'], playerLists: ['crew'] },
 		VEHICLE_DAMAGED: { players: ['attacker'] },
+		PLAYER_VEHICLE_CHANGED: { players: ['player'] },
 		DEPLOYABLE_DESTROYED: { players: ['attacker'] },
 		FOB_RADIO_DAMAGED: { players: ['attacker'] },
 		MAP_SET: { players: ['actorPlayer'] },
@@ -1400,6 +1403,14 @@ export function interpolateEvent(state: InterpolableState, event: SE.Event, opts
 			return { ...event, attacker, crew }
 		}
 
+		case 'PLAYER_VEHICLE_CHANGED': {
+			const player = state.players.get(event.player)
+			if (!player) {
+				return noop(`Player ${SM.PlayerIds.prettyPrint(event.player)} of ${event.type} was not found in the interpolated player list`)
+			}
+			return { ...event, player }
+		}
+
 		default:
 			assertNever(event)
 	}
@@ -1509,7 +1520,7 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 			return true
 		case 'DEFAULT':
 			if (isKillfeedEvent(event) && event.variant !== 'teamkill') return false
-			if (event.type === 'PLAYER_REVIVED' || event.type === 'VEHICLE_DAMAGED') return false
+			if (event.type === 'PLAYER_REVIVED' || event.type === 'VEHICLE_DAMAGED' || event.type === 'PLAYER_VEHICLE_CHANGED') return false
 			if (SE.isTargetedEvent(event) && event.variant !== 'teamkill') return false
 			if (event.type === 'PLAYER_JOINED_SQUAD' || event.type === 'PLAYER_LEFT_SQUAD') return false
 			return true
@@ -1527,7 +1538,7 @@ function matchesFilterState(event: EventEnriched, filterState: SecondaryFilterSt
 		case 'KILLFEED':
 			return isKillfeedEvent(event) || event.type === 'PLAYER_REVIVED' || SE.isTargetedEvent(event)
 		case 'VEHICLES':
-			return SE.isTargetedEvent(event)
+			return SE.isTargetedEvent(event) || event.type === 'PLAYER_VEHICLE_CHANGED'
 		default:
 			assertNever(filterState)
 	}

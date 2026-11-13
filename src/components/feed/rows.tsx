@@ -553,11 +553,7 @@ function TargetDisplay(props: { ctx: RC.RenderCtx; event: TargetedEvent }) {
 	const { ctx, event } = props
 	const target = SE.targetOf(event)
 	const isVehicle = event.type === 'VEHICLE_DESTROYED' || event.type === 'VEHICLE_DAMAGED'
-	const [vehicleName] = isVehicle
-		? withThrown(() => VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(target.className)?.vehicle)
-		: [undefined]
-	const name = event.type === 'FOB_RADIO_DAMAGED' ? tr.text(CHAT_Msgs.fobRadio()) : (vehicleName ?? DSTR.prettyClassName(target.className))
-	const typeCode = isVehicle && target.targetType ? LC.vehicleTypeShortCode(target.targetType) : undefined
+	const name = event.type === 'FOB_RADIO_DAMAGED' ? tr.text(CHAT_Msgs.fobRadio()) : DSTR.prettyClassName(target.className)
 	return (
 		<span className="whitespace-nowrap">
 			{event.teamId !== null && (
@@ -565,10 +561,13 @@ function TargetDisplay(props: { ctx: RC.RenderCtx; event: TargetedEvent }) {
 					<Atoms.MatchTeamDisplay ctx={ctx} teamId={event.teamId} matchId={event.matchId} />{' '}
 				</>
 			)}
-			<span className="font-semibold cursor-help" {...{ [RC.TIP_ATTR]: target.className }}>
-				{name}
-			</span>
-			{typeCode && <span className="text-muted-foreground"> ({typeCode})</span>}
+			{isVehicle ? (
+				<VehicleName className={target.className} targetType={target.targetType} />
+			) : (
+				<span className="font-semibold cursor-help" {...{ [RC.TIP_ATTR]: target.className }}>
+					{name}
+				</span>
+			)}
 		</span>
 	)
 }
@@ -652,6 +651,52 @@ function Destroyed(props: { ctx: RC.RenderCtx; event: DestroyedEvent }) {
 					)}
 				</span>
 			)}
+		</Atoms.EventLine>
+	)
+}
+
+// a vehicle's canonical name and class, with its blueprint as the tooltip
+function VehicleName(props: { className: string; targetType: string | null }) {
+	const [vehicleName] = withThrown(() => VEH.classIndex(L.StaticFactionunitConfigs, L.StaticLayerComponents).get(props.className)?.vehicle)
+	const typeCode = props.targetType ? LC.vehicleTypeShortCode(props.targetType) : undefined
+	return (
+		<span className="whitespace-nowrap">
+			<span className="font-semibold cursor-help" {...{ [RC.TIP_ATTR]: props.className }}>
+				{vehicleName ?? DSTR.prettyClassName(props.className)}
+			</span>
+			{typeCode && <span className="text-muted-foreground"> ({typeCode})</span>}
+		</span>
+	)
+}
+
+// The seat's number, with the pawn that seat is as the tooltip: a turret, a periscope, a passenger seat, or the
+// vehicle itself
+function SeatDisplay(props: { seat: SE.VehicleSeat }) {
+	return (
+		<span className="cursor-help" {...{ [RC.TIP_ATTR]: props.seat.pawn }}>
+			{tr.text(CHAT_Msgs.vehicleSeat(props.seat.seat))}
+		</span>
+	)
+}
+
+function VehicleChanged(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'PLAYER_VEHICLE_CHANGED' }> }) {
+	const { ctx, event } = props
+	const { from, to } = event
+	const player = <Atoms.PlayerDisplay ctx={ctx} showTeam player={event.player} matchId={event.matchId} />
+	const vehicleOf = (seat: SE.VehicleSeat) => <VehicleName className={seat.className} targetType={seat.targetType} />
+	const [iconName, message] = (() => {
+		if (to === null) {
+			if (from === null) return [null, null] as const
+			return ['LogOut', tr.richText(CHAT_Msgs.vehicleChanged(player, 'exited', vehicleOf(from)))] as const
+		}
+		const seat = <SeatDisplay seat={to} />
+		if (from === null) return ['LogIn', tr.richText(CHAT_Msgs.vehicleChanged(player, 'entered', vehicleOf(to), seat))] as const
+		return ['ArrowLeftRight', tr.richText(CHAT_Msgs.vehicleChanged(player, 'moved', vehicleOf(to), seat))] as const
+	})()
+	if (iconName === null) return null
+	return (
+		<Atoms.EventLine time={event.time} icon={<Icon name={iconName} className="h-4 w-4 shrink-0 text-muted-foreground" />}>
+			{message}
 		</Atoms.EventLine>
 	)
 }
@@ -941,6 +986,8 @@ function drawRow({ ctx, event }: { ctx: RC.RenderCtx; event: CHAT.EventEnriched 
 		case 'VEHICLE_DESTROYED':
 		case 'DEPLOYABLE_DESTROYED':
 			return <Destroyed ctx={ctx} event={event} />
+		case 'PLAYER_VEHICLE_CHANGED':
+			return <VehicleChanged ctx={ctx} event={event} />
 		case 'VEHICLE_DAMAGED':
 			return <VehicleDamaged ctx={ctx} event={event} />
 		case 'FOB_RADIO_DAMAGED':

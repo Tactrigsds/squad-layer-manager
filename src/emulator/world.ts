@@ -366,6 +366,42 @@ export class World {
 		)
 	}
 
+	// the vehicle of each blueprint that players board, with the pawn of each seat taken so far
+	#boardedVehicles = new Map<string, { actor: string; pawns: Map<number, string> }>()
+	// the pawn each boarded player is in
+	#boardedPawns = new Map<EmuPlayer, string>()
+
+	// A player gets into a seat of the vehicle of that blueprint. Seat 0 is the vehicle's own pawn, and any other
+	// seat a turret pawn spawned after it. A player already aboard leaves their seat in the same tick, as a move
+	// between seats reads in the real log.
+	board(player: EmuPlayer, blueprint: string, seat: number) {
+		let vehicle = this.#boardedVehicles.get(blueprint)
+		if (!vehicle) {
+			vehicle = { actor: `${blueprint}_C_${this.#nextInstanceId--}`, pawns: new Map() }
+			this.#boardedVehicles.set(blueprint, vehicle)
+		}
+		let pawn = seat === 0 ? vehicle.actor : vehicle.pawns.get(seat)
+		if (!pawn) {
+			pawn = `${blueprint}_Turret_C_${this.#nextInstanceId--}`
+			vehicle.pawns.set(seat, pawn)
+		}
+		const previous = this.#boardedPawns.get(player)
+		this.#boardedPawns.set(player, pawn)
+		this.#log(
+			...(previous ? [Fmt.logVehicleExited(player, previous, seat)] : []),
+			Fmt.logVehicleEntered(player, pawn, seat, `${blueprint}_C`),
+		)
+	}
+
+	// false when the player is not in a vehicle
+	getOut(player: EmuPlayer): boolean {
+		const pawn = this.#boardedPawns.get(player)
+		if (!pawn) return false
+		this.#boardedPawns.delete(player)
+		this.#log(Fmt.logVehicleExited(player, pawn, 0))
+		return true
+	}
+
 	// the vehicle of each blueprint that damageVehicle is wearing down, until it is destroyed
 	#damagedVehicles = new Map<string, { actor: string; health: number }>()
 
