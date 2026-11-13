@@ -210,7 +210,7 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	)
 
 	// Event filtering logic
-	const liveFilter = React.useMemo(() => CHAT.createBufferFilter(), [])
+	const liveFilter = React.useMemo(() => CHAT.createBufferFilter({ groupBursts: true }), [])
 
 	const eventFilterState = Zus.useStore(stores.squadServer!, (s) => s.chat.secondaryFilterState)
 	const selectedOnly = Zus.useStore(stores.squadServer!, ChatPrt.Sel.selectedOnly)
@@ -221,9 +221,13 @@ export default function ServerActivityPanel(props: { stores: SquadServerFrame.Ke
 	const historicalEvents = selectedMatchOrdinal !== null ? historicalEventsQuery.data?.events : undefined
 	const filteredEvents = React.useMemo(
 		() =>
-			historicalEvents?.filter((event) =>
-				CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds: filterSelection, selectedOnly }),
-			) ?? null,
+			historicalEvents
+				? CHAT.groupBursts(
+						historicalEvents.filter((event) =>
+							CHAT.showEventInFeed(event, eventFilterState, { selectedPlayerIds: filterSelection, selectedOnly }),
+						),
+					)
+				: null,
 		[historicalEvents, eventFilterState, selectedOnly, filterSelection],
 	)
 

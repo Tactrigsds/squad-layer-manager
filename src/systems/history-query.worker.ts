@@ -454,9 +454,9 @@ async function loadEventPage(
 	// hits from either family; a replayed entry is kept when it stands for one of them (see iterContainedEventIds)
 	const wanted = new Set<number>(hits.flatMap((h) => (h.serverEventId === undefined ? [] : [h.serverEventId])))
 	const wantedAppEvents = new Set<string>(hits.flatMap((h) => (h.appEventId === undefined ? [] : [h.appEventId])))
-	// by containment, not by id: a hit whose event replay folded into another entry -- a warn collapsed under the
-	// app event that issued it, one of a burst merged into a WARNS_AGGREGATED -- is shown by that entry, and
-	// matching on the top-level id alone would drop it from the page
+	// by containment, not by id: a hit whose event replay folded into another entry, such as a warn collapsed under
+	// the app event that issued it, is shown by that entry, and matching on the top-level id alone would drop it
+	// from the page
 	const isHit = (e: CHAT.EventEnriched) => {
 		if (opts.includeMatchBoundaries && e.type === 'NEW_GAME') return true
 		if (typeof e.id === 'string' && wantedAppEvents.has(e.id)) return true
@@ -475,7 +475,7 @@ async function loadEventPage(
 	const uncached: SchemaModels.MatchHistory[] = []
 	for (const row of ordered) {
 		const feed = cachedFeed(row.id)
-		if (feed) kept.set(row.id, feed.filter(isHit))
+		if (feed) kept.set(row.id, CHAT.groupBursts(feed.filter(isHit)))
 		else uncached.push(row)
 	}
 	for (let i = 0; i < uncached.length; i += FEED_READ_BATCH) {
@@ -488,7 +488,7 @@ async function loadEventPage(
 		for (const row of batch) {
 			const feed = MatchEventsCache.enrichMatchFeed(feeds.get(row.id) ?? [], opts.chat)
 			if (row.ordinal < (newestOrdinal.get(row.serverId) ?? row.ordinal)) cacheFeed(row.id, feed)
-			kept.set(row.id, feed.filter(isHit))
+			kept.set(row.id, CHAT.groupBursts(feed.filter(isHit)))
 		}
 	}
 
