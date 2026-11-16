@@ -338,13 +338,9 @@ function PluginSettingsEditor({
 	const { mode, draft, saved, issues, changes, valid, saving } = state
 	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
 	const openDialog = useAlertDialog()
-	const [configValue$] = React.useState(() => SettingsEditorFrame.draftValueState(key, 'config'))
 
 	if (saved === undefined || draft === undefined) return null
 	const current = draft as SettingsEditorFrame.PluginDraft
-
-	// the form renders the config on its own, so it is handed the issues that fall inside it, relative to it
-	const configIssues = issues.filter((i) => i.path[0] === 'config').map((i) => ({ ...i, path: i.path.slice(1) }))
 
 	async function handleYamlSave() {
 		if (!valid) return
@@ -379,12 +375,12 @@ function PluginSettingsEditor({
 				<>
 					<SettingsForm
 						schema={manifest.configSchema}
-						value$={configValue$}
+						value$={state.form.value$}
 						reset$={state.reset$}
-						onChange={(config: Record<string, unknown>) => SettingsEditorFrame.Actions.setDraft(stores, { ...current, config })}
+						onChange={state.form.onChange}
 						saved={(saved as SettingsEditorFrame.PluginDraft).config}
 						idPrefix={`setting:plugin:${info.id}:`}
-						issues={configIssues.length > 0 ? configIssues : undefined}
+						issues$={state.form.issues$}
 					/>
 					<PluginCommandsEditor
 						info={info}

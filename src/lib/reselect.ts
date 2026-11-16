@@ -52,3 +52,15 @@ export function memoizeFactoryLru<K, S>(factory: (key: K) => S, maxEntries: numb
 		return selector
 	}
 }
+
+// wraps a selector so a result deeply equal to its previous one comes back as the previous reference. One cache per
+// wrapped selector, so give each call site that may see different inputs its own wrapper.
+export function deepStable<A extends unknown[], R>(selector: (...args: A) => R): (...args: A) => R {
+	let prev: { value: R } | undefined
+	return (...args) => {
+		const next = selector(...args)
+		if (prev && Obj.deepEqual(prev.value, next)) return prev.value
+		prev = { value: next }
+		return next
+	}
+}

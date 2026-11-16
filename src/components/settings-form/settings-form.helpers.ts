@@ -1,5 +1,6 @@
 import React from 'react'
 
+import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import type * as Templating from '@/lib/templating'
 import type { z } from '@/lib/zod'
@@ -213,10 +214,55 @@ export const WriteAccessContext = React.createContext<RBAC.SettingsWriteAccess>(
 // its own path (below-leaf paths -- array items, record entries -- have no dedicated field UI of their own).
 export type NormalizedIssue = { path: string; message: string }
 
-export const ValidationContext = React.createContext<NormalizedIssue[]>([])
+export type IssuesState = ValueState<readonly NormalizedIssue[]>
 
-export function issuesForField(all: NormalizedIssue[], pathStr: string): NormalizedIssue[] {
-	return all.filter((i) => i.path === pathStr || i.path.startsWith(pathStr + '.'))
+const NO_NORMALIZED_ISSUES: readonly NormalizedIssue[] = []
+export const NO_ISSUES$: IssuesState = Object.assign(Rx.of(NO_NORMALIZED_ISSUES), { getValue: () => NO_NORMALIZED_ISSUES })
+
+export const IssuesContext = React.createContext<IssuesState>(NO_ISSUES$)
+
+const normalizedCache = new WeakMap<readonly z.core.$ZodIssue[], readonly NormalizedIssue[]>()
+
+// cached per issues array, so getValue() hands useSyncExternalStore the same snapshot until the issues change
+export function normalizeIssues(issues: readonly z.core.$ZodIssue[]): readonly NormalizedIssue[] {
+	if (issues.length === 0) return NO_NORMALIZED_ISSUES
+	let out = normalizedCache.get(issues)
+	if (!out) {
+		out = issues.map((i): NormalizedIssue => ({ path: i.path.map(String).join('.'), message: i.message }))
+		normalizedCache.set(issues, out)
+	}
+	return out
+}
+
+function sameIssues(a: readonly NormalizedIssue[], b: readonly NormalizedIssue[]) {
+	return a.length === b.length && a.every((x, i) => x.path === b[i].path && x.message === b[i].message)
+}
+
+// a filter over the form's issues that hands back its previous result while the matching issues are unchanged, so a
+// field re-renders only when its own issues do
+function stableIssueFilter(match: (i: NormalizedIssue) => boolean) {
+	let prev = NO_NORMALIZED_ISSUES
+	return (all: readonly NormalizedIssue[]) => {
+		const next = all.filter(match)
+		if (sameIssues(prev, next)) return prev
+		prev = next.length === 0 ? NO_NORMALIZED_ISSUES : next
+		return prev
+	}
+}
+
+export namespace IssueSel {
+	// a leaf claims the issues at or below its own path (array items and record entries have no field of their own)
+	export const atOrBelow = RSel.memoizeFactoryLru(
+		(pathStr: string) => stableIssueFilter((i) => i.path === pathStr || i.path.startsWith(pathStr + '.')),
+		4000,
+	)
+	export const exactly = RSel.memoizeFactoryLru((pathStr: string) => stableIssueFilter((i) => i.path === pathStr), 2000)
+	export const below = RSel.memoizeFactoryLru((pathStr: string) => stableIssueFilter((i) => i.path.startsWith(pathStr + '.')), 100)
+	// any issue at or below one of the space-separated paths
+	export const anyUnder = RSel.memoizeFactoryLru((paths: string) => {
+		const list = paths.split(' ')
+		return (all: readonly NormalizedIssue[]) => all.some((i) => list.some((p) => i.path === p || i.path.startsWith(p + '.')))
+	}, 200)
 }
 
 // the last-saved (persisted) baseline the draft was seeded from, so any field can offer "reset to saved" alongside

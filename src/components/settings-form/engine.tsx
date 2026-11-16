@@ -32,7 +32,6 @@ import {
 	type FormRoot,
 	isScalarNode,
 	isStringOrNumber,
-	issuesForField,
 	type ObjectSchemaNode,
 	type Path,
 	placeholderFor,
@@ -42,7 +41,8 @@ import {
 	useCommentProps,
 	useFieldValue,
 	useLocalEditorSchema,
-	ValidationContext,
+	IssuesContext,
+	IssueSel,
 	type ValueState,
 	WriteAccessContext,
 } from '@/components/settings-form/settings-form.helpers'
@@ -54,6 +54,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
+import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import type { SettingsGroup } from '@/models/settings-groups.models'
 import { HIDDEN_SETTINGS_KEYS, splitAdvanced, splitByGroups, TOC_ENTRY_PATHS } from '@/models/settings-groups.models'
@@ -590,7 +591,7 @@ function SectionField({
 	// is in view. StickyGroup handles the offset math + z-index; the ref'd element must sit before the section body.
 	const headerRef = React.useRef<HTMLDivElement>(null)
 	// only issues sitting exactly at the section path (object-level refines) -- descendants are claimed by their leaves
-	const sectionIssues = React.useContext(ValidationContext).filter((i) => i.path === pathStr)
+	const sectionIssues = Zus.useStore(React.useContext(IssuesContext), IssueSel.exactly(pathStr))
 	const SectionExtra = sectionExtraFor(path)
 	// leaves dim themselves individually; the section only needs its own bulk-reset controls neutralized
 	const writable = RBAC.settingsPathOverlaps(React.useContext(WriteAccessContext), path)
@@ -674,7 +675,7 @@ function LeafField({
 	const domId = `${idPrefix}${pathStr}`
 
 	const isBoolean = inner.type === 'boolean'
-	const fieldIssues = issuesForField(React.useContext(ValidationContext), pathStr)
+	const fieldIssues = Zus.useStore(React.useContext(IssuesContext), IssueSel.atOrBelow(pathStr))
 	const hasError = fieldIssues.length > 0
 	// loose overlap: a grant pointing inside this field's subtree still permits editing part of it, so the field stays
 	// active and the save panel's exact per-path check flags anything outside the grant

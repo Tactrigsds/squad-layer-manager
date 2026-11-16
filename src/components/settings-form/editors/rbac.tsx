@@ -15,7 +15,7 @@ import {
 	withRoleRemoved,
 	withRoleRenamed,
 } from '@/components/settings-form/editors/rbac.helpers'
-import { scopeValue, useFieldValue, ValidationContext, type ValueState } from '@/components/settings-form/settings-form.helpers'
+import { IssuesContext, IssueSel, scopeValue, useFieldValue, type ValueState } from '@/components/settings-form/settings-form.helpers'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -90,7 +90,7 @@ export function RbacSuperCallout() {
 export function RbacBody({ value$, reset$, onChange }: { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void }) {
 	const rbac = (useFieldValue(value$) as RbacValue) ?? {}
 	const roleIds = Object.keys(rbac.roles ?? {})
-	const issues = React.useContext(ValidationContext).filter((i) => i.path.startsWith('rbac.'))
+	const issues = Zus.useStore(React.useContext(IssuesContext), IssueSel.below('rbac'))
 
 	// falls back to the first role while the requested one does not exist, so a rename or delete cannot strand it
 	const [requestedRole, setSelected] = React.useState<string | null>(null)

@@ -5,15 +5,19 @@ import {
 	AdvancedPathsContext,
 	FormOptionsContext,
 	type FormRoot,
+	IssuesContext,
+	type IssuesState,
+	mapValue,
 	MessageVarsContext,
 	NO_ADVANCED_PATHS,
-	type NormalizedIssue,
+	NO_ISSUES$,
+	normalizeIssues,
 	type Path,
 	RootSchemaContext,
 	SavedRootContext,
 	type SchemaNode,
 	useMessageVars,
-	ValidationContext,
+	type ValueState,
 	WRITE_ACCESS_ALL,
 	WriteAccessContext,
 } from '@/components/settings-form/settings-form.helpers'
@@ -32,7 +36,7 @@ export default function SettingsForm({
 	groups,
 	priorityKeys,
 	advancedPaths = NO_ADVANCED_PATHS,
-	issues,
+	issues$,
 	writeAccess = WRITE_ACCESS_ALL,
 }: {
 	schema: z.ZodType
@@ -51,8 +55,8 @@ export default function SettingsForm({
 	priorityKeys?: string[]
 	// dotted paths of the fields that render inside their section's collapsed "Advanced" disclosure (see settings-groups.ts)
 	advancedPaths?: ReadonlySet<string>
-	// schema issues for the current draft (input-shape safeParse); each leaf field displays the issues under its path
-	issues?: readonly z.core.$ZodIssue[]
+	// schema issues for the current draft (input-shape safeParse); each field subscribes to the issues under its path
+	issues$?: ValueState<readonly z.core.$ZodIssue[]>
 	// the user's write grant; fields with no overlap render read-only. Defaults to unrestricted.
 	writeAccess?: RBAC.SettingsWriteAccess
 }) {
@@ -71,10 +75,7 @@ export default function SettingsForm({
 	const formOptions = React.useMemo(() => ({ idPrefix }), [idPrefix])
 	const savedCtx = React.useMemo(() => ({ saved }), [saved])
 	const messageVars = useMessageVars(value$)
-	const normIssues = React.useMemo(
-		() => (issues ?? []).map((i): NormalizedIssue => ({ path: i.path.map(String).join('.'), message: i.message })),
-		[issues],
-	)
+	const normIssues$ = React.useMemo<IssuesState>(() => (issues$ ? mapValue(issues$, normalizeIssues) : NO_ISSUES$), [issues$])
 	return (
 		<FormOptionsContext.Provider value={formOptions}>
 			<RootSchemaContext.Provider value={schema}>
@@ -82,7 +83,7 @@ export default function SettingsForm({
 					<WriteAccessContext.Provider value={writeAccess}>
 						<SavedRootContext.Provider value={savedCtx}>
 							<MessageVarsContext.Provider value={messageVars}>
-								<ValidationContext.Provider value={normIssues}>
+								<IssuesContext.Provider value={normIssues$}>
 									{groups ? (
 										<GroupedRootFields
 											node={jsonSchema}
@@ -102,7 +103,7 @@ export default function SettingsForm({
 											root={root}
 										/>
 									)}
-								</ValidationContext.Provider>
+								</IssuesContext.Provider>
 							</MessageVarsContext.Provider>
 						</SavedRootContext.Provider>
 					</WriteAccessContext.Provider>
