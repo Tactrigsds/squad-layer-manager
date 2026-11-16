@@ -82,6 +82,10 @@ export const back = def('Back')
 
 export const closeWindow = def('Close window')
 
+export const maximizeWindow = def('Maximize window')
+
+export const restoreWindow = def('Restore window')
+
 export const cancel = def('Cancel')
 
 export const loading = def('Loading')

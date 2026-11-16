@@ -17,7 +17,14 @@ import {
 import * as KBClient from '@/systems/keybinds.client'
 
 export { useDraggableWindow, useDraggableWindowContext }
-import { ChevronLeftIcon, Cross2Icon, DrawingPinFilledIcon, DrawingPinIcon } from '@radix-ui/react-icons'
+import {
+	ChevronLeftIcon,
+	Cross2Icon,
+	DrawingPinFilledIcon,
+	DrawingPinIcon,
+	EnterFullScreenIcon,
+	ExitFullScreenIcon,
+} from '@radix-ui/react-icons'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 
@@ -74,6 +81,9 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	// On a phone a floating window has nowhere to float: it fills the screen, with the drag bar as a title bar
 	// carrying a back button. Dragging and resizing are off, and the body scrolls inside it.
 	const phone = Browser.useIsSmallViewport()
+	// the maximized classes override the inline position and size without clearing them, so restoring returns the
+	// window to where it was
+	const maximized = windowState.isMaximized && !phone
 
 	const applyPosition = React.useCallback((pos: { x: number; y: number }) => {
 		const content = contentRef.current
@@ -93,7 +103,8 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	const clampToViewport = React.useCallback(() => {
 		const content = contentRef.current
 		const currentPos = positionRef.current
-		if (!content || !currentPos || isResizingRef.current) return
+		// a maximized window measures as the viewport, which would clamp the position it restores to
+		if (!content || !currentPos || isResizingRef.current || content.dataset.maximized !== undefined) return
 
 		const clamped = clampMoved(currentPos, measure())
 		if (clamped.x !== currentPos.x || clamped.y !== currentPos.y) {
@@ -112,6 +123,13 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	const setIsPinned = React.useCallback(
 		(pinned: boolean) => {
 			DraggableWindowStore.getState().setIsPinned(windowState.id, pinned)
+		},
+		[windowState.id],
+	)
+
+	const setIsMaximized = React.useCallback(
+		(maximized: boolean) => {
+			DraggableWindowStore.getState().setIsMaximized(windowState.id, maximized)
 		},
 		[windowState.id],
 	)
@@ -246,6 +264,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 		const handleMouseDown = (e: MouseEvent) => {
 			if (!positionRef.current) return
 			if (e.button !== 0) return
+			if (content.dataset.maximized !== undefined) return
 
 			e.preventDefault()
 			isDraggingRef.current = true
@@ -367,11 +386,23 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 			close,
 			isPinned: windowState.isPinned,
 			setIsPinned,
+			isMaximized: windowState.isMaximized,
+			setIsMaximized,
 			bringToFront,
 			registerDragBar,
 			zIndex: effectiveZIndex,
 		}),
-		[windowState.id, windowState.isPinned, effectiveZIndex, close, setIsPinned, bringToFront, registerDragBar],
+		[
+			windowState.id,
+			windowState.isPinned,
+			windowState.isMaximized,
+			effectiveZIndex,
+			close,
+			setIsPinned,
+			setIsMaximized,
+			bringToFront,
+			registerDragBar,
+		],
 	)
 
 	return (
@@ -383,14 +414,16 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				}}
 				role="dialog"
 				tabIndex={-1}
+				data-maximized={maximized || undefined}
 				onMouseDown={handleMouseDown}
 				className={cn(
 					// w-max: a fixed box with auto width shrinks to the space between its left edge and the viewport's
 					// right edge, so it would squeeze as it is dragged past the right edge
 					'fd-win fixed w-max outline-none invisible',
 					definition.resizable && 'flex flex-col overflow-hidden',
-					// physical: overrides the dragged position, which is kept as style.left in screen coordinates
-					phone && 'inset-0 top-0! left-0! flex h-full w-full! max-w-none! flex-col overflow-hidden rounded-none border-0',
+					(phone || maximized) &&
+						// physical: overrides the dragged position, which is kept as style.left in screen coordinates
+						'inset-0 top-0! left-0! flex h-full! w-full! max-w-none! flex-col overflow-hidden rounded-none border-0',
 				)}
 				style={{ zIndex: effectiveZIndex, maxWidth: `calc(100vw - ${collisionPadding * 2}px)` }}
 			>
@@ -401,6 +434,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 				</KBClient.Context.Provider>
 				{definition.resizable &&
 					!phone &&
+					!maximized &&
 					RESIZE_HANDLES.map((h) => (
 						<div
 							key={h.dir}
@@ -540,6 +574,31 @@ export function DraggableWindowPinToggle({ className, ref, ...props }: Draggable
 			{...props}
 		>
 			{isPinned ? <DrawingPinFilledIcon /> : <DrawingPinIcon />}
+		</button>
+	)
+}
+
+interface DraggableWindowMaximizeToggleProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+	ref?: React.Ref<HTMLButtonElement>
+}
+
+export function DraggableWindowMaximizeToggle({ className, ref, ...props }: DraggableWindowMaximizeToggleProps) {
+	const { isMaximized, setIsMaximized } = useDraggableWindow()
+	const phone = Browser.useIsSmallViewport()
+	if (phone) return null
+
+	return (
+		<button
+			ref={ref}
+			type="button"
+			data-window-control="maximize"
+			aria-pressed={isMaximized}
+			onClick={() => setIsMaximized(!isMaximized)}
+			className={cn('fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm', className)}
+			aria-label={tr.text(isMaximized ? UI_Msgs.restoreWindow() : UI_Msgs.maximizeWindow())}
+			{...props}
+		>
+			{isMaximized ? <ExitFullScreenIcon /> : <EnterFullScreenIcon />}
 		</button>
 	)
 }

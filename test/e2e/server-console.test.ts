@@ -80,6 +80,15 @@ sharedAppTest.describe('server console', () => {
 		await input.press('ArrowDown')
 		await expect(input).toHaveValue('List')
 
+		// a click on the output focuses the window around it, and the find key still reaches the console's own search
+		await output
+			.getByText(/^ListSquads$/)
+			.first()
+			.click()
+		await page.keyboard.press('ControlOrMeta+f')
+		await expect(page.getByRole('search', { name: 'Find in this panel' })).toBeVisible()
+		await page.keyboard.press('Escape')
+
 		// and the history outlives the window
 		await page.reload()
 		const reopened = page.getByRole('textbox', { name: 'RCON command' })

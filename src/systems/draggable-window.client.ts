@@ -80,6 +80,8 @@ export type WindowState<TProps = any> = {
 	/** dense ordinal within this window's outlet; resolved against the base z-index at render time */
 	stackOrder: number
 	isPinned: boolean
+	// fills the viewport, keeping the position and size it returns to on restore
+	isMaximized: boolean
 	id: string
 	type: string
 	outletKey: unknown
@@ -110,6 +112,7 @@ interface DraggableWindowStore extends DraggableWindowStoreState {
 	closeWindow: (id: string) => void
 	bringToFront: (id: string) => void
 	setIsPinned: (id: string, pinned: boolean) => void
+	setIsMaximized: (id: string, maximized: boolean) => void
 }
 
 interface DraggableWindowOutletContextValue {
@@ -276,6 +279,7 @@ export const DraggableWindowStore = (() => {
 					anchorRect,
 					stackOrder: windows.length,
 					isPinned: def.defaultPinned ?? false,
+					isMaximized: false,
 					outletKey: resolvedOutletKey,
 				}
 
@@ -330,6 +334,12 @@ export const DraggableWindowStore = (() => {
 			setIsPinned: (id, isPinned) =>
 				set((s) => ({
 					windows: s.windows.map((w) => (w.id === id ? { ...w, isPinned } : w)),
+				})),
+
+			// a maximized window covers the page, so it is pinned: a click outside it would land on nothing visible
+			setIsMaximized: (id, isMaximized) =>
+				set((s) => ({
+					windows: s.windows.map((w) => (w.id === id ? { ...w, isMaximized, isPinned: isMaximized || w.isPinned } : w)),
 				})),
 		}
 	})
