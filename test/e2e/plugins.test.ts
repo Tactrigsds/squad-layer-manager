@@ -1,3 +1,4 @@
+import { gotoReady } from '../harness/ready'
 import { expect, test } from './fixtures'
 
 // The plugins settings section in a browser, driven against a builtin that every app ships with.
@@ -67,6 +68,35 @@ test.describe('plugins settings section', () => {
 		await expect(page.locator(`[id="setting:plugin:${PLUGIN.id}:kickReason"]`).getByRole('textbox')).toHaveValue(reason, {
 			timeout: 20_000,
 		})
+	})
+
+	// The plugin form edits only the config, so a comment written there has to reach the draft's own comments, keyed
+	// by its path from the draft root, and be stored beside the config rather than inside it.
+	test('a comment on a plugin setting is saved through the shared save panel', async ({ page, app }) => {
+		await gotoReady(page, app.loginUrl(app.adminUser, '/settings'))
+
+		const field = page.locator(`[id="setting:plugin:${PLUGIN.id}:kickReason"]`)
+		await expect(field).toBeVisible()
+		// either label: a repeat of this test against the same app finds the comment it saved last time
+		await field.getByRole('button', { name: /Add comment|Edit comment/ }).click()
+		const comment = `kick reason agreed ${Date.now()}`
+		const box = page.getByRole('textbox', { name: 'Setting comment' })
+		await box.fill(comment)
+		await box.blur()
+
+		await page.getByRole('button', { name: 'Save', exact: true }).click()
+		const dialog = page.getByRole('alertdialog')
+		await expect(dialog.getByText('config.kickReason')).toBeVisible()
+		await expect(dialog.getByText('(comment)')).toBeVisible()
+		await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+		await expect(page.getByText(`${PLUGIN.name} configuration saved`)).toBeVisible()
+
+		await gotoReady(page, app.loginUrl(app.adminUser, '/settings'))
+		await expect(page.locator(`[id="setting:plugin:${PLUGIN.id}:kickReason"]`)).toContainText(comment)
+
+		const mode = page.getByRole('group', { name: `${PLUGIN.name} configuration editor` })
+		await mode.getByRole('button', { name: 'YAML', exact: true }).click()
+		await expect(page.locator(`[id="section:plugin:${PLUGIN.id}"]`).getByText(`# ${comment}`)).toBeVisible()
 	})
 
 	// either way round: a builtin starts stopped on a fresh app, and a repeat of this test finds it as it left it

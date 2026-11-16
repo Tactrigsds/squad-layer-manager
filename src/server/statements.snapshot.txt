@@ -302,16 +302,16 @@ plugins:disablePlugin
   update "plugins" set "enabled" = ? where "plugins"."id" = ?
 
 plugins:insertPluginRow
-  insert into "plugins" ("id", "enabled", "config", "commands") values (?, ?, ?, ?)
+  insert into "plugins" ("id", "enabled", "config", "commands", "comments") values (?, ?, ?, ?, ?)
 
 plugins:pluginRow
-  select "id", "enabled", "config", "commands" from "plugins" where "plugins"."id" = ?
+  select "id", "enabled", "config", "commands", "comments" from "plugins" where "plugins"."id" = ?
 
 plugins:pluginRows
   select "id" from "plugins"
 
 plugins:updatePluginRow
-  update "plugins" set "enabled" = ?, "config" = ?, "commands" = ? where "plugins"."id" = ?
+  update "plugins" set "enabled" = ?, "config" = ?, "commands" = ?, "comments" = ? where "plugins"."id" = ?
 
 rbac:ownedFilters
   select "id" from "filters" where "filters"."ownerUserId" = ?
