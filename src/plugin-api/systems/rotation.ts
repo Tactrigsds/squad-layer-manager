@@ -5,6 +5,7 @@ import type * as LTag from '@/models/layer-tags.models'
 import * as ROT from '@/models/rotations.models'
 import type * as SLL from '@/models/shared-layer-list.models'
 import * as RBAC from '@/rbac.models'
+import * as Env from '@/server/env'
 import * as LayerQueue from '@/systems/layer-queue.server'
 import type * as PluginsSys from '@/systems/plugins.server'
 import * as RotationEdit from '@/systems/rotation-edit.server'
@@ -35,6 +36,15 @@ export async function search(ctx: PluginsSys.Ctx<any>, input: ROT.SearchInput = 
 
 export async function get(ctx: PluginsSys.Ctx<any>, id: ROT.RotationId): Promise<ROT.Rotation | undefined> {
 	return Rotation.getRotation(ctx, id)
+}
+
+const envBuilder = Env.getEnvBuilder({ ...Env.groups.httpServer })
+let ENV: ReturnType<typeof envBuilder> | undefined
+
+/** The absolute URL of a rotation's page, at the address SLM is served on (`ORIGIN`), for linking from outside SLM. */
+export function pageUrl(id: ROT.RotationId): string {
+	ENV ??= envBuilder()
+	return `${ENV.ORIGIN}/rotations/${encodeURIComponent(id)}`
 }
 
 /** A refusal any write that sets a repeat ruleset or tags can return. */
