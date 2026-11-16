@@ -28,6 +28,7 @@ import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as CMD from '@/models/command.models'
 import * as PLG from '@/models/plugins.models'
+import * as SETTINGS from '@/models/settings.models'
 import * as RPC from '@/orpc.client'
 import { tr } from '@/systems/messages.client'
 import * as PluginsClient from '@/systems/plugins.client'
@@ -394,6 +395,7 @@ function PluginSettingsEditor({
 					<SchemaYamlEditor
 						ref={editorRef}
 						schema={SettingsEditorFrame.pluginSchema(info.id, manifest)}
+						commentsKey={SETTINGS.COMMENTS_KEY}
 						value={draft}
 						onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid(stores, v)}
 						minHeightPx={250}

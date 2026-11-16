@@ -19,7 +19,7 @@ import type * as Msgs from '@/models/messages.models'
 import * as ATTRS from '@/models/otel-attrs.models'
 import * as PLG from '@/models/plugins.models'
 import * as SJOB from '@/models/scheduled-jobs.models'
-import type * as SETTINGS from '@/models/settings.models'
+import * as SETTINGS from '@/models/settings.models'
 import type * as SQS from '@/models/squad-server.models'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
@@ -67,12 +67,18 @@ namespace Q {
 		enabled: Schema.plugins.enabled,
 		config: Schema.plugins.config,
 		commands: Schema.plugins.commands,
+		comments: Schema.plugins.comments,
 	})
 	export const updatePluginRow = SQL.def(
 		'updatePluginRow',
 		pluginStateP,
 		SQL.update(Schema.plugins)
-			.set({ enabled: pluginStateP.enabled, config: pluginStateP.config, commands: pluginStateP.commands })
+			.set({
+				enabled: pluginStateP.enabled,
+				config: pluginStateP.config,
+				commands: pluginStateP.commands,
+				comments: pluginStateP.comments,
+			})
 			.where(eq(Schema.plugins.id, pluginStateP.id)),
 	)
 	export const disablePlugin = SQL.def(
@@ -177,6 +183,8 @@ type Runtime = {
 	commands: Map<string, PluginCommand>
 	// admin overrides for those commands, by name. Kept while the plugin is stopped, like its config
 	commandConfigs: CMD.PluginCommandConfigs
+	// admin comments on the settings, keyed by dotted path into { config, commands }
+	comments: SETTINGS.SettingsComments
 	// the plugin's oRPC router, registered at activation. Procedures receive a ServerCtx.
 	router: AnyRouter | null
 	// the jobs the server module exports, by id, while the plugin is active
@@ -272,7 +280,7 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 	let row = DB.get(ctx, Q.pluginRow({ id }))
 	if (!row) {
 		DB.run(ctx, Q.insertPluginRow({ id }))
-		row = { id, enabled: false, config: {}, commands: {} }
+		row = { id, enabled: false, config: {}, commands: {}, comments: {} }
 	}
 	const mod = pluginModule(entry)
 	const commandConfigs = CMD.PluginCommandConfigsSchema.safeParse(row.commands ?? {})
@@ -282,6 +290,8 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 			z.prettifyError(commandConfigs.error),
 		)
 	}
+	const comments = SETTINGS.SettingsCommentsSchema.safeParse(row.comments ?? {})
+	if (!comments.success) mod.getLogger().warn('stored setting comments do not parse; dropping them:\n%s', z.prettifyError(comments.error))
 	const rt: Runtime = {
 		entry,
 		ref: { id, manifest: entry.manifest },
@@ -301,6 +311,7 @@ async function ensureRuntime(ctx: C.Db, entry: Entry): Promise<Runtime> {
 		permissions: new Map(),
 		commands: new Map(),
 		commandConfigs: commandConfigs.success ? commandConfigs.data : {},
+		comments: comments.success ? comments.data : {},
 		router: null,
 	}
 	plugins.set(id, rt)
@@ -899,7 +910,10 @@ function otherCommandConfigs(pluginId: string): Record<string, CMD.PluginCommand
 // ---- persistence ----
 
 function persistRow(ctx: C.Db, rt: Runtime) {
-	DB.run(ctx, Q.updatePluginRow({ id: rt.ref.id, enabled: rt.enabled, config: rt.configInput, commands: rt.commandConfigs }))
+	DB.run(
+		ctx,
+		Q.updatePluginRow({ id: rt.ref.id, enabled: rt.enabled, config: rt.configInput, commands: rt.commandConfigs, comments: rt.comments }),
+	)
 }
 
 // ---- router ----
@@ -1052,7 +1066,7 @@ export const router = {
 	getSettings: orpcBase.input(z.object({ pluginId: PLG.PluginIdSchema })).handler(async ({ context: ctx, input }) => {
 		const rt = plugins.get(input.pluginId)
 		if (!rt) return { code: 'err:unknown-plugin' as const }
-		return { code: 'ok' as const, config: rt.configInput, commands: rt.commandConfigs }
+		return { code: 'ok' as const, config: rt.configInput, commands: rt.commandConfigs, comments: rt.comments }
 	}),
 
 	setEnabled: orpcBase
@@ -1074,8 +1088,9 @@ export const router = {
 			})
 		}),
 
-	// A plugin's config and command overrides, as the settings page saves them. Either may be left out to keep what
-	// is stored. Both are validated before either is written, so a save never lands half of an edit.
+	// A plugin's config, command overrides and setting comments, as the settings page saves them. Any of them may be left
+	// out to keep what is stored. The config and the overrides are validated before anything is written, so a save never
+	// lands half of an edit.
 	updateSettings: orpcBase
 		.meta({ type: 'mutation' })
 		.input(
@@ -1083,6 +1098,7 @@ export const router = {
 				pluginId: PLG.PluginIdSchema,
 				config: z.record(z.string(), z.unknown()).optional(),
 				commands: CMD.PluginCommandConfigsSchema.optional(),
+				comments: SETTINGS.SettingsCommentsSchema.optional(),
 			}),
 		)
 		.handler(async ({ context: ctx, input }) => {
@@ -1110,6 +1126,7 @@ export const router = {
 				// a recurring job's schedule is read from the config
 				SchedJobs.wake()
 			}
+			if (input.comments) rt.comments = input.comments
 			persistRow(ctx, rt)
 			update$.next(rt.ref.id)
 			return { code: 'ok' as const }

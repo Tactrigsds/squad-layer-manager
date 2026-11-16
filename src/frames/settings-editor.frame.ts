@@ -116,7 +116,11 @@ function newServerDraft(): z.input<typeof SETTINGS.ServerSettingsSchema> {
 
 // A plugin section edits the plugin's config and its command overrides as one document. Cached per manifest, since a
 // fresh schema per keystroke would be compiled again on every parse.
-export type PluginDraft = { config: Record<string, unknown>; commands: CMD.PluginCommandConfigs }
+export type PluginDraft = {
+	config: Record<string, unknown>
+	commands: CMD.PluginCommandConfigs
+	[SETTINGS.COMMENTS_KEY]?: SETTINGS.SettingsComments
+}
 const pluginSchemas = new WeakMap<PLG.Manifest, z.ZodType<any>>()
 const pluginShapeSchemas = new WeakMap<PLG.Manifest, z.ZodType<any>>()
 
@@ -124,7 +128,11 @@ const pluginShapeSchemas = new WeakMap<PLG.Manifest, z.ZodType<any>>()
 function pluginShapeSchema(manifest: PLG.Manifest): z.ZodType<any> {
 	let schema = pluginShapeSchemas.get(manifest)
 	if (!schema) {
-		schema = z.object({ config: manifest.configSchema, commands: CMD.PluginCommandConfigsSchema })
+		schema = z.object({
+			config: manifest.configSchema,
+			commands: CMD.PluginCommandConfigsSchema,
+			[SETTINGS.COMMENTS_KEY]: SETTINGS.SettingsCommentsSchema.optional(),
+		})
 		pluginShapeSchemas.set(manifest, schema)
 	}
 	return schema
@@ -156,7 +164,11 @@ export function pluginSchema(pluginId: string, manifest: PLG.Manifest): z.ZodTyp
 	return schema
 }
 
-const EMPTY_PLUGIN_SCHEMA = z.object({ config: z.record(z.string(), z.unknown()), commands: CMD.PluginCommandConfigsSchema })
+const EMPTY_PLUGIN_SCHEMA = z.object({
+	config: z.record(z.string(), z.unknown()),
+	commands: CMD.PluginCommandConfigsSchema,
+	[SETTINGS.COMMENTS_KEY]: SETTINGS.SettingsCommentsSchema.optional(),
+})
 
 function editSchema(state: Pick<SettingsEditor, 'kind' | 'pluginId' | 'sensitiveOmitted'>): z.ZodType<any> {
 	switch (state.kind) {
@@ -224,10 +236,18 @@ export function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'cha
 	}
 	const nextEnc = nextEncoded(state, value)
 	return {
-		changes: state.saved !== undefined && nextEnc !== undefined ? Obj.diffLeaves(state.saved, nextEnc) : [],
+		changes:
+			state.saved !== undefined && nextEnc !== undefined ? Obj.diffLeaves(withCommentsMap(state.saved), withCommentsMap(nextEnc)) : [],
 		issues,
 		valid: value !== null,
 	}
+}
+
+// A document without comments has no comments key. Diffed against one that has some, the whole map would read as one
+// change at `comments`, rather than one per commented setting.
+function withCommentsMap(doc: any): any {
+	if (!Obj.isPlainObject(doc) || SETTINGS.COMMENTS_KEY in doc) return doc
+	return { ...doc, [SETTINGS.COMMENTS_KEY]: {} }
 }
 
 // a value observable over one slice of the frame's state. `pick` must return the same reference for unchanged input,
@@ -257,6 +277,26 @@ function configIssuesOf(): (s: SettingsEditor) => readonly z.core.$ZodIssue[] {
 	}
 }
 
+// A plugin's form renders only the config, so the comments under it are handed over keyed relative to it, on the
+// config's own comments key, where the form reads and writes them.
+function configWithCommentsOf(): (s: SettingsEditor) => Record<string, unknown> | undefined {
+	let lastDraft: PluginDraft | undefined
+	let lastOut: Record<string, unknown> | undefined
+	return (s) => {
+		const draft = s.draft as PluginDraft | undefined
+		if (draft === lastDraft) return lastOut
+		const sameInputs =
+			lastDraft !== undefined &&
+			draft?.config === lastDraft.config &&
+			draft?.[SETTINGS.COMMENTS_KEY] === lastDraft[SETTINGS.COMMENTS_KEY]
+		lastDraft = draft
+		if (sameInputs) return lastOut
+		const comments = SETTINGS.subtreeComments(draft?.[SETTINGS.COMMENTS_KEY], 'config')
+		lastOut = draft && Object.keys(comments).length > 0 ? { ...draft.config, [SETTINGS.COMMENTS_KEY]: comments } : draft?.config
+		return lastOut
+	}
+}
+
 function formBindings(
 	kind: Kind,
 	get: () => SettingsEditor,
@@ -265,9 +305,13 @@ function formBindings(
 ): FormBindings {
 	if (kind === 'plugin') {
 		return {
-			value$: stateValue(get, update$, (s) => s.draft?.config),
+			value$: stateValue(get, update$, configWithCommentsOf()),
 			issues$: stateValue(get, update$, configIssuesOf()),
-			onChange: (config: Record<string, unknown>) => set({ draft: { ...get().draft, config } }),
+			onChange: (v: Record<string, unknown>) => {
+				const { [SETTINGS.COMMENTS_KEY]: comments, ...config } = v
+				const draft: PluginDraft = { ...get().draft, config }
+				set({ draft: SETTINGS.withSubtreeComments(draft, 'config', (comments ?? {}) as SETTINGS.SettingsComments) })
+			},
 		}
 	}
 	return {
@@ -408,6 +452,7 @@ async function loadPluginSettings(
 	}
 	const manifest = PluginsClient.Store.getState().manifests[pluginId]
 	const raw: PluginDraft = { config: res.config, commands: res.commands }
+	if (Object.keys(res.comments).length > 0) raw[SETTINGS.COMMENTS_KEY] = res.comments
 	// stored as given, so fields the schema prefaults may be missing; normalized like the draft it is diffed against
 	const settings = manifest ? toEditShape(pluginShapeSchema(manifest), raw) : raw
 	set({ loading: false, loadFailed: null, saved: settings })
@@ -699,7 +744,13 @@ export namespace Actions {
 				case 'plugin': {
 					// stored in the input shape, like global settings
 					const draft = editSchema(state).encode(value) as PluginDraft
-					const res = await RPC.orpc.plugins.updateSettings.call({ pluginId: state.pluginId!, ...draft })
+					const res = await RPC.orpc.plugins.updateSettings.call({
+						pluginId: state.pluginId!,
+						config: draft.config,
+						commands: draft.commands,
+						// absent means none, which must clear what is stored
+						comments: draft[SETTINGS.COMMENTS_KEY] ?? {},
+					})
 					if (!res) return false
 					if (res.code === 'err:permission-denied') {
 						RbacClient.handlePermissionDenied(res)

@@ -650,6 +650,8 @@ export const plugins = sqliteTable('plugins', {
 	enabled: boolean('enabled').notNull().default(false),
 	config: superjsonColumn<Record<string, unknown>>('config').notNull().default({}),
 	commands: superjsonColumn<unknown>('commands').notNull().default({}),
+	// SETTINGS.SettingsComments, keyed by dotted path into { config, commands }
+	comments: superjsonColumn<unknown>('comments').notNull().default({}),
 })
 
 unlogged(servers.settings, globalSettings.settings)
