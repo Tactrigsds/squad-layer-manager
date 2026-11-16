@@ -19,8 +19,3 @@ export type GetEmojisOptions = z.infer<typeof GetEmojisOptionsSchema>
 
 export const GetEmojiOptionsSchema = z.object({ id: z.string() })
 export type GetEmojiOptions = z.infer<typeof GetEmojiOptionsSchema>
-
-/** A discord timestamp with date and time, which each reader sees in their own time zone. */
-export function timestamp(ms: number) {
-	return `<t:${Math.floor(ms / 1000)}:f>`
-}

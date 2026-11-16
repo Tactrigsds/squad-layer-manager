@@ -978,6 +978,12 @@ The dependency resolves `react` and `zod` to SLM's copies instead.
 
 Run `pnpm install` in your repo after cloning it, and again after each change to `package.json`.
 
+The plugin API leaves out utilities that need nothing from SLM. Two packages cover common needs:
+
+- `@discordjs/formatters` writes Discord markdown into message text. Its `time()` writes a timestamp that Discord
+  shows each reader in their own time zone, such as `time(date, TimestampStyles.LongDateTime)`.
+- `date-fns` and `date-fns-tz` do date math and formatting in a given time zone.
+
 ### What can be bundled
 
 - **ES modules only.** `pnpm plugin:pack` refuses a bundle that contains a CommonJS module, and names the package it
