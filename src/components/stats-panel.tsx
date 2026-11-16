@@ -705,7 +705,7 @@ function PopulationChart(props: { stores: SquadServerFrame.KeyProp; historicalEv
 					</ToggleGroupItem>
 				))}
 			</ToggleGroup>
-			{split !== 'stats' && (
+			{split === 'activity' && (
 				<ToggleGroup
 					type="single"
 					size="sm"
@@ -824,7 +824,11 @@ function PopulationChart(props: { stores: SquadServerFrame.KeyProp; historicalEv
 						<p className="text-text-2">{tr.text(MH_Msgs.populationIdleRule(view?.idleMinutes ?? 10))}</p>
 						{range !== 'match' && <p className="text-text-2">{tr.text(MH_Msgs.populationRangeHint())}</p>}
 						{split !== 'stats' && <p className="text-text-2">{tr.text(MH_Msgs.populationLegendHint())}</p>}
-						{split === 'stats' && <p className="text-text-2">{tr.text(MH_Msgs.populationStatsHint())}</p>}
+						{split === 'stats' && (
+							<p className="text-text-2">
+								{tr.text(range === 'match' ? MH_Msgs.populationMatchStatsHint() : MH_Msgs.populationStatsHint())}
+							</p>
+						)}
 					</HelpButton>
 				}
 			/>
@@ -874,39 +878,66 @@ function formatFigure(value: number) {
 }
 
 function PopulationStats(props: { view: StatsModels.PopulationView }) {
-	const { stats, range } = props.view
+	const { stats } = props.view
 	const percent = (share: number) => tr.text(MH_Msgs.populationStatPercent(formatFigure(share * 100)))
 	const perHour = (value: number) => tr.text(MH_Msgs.populationStatPerHour(formatFigure(value)))
 	const at = (time: number) => tr.text(MH_Msgs.populationStatAt(formatPopulationTime(props.view, time)))
-	const entries: { key: StatKey; value: string | null; detail?: string }[] = [
-		{ key: 'peak', value: stats.peak && String(stats.peak.value), detail: stats.peak ? at(stats.peak.at) : undefined },
-		{ key: 'low', value: stats.low && String(stats.low.value), detail: stats.low ? at(stats.low.at) : undefined },
-		{ key: 'average', value: stats.average === null ? null : formatFigure(stats.average) },
-		{ key: 'median', value: stats.median === null ? null : formatFigure(stats.median) },
-		{
-			key: 'full',
-			value: stats.fullShare === null ? null : percent(stats.fullShare),
-			detail: tr.text(MH_Msgs.populationStatFullAt(props.view.cap)),
-		},
-		{
-			key: 'idle',
-			value: stats.idleShare === null ? null : percent(stats.idleShare),
-			detail: tr.text(MH_Msgs.populationStatIdleDetail()),
-		},
-		{
-			key: 'gap',
-			value: stats.gapAverage === null ? null : formatFigure(stats.gapAverage),
-			detail: stats.gapMax === null ? undefined : tr.text(MH_Msgs.populationStatGapDetail(stats.gapMax)),
-		},
-		{ key: 'joins', value: stats.joinsPerHour === null ? null : perHour(stats.joinsPerHour) },
-		{ key: 'leaves', value: stats.leavesPerHour === null ? null : perHour(stats.leavesPerHour) },
-		{
-			key: 'churn',
-			value: stats.churnPerHour === null ? null : percent(stats.churnPerHour),
-			detail: tr.text(MH_Msgs.populationStatChurnDetail()),
-		},
-	]
-	if (range !== 'match' && stats.matches !== null) entries.push({ key: 'matches', value: String(stats.matches) })
+	const figure = (value: number | null) => (value === null ? null : formatFigure(value))
+	const peak = { key: 'peak', value: stats.peak && String(stats.peak.value), detail: stats.peak ? at(stats.peak.at) : undefined } as const
+	const average = { key: 'average', value: figure(stats.average) } as const
+	const full = {
+		key: 'full',
+		value: stats.fullShare === null ? null : percent(stats.fullShare),
+		detail: tr.text(MH_Msgs.populationStatFullAt(props.view.cap)),
+	} as const
+	const idle = {
+		key: 'idle',
+		value: stats.idleShare === null ? null : percent(stats.idleShare),
+		detail: tr.text(MH_Msgs.populationStatIdleDetail()),
+	} as const
+	const gap = {
+		key: 'gap',
+		value: figure(stats.gapAverage),
+		detail: stats.gapMax === null ? undefined : tr.text(MH_Msgs.populationStatGapDetail(stats.gapMax)),
+	} as const
+
+	let entries: { key: StatKey; value: string | null; detail?: string }[]
+	switch (stats.kind) {
+		case 'match':
+			entries = [
+				{ key: 'start', value: figure(stats.atStart) },
+				{ key: stats.atEnd?.live ? 'now' : 'end', value: figure(stats.atEnd?.value ?? null) },
+				peak,
+				average,
+				full,
+				idle,
+				gap,
+				{ key: 'joins', value: stats.joins === null ? null : String(stats.joins) },
+				{ key: 'leaves', value: stats.leaves === null ? null : String(stats.leaves) },
+			]
+			break
+		case 'range':
+			entries = [
+				peak,
+				{ key: 'low', value: stats.low && String(stats.low.value), detail: stats.low ? at(stats.low.at) : undefined },
+				average,
+				{ key: 'median', value: figure(stats.median) },
+				full,
+				idle,
+				gap,
+				{ key: 'joins', value: stats.joinsPerHour === null ? null : perHour(stats.joinsPerHour) },
+				{ key: 'leaves', value: stats.leavesPerHour === null ? null : perHour(stats.leavesPerHour) },
+				{
+					key: 'churn',
+					value: stats.churnPerHour === null ? null : percent(stats.churnPerHour),
+					detail: tr.text(MH_Msgs.populationStatChurnDetail()),
+				},
+				{ key: 'matches', value: String(stats.matches) },
+			]
+			break
+		default:
+			assertNever(stats)
+	}
 	return (
 		<dl className="h-full overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] content-start gap-x-3 gap-y-2 px-1">
 			{entries.map((entry) => (

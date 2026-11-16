@@ -56,7 +56,10 @@ async function postScoreboard(sctx: P.ServerCtx<typeof manifest>, matchId: numbe
 		showServer: servers.filter((server) => server.enabled && !server.sandbox).length > 1,
 	})
 
-	const files: Discord.MessageFile[] = [{ name: Embed.KILLS_CHART_FILE, data: SvgRaster.svgToPng(charts.kills, { scale: CHART_SCALE }) }]
+	const files: Discord.MessageFile[] = [
+		{ name: Embed.KILLS_CHART_FILE, data: SvgRaster.svgToPng(charts.kills, { scale: CHART_SCALE }) },
+		{ name: Embed.KILL_LEAD_CHART_FILE, data: SvgRaster.svgToPng(charts.killLead, { scale: CHART_SCALE }) },
+	]
 	if (charts.tickets) files.push({ name: Embed.TICKETS_CHART_FILE, data: SvgRaster.svgToPng(charts.tickets, { scale: CHART_SCALE }) })
 
 	const res = await Discord.sendMessage(cfg.channel, { embeds, files })

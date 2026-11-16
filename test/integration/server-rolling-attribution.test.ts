@@ -192,11 +192,20 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 	it('overrides a next layer set outside SLM while the roll that started the match is still settling', async () => {
 		await app.waitForNextLayerSync()
 		const oldMatch = app.latestMatch()
+		const playedItemId = savedQueue(app)[0]?.itemId
 
 		app.emu.rcon.commandLog.length = 0
 		app.roll()
 		await app.waitForNewMatch(oldMatch.id)
-		const headLayerId = L.readStoredLayerId(savedQueue(app)[0]!.layerId!)
+		// the roll records the match before it shifts the played item off the queue
+		const head = await app.waitFor(
+			() => {
+				const first = savedQueue(app)[0]
+				return first?.layerId && first.itemId !== playedItemId ? first : undefined
+			},
+			{ label: 'the roll shifting the played item off the queue' },
+		)
+		const headLayerId = L.readStoredLayerId(head.layerId!)
 		const headSetNext = L.getLayerCommand(headLayerId, 'set-next')
 		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === headSetNext) || undefined, {
 			label: 'the new head written as next after the roll',

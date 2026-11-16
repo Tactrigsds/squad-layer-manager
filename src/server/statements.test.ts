@@ -12,7 +12,10 @@ import * as Sql from '@/server/sql'
 
 const root = path.resolve(import.meta.dirname, '../..')
 
-test('every defined statement prepares and scans only what it declares', async () => {
+// importing every system takes 2.5s alone and passes the default 5s while the rest of the suite runs alongside it
+const IMPORT_EVERY_SYSTEM_TIMEOUT_MS = 30_000
+
+test('every defined statement prepares and scans only what it declares', { timeout: IMPORT_EVERY_SYSTEM_TIMEOUT_MS }, async () => {
 	const systems = import.meta.glob(['/src/systems/*.server.ts', '/src/systems/*.shared.ts'])
 	await Promise.all(Object.values(systems).map((load) => load()))
 	const driver = new DatabaseConstructor(':memory:')

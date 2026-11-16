@@ -11,14 +11,16 @@ import * as Stats from './stats.ts'
 
 const TEAM_COLORS = { 1: '#3ec6b4', 2: '#f28b5c' } as const
 const EMBED_COLOR = 0xf2b632
+const KILL_LEAD_LINE = '#dbdee1'
 // discord refuses a message whose embeds hold more text than this, counted across all of them
 const EMBEDS_TEXT_LIMIT = 6000
 const MAX_NAME_LENGTH = 32
 
 export const KILLS_CHART_FILE = 'kills.png'
+export const KILL_LEAD_CHART_FILE = 'kill-lead.png'
 export const TICKETS_CHART_FILE = 'tickets.png'
 
-export type Charted = { kills: string; tickets: string | null }
+export type Charted = { kills: string; killLead: string; tickets: string | null }
 
 type Fields = NonNullable<Discord.Embed['fields']>
 
@@ -89,6 +91,15 @@ export function build(opts: {
 			points: [{ x: 0, y: 0 }, ...tally.killTimes[teamId - 1].map((time, i) => ({ x: time - origin, y: i + 1 }))],
 		})),
 	})
+	const killLeadSvg = Charts.lineChart({
+		title: 'Kill Lead',
+		xMax,
+		series: [{ label: 'Kill lead', color: KILL_LEAD_LINE, points: killLead(tally.killTimes, origin) }],
+		signed: {
+			above: { label: `${teamName(1)} ahead`, color: TEAM_COLORS[1] },
+			below: { label: `${teamName(2)} ahead`, color: TEAM_COLORS[2] },
+		},
+	})
 	const ticketsSvg =
 		tally.tickets.length === 0
 			? null
@@ -112,11 +123,25 @@ export function build(opts: {
 		fields,
 		image: { url: `attachment://${KILLS_CHART_FILE}` },
 	}
-	const embeds: Discord.Embed[] = [main]
+	const embeds: Discord.Embed[] = [main, { color: EMBED_COLOR, image: { url: `attachment://${KILL_LEAD_CHART_FILE}` } }]
 	if (ticketsSvg) embeds.push({ color: EMBED_COLOR, image: { url: `attachment://${TICKETS_CHART_FILE}` } })
 	Object.assign(embeds[embeds.length - 1], { footer, timestamp })
 
-	return { embeds, charts: { kills: killsSvg, tickets: ticketsSvg } }
+	return { embeds, charts: { kills: killsSvg, killLead: killLeadSvg, tickets: ticketsSvg } }
+}
+
+// team 1's kills minus team 2's, over time
+function killLead(killTimes: Stats.MatchTally['killTimes'], origin: number): Charts.Point[] {
+	const [a, b] = killTimes
+	const points: Charts.Point[] = [{ x: 0, y: 0 }]
+	let i = 0
+	let j = 0
+	while (i < a.length || j < b.length) {
+		const takeA = j >= b.length || (i < a.length && a[i] <= b[j])
+		const time = takeA ? a[i++] : b[j++]
+		points.push({ x: time - origin, y: i - j })
+	}
+	return points
 }
 
 /** Whole minutes from start to end, or null when either end is unknown. */

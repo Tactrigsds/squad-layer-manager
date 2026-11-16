@@ -3,7 +3,9 @@
 Posts a scoreboard to a Discord channel when a match ends.
 
 The scoreboard names the layer, each team's kills, the winner, its remaining tickets and the match's length. Below
-that come the leaderboards, and two charts: each team's kills over the match, and each team's tickets over the match.
+that come the leaderboards, and three charts: each team's kills over the match, the kill lead over the match, and
+each team's tickets over the match. The kill lead is how many more kills one team has than the other, shaded in the
+leading team's colour.
 The footer shows the match id. Filter SLM's history page by this id to find the match. When more than one enabled
 server is a real Squad server rather than a sandbox, the server's name is shown above the title.
 

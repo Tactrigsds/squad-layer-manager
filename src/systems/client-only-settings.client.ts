@@ -4,7 +4,7 @@ export type ChartsTab = 'teams' | 'scoreline' | 'population'
 export const CHARTS_TABS: readonly ChartsTab[] = ['teams', 'scoreline', 'population']
 // what the scoreline chart plots over the match; 'lead' is team 1's kills minus team 2's
 export type ScorelineMetric = 'kills' | 'deaths' | 'lead' | 'tickets'
-export const SCORELINE_METRICS: readonly ScorelineMetric[] = ['kills', 'deaths', 'lead', 'tickets']
+export const SCORELINE_METRICS: readonly ScorelineMetric[] = ['tickets', 'kills', 'deaths', 'lead']
 // how much the population chart spans: the displayed match, or the last 6 hours, day or week of matches
 export type PopulationRange = 'match' | '6h' | '24h' | '7d'
 export const POPULATION_RANGES: readonly PopulationRange[] = ['match', '6h', '24h', '7d']
@@ -47,7 +47,7 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(
 		() => ({
 			displayTeamsNormalized: true,
 			chartsTab: 'teams',
-			scorelineMetric: 'kills',
+			scorelineMetric: 'tickets',
 			populationRange: 'match',
 			populationSplit: 'activity',
 			populationScale: 'max',
@@ -60,6 +60,13 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(
 		{
 			name: 'settings:v1',
 			storage: Zus.createJSONStorage(() => localStorage),
+			version: 1,
+			// version 0 stored the old default, kills, for everyone, so the new default replaces it
+			migrate: (persisted, version) => {
+				const state = persisted as ClientOnlySettingsStore
+				if (version < 1 && state.scorelineMetric === 'kills') return { ...state, scorelineMetric: 'tickets' }
+				return state
+			},
 		},
 	),
 )

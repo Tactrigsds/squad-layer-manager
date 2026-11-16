@@ -181,6 +181,8 @@ export type PopulationView = {
 	active: number[]
 	idle: number[]
 	sides: [number[], number[]]
+	// the first side's players minus the other side's
+	sideLead: number[]
 	sideDisplays: [TeamDisplay, TeamDisplay]
 	// [from, to) for each run of buckets holding samples, so the chart breaks its lines at the gaps
 	runs: [number, number][]
@@ -193,104 +195,171 @@ export type PopulationView = {
 }
 
 /**
- * Figures over everything a population view covers. Per-bucket means stand in for samples where a range averages
- * them, which makes the median approximate there; the peak, low and team gaps come from per-bucket extremes and are
- * exact. Null fields have no samples to come from.
+ * Figures over a population view. A range's cover every sample in it. Per-bucket means stand in for samples there,
+ * which makes the median approximate, while the peak, low and team gaps come from per-bucket extremes and are exact.
+ * A match's cover its round, up to where the round ended. Null fields have no samples to come from.
  */
-export type PopulationStats = {
+export type PopulationStats = MatchPopulationStats | RangePopulationStats
+
+type SharedPopulationStats = {
 	peak: { value: number; at: number } | null
-	low: { value: number; at: number } | null
 	average: number | null
-	median: number | null
 	// share of the sampled time at or above the player cap, 0 to 1
 	fullShare: number | null
 	// share of the players who were idle, on average, 0 to 1
 	idleShare: number | null
 	gapAverage: number | null
 	gapMax: number | null
+}
+
+export type MatchPopulationStats = SharedPopulationStats & {
+	kind: 'match'
+	atStart: number | null
+	// the players when the round ended, or now while it plays
+	atEnd: { value: number; live: boolean } | null
+	joins: number | null
+	leaves: number | null
+}
+
+export type RangePopulationStats = SharedPopulationStats & {
+	kind: 'range'
+	low: { value: number; at: number } | null
+	median: number | null
 	joinsPerHour: number | null
 	leavesPerHour: number | null
 	// leaves per hour over the average player count: the share of the server that turns over in an hour
 	churnPerHour: number | null
-	// the matches with samples in the view; null for a single match
-	matches: number | null
+	// the matches with samples in the view
+	matches: number
 }
 
-function populationStats(buckets: Pop.Buckets, idleRow: number, bands: PopulationBand[] | null): PopulationStats {
-	let samples = 0
-	let totalSum = 0
-	let idleSum = 0
-	let gapSum = 0
-	let gapMax: number | null = null
-	let full = 0
-	let joins = 0
-	let leaves = 0
-	let peak: PopulationStats['peak'] = null
-	let low: PopulationStats['low'] = null
-	const means: { value: number; weight: number }[] = []
-	for (let i = 0; i < buckets.n.length; i++) {
+type PopulationSums = {
+	samples: number
+	totalSum: number
+	idleSum: number
+	gapSum: number
+	gapMax: number
+	full: number
+	joins: number
+	leaves: number
+	peak: { value: number; at: number } | null
+	low: { value: number; at: number } | null
+	// the first and last buckets holding samples
+	first: number | null
+	last: number | null
+}
+
+// sums over the buckets in [from, to)
+function sumBuckets(buckets: Pop.Buckets, idleRow: number, from: number, to: number): PopulationSums {
+	const sums: PopulationSums = {
+		samples: 0,
+		totalSum: 0,
+		idleSum: 0,
+		gapSum: 0,
+		gapMax: 0,
+		full: 0,
+		joins: 0,
+		leaves: 0,
+		peak: null,
+		low: null,
+		first: null,
+		last: null,
+	}
+	for (let i = from; i < to; i++) {
 		const n = buckets.n[i]
 		if (n === 0) continue
 		const at = buckets.start + i * buckets.bucketMs
-		samples += n
-		totalSum += buckets.total[i]
-		idleSum += buckets.idle[idleRow][i]
-		gapSum += buckets.gap[i]
-		gapMax = Math.max(gapMax ?? 0, buckets.gapMax[i])
-		full += buckets.full[i]
-		joins += buckets.joins[i]
-		leaves += buckets.leaves[i]
-		if (!peak || buckets.max[i] > peak.value) peak = { value: buckets.max[i], at }
-		if (!low || buckets.min[i] < low.value) low = { value: buckets.min[i], at }
-		means.push({ value: buckets.total[i] / n, weight: n })
+		sums.first ??= i
+		sums.last = i
+		sums.samples += n
+		sums.totalSum += buckets.total[i]
+		sums.idleSum += buckets.idle[idleRow][i]
+		sums.gapSum += buckets.gap[i]
+		sums.gapMax = Math.max(sums.gapMax, buckets.gapMax[i])
+		sums.full += buckets.full[i]
+		sums.joins += buckets.joins[i]
+		sums.leaves += buckets.leaves[i]
+		if (!sums.peak || buckets.max[i] > sums.peak.value) sums.peak = { value: buckets.max[i], at }
+		if (!sums.low || buckets.min[i] < sums.low.value) sums.low = { value: buckets.min[i], at }
 	}
-	if (samples === 0) {
-		return {
-			peak: null,
-			low: null,
-			average: null,
-			median: null,
-			fullShare: null,
-			idleShare: null,
-			gapAverage: null,
-			gapMax: null,
-			joinsPerHour: null,
-			leavesPerHour: null,
-			churnPerHour: null,
-			matches: bands ? 0 : null,
-		}
+	return sums
+}
+
+function sharedStats(sums: PopulationSums): SharedPopulationStats {
+	if (sums.samples === 0) return { peak: null, average: null, fullShare: null, idleShare: null, gapAverage: null, gapMax: null }
+	return {
+		peak: sums.peak,
+		average: sums.totalSum / sums.samples,
+		fullShare: sums.full / sums.samples,
+		idleShare: sums.totalSum > 0 ? sums.idleSum / sums.totalSum : 0,
+		gapAverage: sums.gapSum / sums.samples,
+		gapMax: sums.gapMax,
 	}
-	means.sort((a, b) => a.value - b.value)
-	let median = means[means.length - 1].value
-	for (let acc = 0, j = 0; j < means.length; j++) {
-		acc += means[j].weight
-		if (acc * 2 >= samples) {
-			median = means[j].value
-			break
-		}
+}
+
+// `live` when the match is the one in progress on the server
+function matchPopulationStats(buckets: Pop.Buckets, idleRow: number, roundEnd: number | null, live: boolean): MatchPopulationStats {
+	const to = roundEnd === null ? buckets.n.length : Math.min(buckets.n.length, Math.ceil((roundEnd - buckets.start) / buckets.bucketMs))
+	const sums = sumBuckets(buckets, idleRow, 0, Math.max(0, to))
+	const playersAt = (i: number | null) => (i === null ? null : buckets.total[i] / buckets.n[i])
+	const end = playersAt(sums.last)
+	const counted = sums.samples > 0
+	return {
+		kind: 'match',
+		...sharedStats(sums),
+		atStart: playersAt(sums.first),
+		atEnd: end === null ? null : { value: end, live: live && roundEnd === null },
+		joins: counted ? sums.joins : null,
+		leaves: counted ? sums.leaves : null,
 	}
-	const average = totalSum / samples
-	const hours = (samples * Pop.SAMPLE_STEP_MS) / 3_600_000
-	const leavesPerHour = leaves / hours
+}
+
+function rangePopulationStats(buckets: Pop.Buckets, idleRow: number, bands: PopulationBand[]): RangePopulationStats {
+	const sums = sumBuckets(buckets, idleRow, 0, buckets.n.length)
 	const sampled = (band: PopulationBand) => {
 		const from = Math.max(0, Math.floor((band.start - buckets.start) / buckets.bucketMs))
 		const to = Math.min(buckets.n.length, Math.ceil((band.end - buckets.start) / buckets.bucketMs))
 		for (let i = from; i < to; i++) if (buckets.n[i] > 0) return true
 		return false
 	}
+	const matches = bands.filter(sampled).length
+	if (sums.samples === 0) {
+		return {
+			kind: 'range',
+			...sharedStats(sums),
+			low: null,
+			median: null,
+			joinsPerHour: null,
+			leavesPerHour: null,
+			churnPerHour: null,
+			matches,
+		}
+	}
+	const means: { value: number; weight: number }[] = []
+	for (let i = 0; i < buckets.n.length; i++) {
+		if (buckets.n[i] > 0) means.push({ value: buckets.total[i] / buckets.n[i], weight: buckets.n[i] })
+	}
+	means.sort((a, b) => a.value - b.value)
+	let median = means[means.length - 1].value
+	for (let acc = 0, j = 0; j < means.length; j++) {
+		acc += means[j].weight
+		if (acc * 2 >= sums.samples) {
+			median = means[j].value
+			break
+		}
+	}
+	const average = sums.totalSum / sums.samples
+	const hours = (sums.samples * Pop.SAMPLE_STEP_MS) / 3_600_000
+	const leavesPerHour = sums.leaves / hours
 	return {
-		peak,
-		low,
-		average,
+		kind: 'range',
+		...sharedStats(sums),
+		low: sums.low,
 		median,
-		fullShare: full / samples,
-		idleShare: totalSum > 0 ? idleSum / totalSum : 0,
-		gapAverage: gapSum / samples,
-		gapMax,
-		joinsPerHour: joins / hours,
+		joinsPerHour: sums.joins / hours,
 		leavesPerHour,
 		churnPerHour: average > 0 ? leavesPerHour / average : null,
-		matches: bands ? bands.filter(sampled).length : null,
+		matches,
 	}
 }
 
@@ -316,10 +385,12 @@ function toView(
 	idleRow: number,
 	idleMinutes: number,
 	cap: number,
+	stats: PopulationStats,
 ): PopulationView {
 	const mean = (sums: number[]) => sums.map((sum, i) => (buckets.n[i] > 0 ? sum / buckets.n[i] : NaN))
 	const total = mean(buckets.total)
 	const idle = mean(buckets.idle[idleRow])
+	const sides: [number[], number[]] = [mean(buckets[sideKeys[0]]), mean(buckets[sideKeys[1]])]
 	const runs: [number, number][] = []
 	let from = -1
 	for (let i = 0; i <= total.length; i++) {
@@ -338,14 +409,15 @@ function toView(
 		total,
 		idle,
 		active: total.map((value, i) => value - idle[i]),
-		sides: [mean(buckets[sideKeys[0]]), mean(buckets[sideKeys[1]])],
+		sides,
+		sideLead: sides[0].map((value, i) => value - sides[1][i]),
 		sideDisplays,
 		runs,
 		bands,
 		pending,
 		idleMinutes,
 		cap,
-		stats: populationStats(buckets, idleRow, range === 'match' ? null : bands),
+		stats,
 	}
 }
 
@@ -708,7 +780,8 @@ export namespace Sel {
 						end,
 						displayed: true,
 					}
-					return toView(range, buckets, [band], 0, teamDisplays, ['team1', 'team2'], idleRow, step, cap)
+					const stats = matchPopulationStats(buckets, idleRow, roundEnd, selectedOrdinal === null)
+					return toView(range, buckets, [band], 0, teamDisplays, ['team1', 'team2'], idleRow, step, cap, stats)
 				}
 
 				if (!rangeData) return null
@@ -743,16 +816,18 @@ export namespace Sel {
 					bands[i].end = bands[i + 1]?.start ?? end
 					bands[i].displayed = bands[i].ordinal === shown
 				}
+				const shownBands = bands.filter((band) => band.end > merged.start)
 				return toView(
 					range,
 					merged,
-					bands.filter((band) => band.end > merged.start),
+					shownBands,
 					rangeData.pending,
 					rangeSides(normalized),
 					normalized ? ['teamA', 'teamB'] : ['team1', 'team2'],
 					idleRow,
 					step,
 					cap,
+					rangePopulationStats(merged, idleRow, shownBands),
 				)
 			},
 		),
