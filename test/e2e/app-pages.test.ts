@@ -8,6 +8,7 @@ import * as Dash from '../harness/dashboard'
 import { dragFrom } from '../harness/drag'
 import { indexedEventsFor, indexedKillsFor, searchableChatMatches } from '../harness/inspect'
 import { gotoReady } from '../harness/ready'
+import { expectStyleBudget } from '../harness/style-budget'
 import { expect, SHARED_SERVER_TIME_ZONE, sharedAppTest as test, test as plainTest } from './fixtures'
 
 // Every read-only page one logged-in admin can reach, against a single shared app: the dashboard, the
@@ -455,6 +456,24 @@ plainTest.describe('settings page', () => {
 
 		await mode.getByRole('button', { name: 'GUI', exact: true }).click()
 		await expect(expander).toHaveCount(1)
+	})
+
+	// The first edit mounts the save panel and undoing it unmounts the panel. Mounting it beside <main> used to restyle
+	// every button on the page.
+	plainTest('a settings edit restyles only the controls it changes', async ({ app, page }) => {
+		await gotoReady(page, app.loginUrl(app.adminUser, '/settings'))
+		const toggle = page.locator(`[id="setting:server:${app.serverId}:overrideAdminSetNextLayer"]`).getByRole('switch')
+		const reset = page.getByRole('button', { name: 'Reset', exact: true })
+		await expect(toggle).toBeEnabled({ timeout: 20_000 })
+
+		await expectStyleBudget(page, async () => {
+			await toggle.click()
+			await expect(reset).toBeVisible()
+		})
+		await expectStyleBudget(page, async () => {
+			await toggle.click()
+			await expect(reset).toBeHidden()
+		})
 	})
 
 	// A comment is part of the settings document: written under a field in the GUI, it rides through the YAML editor

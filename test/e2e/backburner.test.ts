@@ -10,6 +10,7 @@ import { belowItem, centerOf, dragFrom, endZoneOf } from '../harness/drag'
 import { savedBackburner } from '../harness/inspect'
 import { gotoReady } from '../harness/ready'
 import { rearrange } from '../harness/rearrange'
+import { expectStyleBudget } from '../harness/style-budget'
 import { expect, test } from './fixtures'
 
 // The backburner panel below the queue: requests arriving from chat show up live, GUI edits are draft
@@ -186,8 +187,9 @@ test.describe('dragging requests onto the queue', { tag: '@firefox' }, () => {
 		await expect(regularRow).toBeVisible()
 		await expect(invertedRow).toBeVisible()
 
-		// drag the inverted request onto the regular one: same filter applied both ways must not merge
-		await dragFrom(page, invertedRow.getByRole('button').first(), () => endZoneOf(regularRow))
+		// drag the inverted request onto the regular one: same filter applied both ways must not merge. Starting the drag
+		// mounts a drop zone in every row.
+		await expectStyleBudget(page, () => dragFrom(page, invertedRow.getByRole('button').first(), () => endZoneOf(regularRow)))
 
 		await expect(page.getByText('Cannot combine these requests')).toBeVisible({ timeout: 5_000 })
 		await expect(panel.getByText('Layer Requests (3)')).toBeVisible()
