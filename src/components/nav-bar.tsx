@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import * as TSR from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
+import * as ReactDOM from 'react-dom'
 
 import * as AR from '@/app-routes.ts'
 import BmTokenDialog from '@/components/bm-token-dialog'
@@ -126,6 +127,9 @@ export default function NavBar() {
 		[selectedServer],
 	)
 	const serverNavLinks = Zus.useStore(squadServerKey, (s) => s?.settings.saved.navLinks)
+	// the menus mount their items only while open, so without this every icon pops in after the menu does
+	for (const link of settings?.navLinks ?? []) ReactDOM.preload(navLinkIconUrl(link.url), { as: 'image' })
+	for (const link of serverNavLinks ?? []) ReactDOM.preload(navLinkIconUrl(link.url), { as: 'image' })
 
 	const showSettingsLink = !PageAccess.usePageDenial('/_app/settings')
 	const historyDenied = PageAccess.usePageDenial('/_app/history')
@@ -826,20 +830,17 @@ function NavLinksDropdown({
 
 function NavLinkFavicon({ url }: { url: string }) {
 	const [errored, setErrored] = React.useState(false)
-	const faviconUrl = React.useMemo(() => {
-		try {
-			const origin = new URL(url).origin
-			return `${origin}/favicon.ico`
-		} catch {
-			return null
-		}
-	}, [url])
+	if (errored) return <Icons.ExternalLink className="shrink-0" />
+	// the light tile keeps dark icons such as GitHub's visible on the dark theme
+	return (
+		<span className="flex size-4 shrink-0 items-center justify-center rounded-[3px] dark:bg-white">
+			<img src={navLinkIconUrl(url)} alt="" className="size-3.5" onError={() => setErrored(true)} />
+		</span>
+	)
+}
 
-	if (!faviconUrl || errored) {
-		return <Icons.ExternalLink className="shrink-0" />
-	}
-
-	return <img src={faviconUrl} alt="" className="size-3.5 shrink-0" onError={() => setErrored(true)} />
+function navLinkIconUrl(url: string) {
+	return `${AR.link('/nav-link-icon')}?url=${encodeURIComponent(url)}`
 }
 
 const NavLink: typeof TSR.Link = (props) => {
