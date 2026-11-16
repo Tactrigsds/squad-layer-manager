@@ -933,25 +933,6 @@ export namespace RconEvents {
 		},
 	})
 
-	const PlayerWarnedDef = eventDef('PLAYER_WARNED', {
-		time: z.number(),
-		reason: z.string(),
-		playerIds: PlayerIds.IdFields('username'),
-	})
-	export type PlayerWarned = z.infer<(typeof PlayerWarnedDef)['schema']>
-
-	export const PlayerWarnedMatcher = createLogMatcher({
-		event: PlayerWarnedDef,
-		regex: /Remote admin has warned player (.*)\. Message was "(.*)"/s,
-		onMatch: (match) => {
-			return {
-				time: Date.now(),
-				reason: match[2],
-				playerIds: PlayerIds.parse({ username: match[1] }),
-			}
-		},
-	})
-
 	const PossessedAdminCameraDef = eventDef('POSSESSED_ADMIN_CAMERA', {
 		time: z.number(),
 		playerIds: PlayerIds.Schema,
@@ -1057,7 +1038,6 @@ export namespace RconEvents {
 
 	export const matchers = [
 		ChatMessageMatcher,
-		PlayerWarnedMatcher,
 		PossessedAdminCameraMatcher,
 		UnpossessedAdminCameraMatcher,
 		SquadCreatedMatcher,
@@ -1581,6 +1561,30 @@ export namespace LogEvents {
 		},
 	})
 
+	// Read from the log rather than the RCON chat stream, which does not echo every warn another RCON client sends.
+	export const PlayerWarnedDef = eventDef('PLAYER_WARNED', {
+		...BaseEventProperties,
+		reason: z.string(),
+		playerIds: PlayerIds.IdFields('username'),
+		source: ActionSourceSchema,
+	})
+
+	export type PlayerWarned = z.infer<(typeof PlayerWarnedDef)['schema']>
+	export const PlayerWarnedMatcher = createLogMatcher({
+		event: PlayerWarnedDef,
+		regex: new RegExp(
+			String.raw`^\[([0-9.:-]+)]\[([ 0-9]*)]LogSquad: ADMIN COMMAND: Remote admin has warned player (.*?)\. Message was "([\s\S]*)" from ${ACTION_SOURCE_REGEX_SRC}`,
+		),
+		onMatch: (args) => ({
+			raw: args[0],
+			time: parseTimestamp(args[1]),
+			chainID: args[2],
+			playerIds: PlayerIds.parse({ username: args[3] }),
+			reason: args[4],
+			source: parseActionSource(args),
+		}),
+	})
+
 	export const MapSetDef = eventDef('MAP_SET', {
 		...BaseEventProperties,
 		nextLayer: z.string().trim(),
@@ -1991,6 +1995,7 @@ export namespace LogEvents {
 		PlayerWoundedMatcher,
 		PlayerRevivedMatcher,
 		AdminBroadcastMatcher,
+		PlayerWarnedMatcher,
 		LayerChangedMatcher,
 		MapSetMatcher,
 		IngameVoteStartedMatcher,
@@ -2033,6 +2038,7 @@ export namespace LogEvents {
 		| PlayerWounded
 		| PlayerRevived
 		| AdminBroadcast
+		| PlayerWarned
 		| MapSet
 		| LayerChanged
 		| IngameVoteStarted

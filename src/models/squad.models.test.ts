@@ -652,30 +652,32 @@ describe('LogEvents.parse', () => {
 	})
 })
 
-describe('RconEvents', () => {
-	describe('PLAYER_WARNED', () => {
-		it('parses a single-line warn message', () => {
-			const [event, err] = matchLog('Remote admin has warned player TestUser. Message was "you did a bad thing"', [
-				SM.RconEvents.PlayerWarnedMatcher,
-			])
-			expect(err).toBeNull()
-			expect(event).toMatchObject({
-				type: 'PLAYER_WARNED',
-				reason: 'you did a bad thing',
-				playerIds: expect.objectContaining({ username: 'TestUser' }),
-			})
+describe('LogEvents.PlayerWarnedMatcher', () => {
+	it('parses a warn sent over RCON', () => {
+		const [event, err] = matchLog(
+			'[2026.09.28-08.47.08:785][475]LogSquad: ADMIN COMMAND: Remote admin has warned player Lt. mech1312. Message was "you did a bad thing" from RCON',
+			[SM.LogEvents.PlayerWarnedMatcher],
+		)
+		expect(err).toBeNull()
+		expect(event).toMatchObject({
+			type: 'PLAYER_WARNED',
+			chainID: 475,
+			reason: 'you did a bad thing',
+			playerIds: expect.objectContaining({ username: 'Lt. mech1312' }),
+			source: { type: 'rcon' },
 		})
+	})
 
-		it('parses a multiline warn message', () => {
-			const [event, err] = matchLog('Remote admin has warned player TestUser. Message was "Line one\nLine two\nLine three"', [
-				SM.RconEvents.PlayerWarnedMatcher,
-			])
-			expect(err).toBeNull()
-			expect(event).toMatchObject({
-				type: 'PLAYER_WARNED',
-				reason: 'Line one\nLine two\nLine three',
-				playerIds: expect.objectContaining({ username: 'TestUser' }),
-			})
+	it('parses a multiline warn message', () => {
+		const [event, err] = matchLog(
+			'[2026.09.29-09.21.10:580][920]LogSquad: ADMIN COMMAND: Remote admin has warned player [TT] Randy Newman. Message was "Next Layer:\nAlBasrah_RAAS_v1\nPLANMC Motor vs GFI Air (you)" from RCON',
+			[SM.LogEvents.PlayerWarnedMatcher],
+		)
+		expect(err).toBeNull()
+		expect(event).toMatchObject({
+			type: 'PLAYER_WARNED',
+			reason: 'Next Layer:\nAlBasrah_RAAS_v1\nPLANMC Motor vs GFI Air (you)',
+			playerIds: expect.objectContaining({ username: '[TT] Randy Newman' }),
 		})
 	})
 })
