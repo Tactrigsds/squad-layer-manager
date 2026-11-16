@@ -989,6 +989,12 @@ the plugin. Leave out <code>name</code> and <code>version</code>: <code>plugin.t
 <code>autoInstallPeers: false</code> stops pnpm from installing a copy of <code>react</code> or <code>zod</code> for a dependency that asks for one.
 The dependency resolves <code>react</code> and <code>zod</code> to SLM&#x27;s copies instead.</p>
 <p>Run <code>pnpm install</code> in your repo after cloning it, and again after each change to <code>package.json</code>.</p>
+<p>The plugin API leaves out utilities that need nothing from SLM. Two packages cover common needs:</p>
+<ul>
+<li><code>@discordjs/formatters</code> writes Discord markdown into message text. Its <code>time()</code> writes a timestamp that Discord
+shows each reader in their own time zone, such as <code>time(date, TimestampStyles.LongDateTime)</code>.</li>
+<li><code>date-fns</code> and <code>date-fns-tz</code> do date math and formatting in a given time zone.</li>
+</ul>
 <h3 id="what-can-be-bundled" class="docs-heading">What can be bundled<a href="#what-can-be-bundled" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/developers/writing_plugins.md#what-can-be-bundled" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h3>
 <ul>
 <li><strong>ES modules only.</strong> <code>pnpm plugin:pack</code> refuses a bundle that contains a CommonJS module, and names the package it
