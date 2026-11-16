@@ -476,6 +476,29 @@ plainTest.describe('settings page', () => {
 		})
 	})
 
+	// A Select is modal: a click outside closes it and reaches nothing beneath. Opening and closing one used to restyle
+	// every element on the page (#643).
+	plainTest('a select opens and closes without restyling the page, and swallows the outside click', async ({ app, page }) => {
+		await gotoReady(page, app.loginUrl(app.adminUser, '/settings'))
+		const select = page.locator(`[id="setting:server:${app.serverId}:connections"]`).getByRole('combobox').first()
+		const toggle = page.locator(`[id="setting:server:${app.serverId}:overrideAdminSetNextLayer"]`).getByRole('switch')
+		await expect(select).toBeVisible({ timeout: 20_000 })
+		await toggle.scrollIntoViewIfNeeded()
+		const checked = await toggle.getAttribute('aria-checked')
+		const box = (await toggle.boundingBox())!
+
+		await expectStyleBudget(page, async () => {
+			await select.click()
+			await expect(page.getByRole('listbox')).toBeVisible()
+		})
+		// by coordinates: the click is meant to land on whatever covers the switch
+		await expectStyleBudget(page, async () => {
+			await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+			await expect(page.getByRole('listbox')).toBeHidden()
+		})
+		await expect(toggle).toHaveAttribute('aria-checked', checked!)
+	})
+
 	// A comment is part of the settings document: written under a field in the GUI, it rides through the YAML editor
 	// as a `#` line and is saved with the rest of the changes. Last in the group, since it leaves a saved comment behind.
 	plainTest('a comment written under a setting survives the YAML editor and a save', async ({ app, page }) => {

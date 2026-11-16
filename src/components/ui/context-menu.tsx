@@ -2,6 +2,7 @@ import * as ContextMenuPrimitive from '@radix-ui/react-context-menu'
 import { CheckIcon, ChevronRightIcon, DotFilledIcon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
+import { ModalLayerShield } from '@/components/ui/modal-layer-shield'
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as KBClient from '@/systems/keybinds.client'
@@ -64,28 +65,31 @@ const ContextMenuContent = React.forwardRef<
 
 	return (
 		<ContextMenuPrimitive.Portal>
-			<ContextMenuPrimitive.Content
-				ref={ref}
-				// when a menu item just handed focus to a warn box: (1) don't let the closing menu restore focus
-				// to its trigger, and (2) re-fire the focus now that the menu's focus trap has been released,
-				// since focusing while the trap was still mounted (during the exit animation) doesn't stick.
-				onCloseAutoFocus={(e) => {
-					if (WarnChat.warnFocusJustRequested()) {
-						e.preventDefault()
-						WarnChat.refireWarnFocus()
-					}
-					onCloseAutoFocus?.(e)
-				}}
-				className={cn(
-					'fd-menu min-w-40 max-w-[calc(100vw-16px)] max-h-(--radix-context-menu-content-available-height) overflow-y-auto',
-					className,
-				)}
-				style={{ zIndex, ...style }}
-				{...inheritKeys}
-				{...props}
-			>
-				<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
-			</ContextMenuPrimitive.Content>
+			<div className="contents">
+				<ModalLayerShield zIndex={zIndex} />
+				<ContextMenuPrimitive.Content
+					ref={ref}
+					// when a menu item just handed focus to a warn box: (1) don't let the closing menu restore focus
+					// to its trigger, and (2) re-fire the focus now that the menu's focus trap has been released,
+					// since focusing while the trap was still mounted (during the exit animation) doesn't stick.
+					onCloseAutoFocus={(e) => {
+						if (WarnChat.warnFocusJustRequested()) {
+							e.preventDefault()
+							WarnChat.refireWarnFocus()
+						}
+						onCloseAutoFocus?.(e)
+					}}
+					className={cn(
+						'fd-menu min-w-40 max-w-[calc(100vw-16px)] max-h-(--radix-context-menu-content-available-height) overflow-y-auto',
+						className,
+					)}
+					style={{ zIndex, ...style }}
+					{...inheritKeys}
+					{...props}
+				>
+					<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
+				</ContextMenuPrimitive.Content>
+			</div>
 		</ContextMenuPrimitive.Portal>
 	)
 })
