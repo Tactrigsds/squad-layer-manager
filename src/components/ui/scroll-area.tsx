@@ -10,6 +10,13 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 // Unless the area is vertical-only, radix wraps the content in a `display: table` box, which never gets narrower than
 // its content's min-content. A long nowrap label anywhere inside then widens the whole area past its parent, even
 // inside a `truncate` box. Give the row or scroll box `[contain:inline-size]` to take its width from the parent.
+// `auto` marks the bar visible exactly while the content overflows. The padding only makes the content taller, so it
+// cannot flip that back.
+// style-invalidation: the bar mounts only when the content starts or stops overflowing, and the restyle stays inside
+// the area (97 elements for the queue panel's).
+const GUTTER_PADDING =
+	'not-pointer-coarse:[&:has(>[data-orientation=vertical][data-state=visible])>[data-radix-scroll-area-viewport]>div]:pe-2.5'
+
 const ScrollArea = React.forwardRef<
 	React.ElementRef<typeof ScrollAreaPrimitive.Root>,
 	React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
@@ -28,10 +35,7 @@ const ScrollArea = React.forwardRef<
 			ref={ref}
 			type={gutter ? 'auto' : undefined}
 			className={cn(
-				// `auto` marks the bar visible exactly while the content overflows. The padding only makes the
-				// content taller, so it cannot flip that back.
-				gutter &&
-					'not-pointer-coarse:[&:has(>[data-orientation=vertical][data-state=visible])>[data-radix-scroll-area-viewport]>div]:pe-2.5',
+				gutter && GUTTER_PADDING,
 				'relative overflow-hidden',
 				// radix lays the content out as a table so it can grow past the viewport; a vertical-only area wants it to shrink to the viewport instead
 				orientation === 'vertical' && '[&_[data-radix-scroll-area-viewport]>div]:block!',

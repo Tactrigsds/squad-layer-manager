@@ -461,7 +461,7 @@ function BackburnerRow(
 	const isOwn = loggedInUserId !== undefined && item.source.discordId === loggedInUserId
 	const canEdit = props.canWriteQueue || isOwn
 	const draggingOther = dragging?.type === 'backburner-item' && dragging.id !== props.itemId
-	const underEndZone = 'group-has-[[data-end-drop-zone]]/request:invisible'
+	const underEndZone = 'group-data-[end-zone]/request:invisible'
 
 	const queueKey: LayerQueuePrt.KeyProp = { queue: props.stores.squadServer! }
 
@@ -472,7 +472,7 @@ function BackburnerRow(
 			data-mutation={displayedMutation}
 			{...{ [LLDnd.ROW_ATTR]: 'single' satisfies LLDnd.RowKind }}
 			className={cn(
-				'group/request flex items-center gap-2 min-h-(--row) px-1.5 text-sm border-t border-[#1f1f21] first-of-type:border-t-0 hover:bg-white/4 data-[is-dragging=true]:opacity-50 has-[[data-end-drop-zone]]:relative',
+				'group/request flex items-center gap-2 min-h-(--row) px-1.5 text-sm border-t border-[#1f1f21] first-of-type:border-t-0 hover:bg-white/4 data-[is-dragging=true]:opacity-50 data-[end-zone]:relative',
 				'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)] rtl:data-[mutation=added]:shadow-[inset_-3px_0_0_var(--ok)] rtl:data-[mutation=moved]:shadow-[inset_-3px_0_0_var(--info-c)] rtl:data-[mutation=edited]:shadow-[inset_-3px_0_0_var(--warn)]',
 			)}
 		>

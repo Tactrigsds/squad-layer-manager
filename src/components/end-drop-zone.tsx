@@ -1,4 +1,4 @@
-import type React from 'react'
+import React from 'react'
 
 import { cn } from '@/lib/utils'
 import type * as DND from '@/models/dndkit.models'
@@ -6,14 +6,32 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as DndKit from '@/systems/dndkit.client'
 import * as LLDnd from '@/systems/layer-list-dnd.client'
 
-// A drop target over the end of a list row, shown during a drag. The row must be positioned, and should hide what the
-// zone covers with `group-has-[[data-end-drop-zone]]:invisible`. The label shows only while the zone is the target.
+const ROW_MARK = 'data-end-zone'
+
+// A drop target over the end of a list row, shown during a drag. It must be a direct child of the row. While mounted it
+// sets `data-end-zone` on the row, so the row is positioned with `data-[end-zone]:relative` and hides what the zone
+// covers with `group-data-[end-zone]/<row>:invisible`. The label shows only while the zone is the target.
+//
+// The row reads the attribute rather than `:has([data-end-drop-zone])`: a `:has()` rule on an ancestor made inserting
+// an element into the queue panel restyle nearly every element on the page (docs/developers/style-invalidation.md).
 export function EndDropZone(props: { dropItem: DND.DropItem; icon: React.ReactNode; label: string; tone?: 'pri' | 'danger' }) {
 	const { ref, isDropTarget } = DndKit.useDroppable(props.dropItem, { collisionDetector: LLDnd.pointerInRectCollision })
 	const zIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
+	const attach = React.useCallback(
+		(el: HTMLSpanElement) => {
+			ref(el)
+			const row = el.parentElement
+			row?.setAttribute(ROW_MARK, '')
+			return () => {
+				ref(null)
+				row?.removeAttribute(ROW_MARK)
+			}
+		},
+		[ref],
+	)
 	return (
 		<span
-			ref={ref}
+			ref={attach}
 			data-end-drop-zone=""
 			data-is-over={isDropTarget}
 			style={{ zIndex }}

@@ -220,18 +220,32 @@
 		border-radius: 0;
 		margin-inline-start: -1px;
 	}
-	.fd-grp > .fd-btn:first-child,
-	.fd-grp > :first-child .fd-btn {
+	.fd-grp > .fd-btn:first-child {
 		border-radius: 0;
 		border-start-start-radius: 3px;
 		border-end-start-radius: 3px;
 		margin-inline-start: 0;
 	}
-	.fd-grp > .fd-btn:last-child,
-	.fd-grp > :last-child .fd-btn {
+	.fd-grp > .fd-btn:last-child {
 		border-radius: 0;
 		border-start-end-radius: 3px;
 		border-end-end-radius: 3px;
+	}
+	/* A wrapped button, such as one inside a tooltip trigger, takes its corners from custom properties that its
+	   wrapper sets, so a wrapper's position is tested on the wrapper itself. Testing it on the button's ancestor, as
+	   `.fd-grp > :last-child .fd-btn` did, made any element flipping :last-child restyle every .fd-btn beneath it
+	   (docs/developers/style-invalidation.md). */
+	.fd-grp > :first-child:not(:last-child) {
+		--fd-grp-end-radius: 0;
+	}
+	.fd-grp > :last-child {
+		--fd-grp-start-radius: 0;
+	}
+	.fd-grp > :not(.fd-btn) .fd-btn {
+		border-start-start-radius: var(--fd-grp-start-radius, 3px);
+		border-end-start-radius: var(--fd-grp-start-radius, 3px);
+		border-start-end-radius: var(--fd-grp-end-radius, 3px);
+		border-end-end-radius: var(--fd-grp-end-radius, 3px);
 	}
 	.fd-grp > .fd-btn:only-child {
 		border-radius: 3px;
@@ -249,11 +263,14 @@
 		}
 		.fd-grp > .fd-btn,
 		.fd-grp > .fd-btn:first-child,
-		.fd-grp > :first-child .fd-btn,
-		.fd-grp > .fd-btn:last-child,
-		.fd-grp > :last-child .fd-btn {
+		.fd-grp > .fd-btn:last-child {
 			margin-inline-start: 0;
 			border-radius: 3px;
+		}
+		.fd-grp > :first-child:not(:last-child),
+		.fd-grp > :last-child {
+			--fd-grp-start-radius: 3px;
+			--fd-grp-end-radius: 3px;
 		}
 	}
 
