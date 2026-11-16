@@ -60,12 +60,12 @@ export const chartsTitle = def('Charts')
 
 // "Teams Breakdown" rather than "Teams", which would read as the queue and teams panel's own tab beside it
 export const chartsTab = def(
-	'{tab, select, teams {Teams Breakdown} scoreline {Scoreline} population {Population} other {{tab}}}',
+	'{tab, select, teams {Teams Breakdown} scoreline {Scores} population {Population} other {{tab}}}',
 	(tab: 'teams' | 'scoreline' | 'population') => ({ tab }),
 )
 
 export const chartWindowTitle = def(
-	'{tab, select, teams {Teams Breakdown} scoreline {Scoreline} population {Population} other {{tab}}}',
+	'{tab, select, teams {Teams Breakdown} scoreline {Scores} population {Population} other {{tab}}}',
 	(tab: 'teams' | 'scoreline' | 'population') => ({ tab }),
 )
 
@@ -152,7 +152,7 @@ export const populationMatchStart = def('Match start')
 export const populationRoundEnd = def('Round end')
 
 export const populationDescription = def(
-	'How many players were on the server over time. Pick Activity to split the players into active and idle players, or Teams for a line per team.',
+	'How many players were on the server over time. Pick Activity to split the players into active and idle players, or Teams to see how many more players one team had than the other, shaded in the larger team’s colour.',
 )
 
 export const populationIdleRule = def(
@@ -176,8 +176,24 @@ export const noPlayersYet = def('No players yet')
 // the population chart's Stats view: one figure per entry, over everything the chosen range covers
 
 export const populationStat = def(
-	'{stat, select, peak {Peak} low {Lowest} average {Average} median {Median} full {Time full} idle {Idle} gap {Team gap} joins {Joins} leaves {Leaves} churn {Churn} matches {Matches} other {{stat}}}',
-	(stat: 'peak' | 'low' | 'average' | 'median' | 'full' | 'idle' | 'gap' | 'joins' | 'leaves' | 'churn' | 'matches') => ({ stat }),
+	'{stat, select, start {At start} end {At round end} now {Now} peak {Peak} low {Lowest} average {Average} median {Median} full {Time full} idle {Idle} gap {Team gap} joins {Joins} leaves {Leaves} churn {Churn} matches {Matches} other {{stat}}}',
+	(
+		stat:
+			| 'start'
+			| 'end'
+			| 'now'
+			| 'peak'
+			| 'low'
+			| 'average'
+			| 'median'
+			| 'full'
+			| 'idle'
+			| 'gap'
+			| 'joins'
+			| 'leaves'
+			| 'churn'
+			| 'matches',
+	) => ({ stat }),
 )
 
 export const populationStatAt = def('at {time}', (time: string) => ({ time }))
@@ -193,6 +209,10 @@ export const populationStatIdleDetail = def('of the players, on average')
 export const populationStatGapDetail = def('largest {gap}', (gap: number) => ({ gap }))
 
 export const populationStatChurnDetail = def('of the players leave each hour')
+
+export const populationMatchStatsHint = def(
+	'The figures cover the round, from its start to where it ended. Team gap is the difference between the two teams’ player counts. Joins and leaves count the players who connected and disconnected during the round.',
+)
 
 export const populationStatsHint = def(
 	'Team gap is the difference between the two teams’ player counts. Churn is the players who leave in an hour, as a share of the average player count. Over a range of several hours the median is taken over a few minutes at a time.',

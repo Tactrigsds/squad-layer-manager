@@ -19,15 +19,16 @@ const FLAG = 'l6 3 l-6 3 Z'
 
 /**
  * Players over time, filling its container. `split` stacks active players under idle ones with the total on top, or
- * draws a line per team. Each match is a band: a solid line where it started, flagged and named when there is room,
- * a dashed line where its round ended, and the stretch from round end to the next match darkened. The displayed match
- * is outlined with its start. `show` turns each of these off, and with the active players hidden the idle ones sit
+ * plots how many more players one side has than the other, centred on zero and shaded in the larger side's colour.
+ * Each match is a band: a solid line where it started, flagged and named when there is room, a dashed line where its
+ * round ended, and the stretch from round end to the next match darkened. The displayed match is outlined with its
+ * start. `show` turns each of these off, and with the active players hidden the idle ones sit
  * on the axis. Hovering shows a crosshair and `renderTooltip` for the bucket under it; clicking selects that band.
  */
 export function PopulationChart(props: {
 	view: StatsModels.PopulationView
 	split: 'activity' | 'teams'
-	// the y axis's top when it should hold more than the players drawn, such as the server's player cap
+	// the y axis's top when it should hold more than the players drawn, such as the server's player cap; ignored by teams
 	yMax?: number
 	formatX: (time: number) => string
 	xTicks: (start: number, end: number, targetTicks: number) => number[]
@@ -43,24 +44,29 @@ export function PopulationChart(props: {
 	const { width, height } = useMeasuredSize(container)
 	const [hover, setHover] = React.useState<number | null>(null)
 	const hatchId = React.useId()
+	const clipId = React.useId()
+	const signed = props.split === 'teams'
 	const showBandStarts = props.show.matchStart
 	const showRoundEnds = props.show.roundEnd
 
 	let maxY = 0
-	const series = props.split === 'activity' ? [view.total] : view.sides
-	for (const values of series) for (const v of values) if (v > maxY) maxY = v
+	for (const v of signed ? view.sideLead : view.total) if (Math.abs(v) > maxY) maxY = Math.abs(v)
 
 	const top = TOP_PAD + (showBandStarts ? BAND_LABEL_HEIGHT : 0)
 	const plotHeight = height - AXIS_HEIGHT - top
-	const yAxis = Chart.axis(Math.max(maxY, props.yMax ?? 0), Math.max(2, Math.floor(plotHeight / 32)), { integer: true })
-	const left = Math.ceil(Math.max(...yAxis.ticks.map((tick) => Chart.estimateNumeralsWidth(String(tick), AXIS_FONT)))) + 6
+	const targetYTicks = Math.max(2, Math.floor(plotHeight / 32))
+	const yAxis = signed
+		? Chart.signedAxis(Math.max(1, maxY), Math.max(1, Math.floor(targetYTicks / 2)))
+		: { min: 0, ...Chart.axis(Math.max(maxY, props.yMax ?? 0), targetYTicks, { integer: true }) }
+	const formatY = (value: number) => (signed && value > 0 ? `+${value}` : String(value))
+	const left = Math.ceil(Math.max(...yAxis.ticks.map((tick) => Chart.estimateNumeralsWidth(formatY(tick), AXIS_FONT)))) + 6
 	const right = 6
 	const plotWidth = width - left - right
 	const ready = plotWidth >= MIN_PLOT && plotHeight >= MIN_PLOT
 
 	const span = view.end - view.start
 	const xToPx = (time: number) => left + Chart.project(Math.min(view.end, Math.max(view.start, time)) - view.start, span, plotWidth)
-	const yToPx = (value: number) => top + plotHeight - Chart.project(value, yAxis.max, plotHeight)
+	const yToPx = (value: number) => top + plotHeight - Chart.project(value - yAxis.min, yAxis.max - yAxis.min, plotHeight)
 	const bucketX = (i: number) => view.start + (i + 0.5) * view.bucketMs
 	const bandAt = (time: number) => view.bands.findLast((band) => band.start <= time && time < band.end)
 
@@ -92,9 +98,16 @@ export function PopulationChart(props: {
 		const xTicks = props.xTicks(view.start, view.end, Math.max(2, Math.floor(plotWidth / 80)))
 		const bottom = top + plotHeight
 		const bandTop = TOP_PAD + (showBandStarts ? BAND_LABEL_HEIGHT - 2 : 0)
+		const zeroY = yToPx(0)
 		body = (
 			<svg width={width} height={height} role="img" aria-label={props.ariaLabel} className="block">
 				<defs>
+					<clipPath id={`${clipId}-above`}>
+						<rect x={left} y={top} width={plotWidth} height={Math.max(0, zeroY - top)} />
+					</clipPath>
+					<clipPath id={`${clipId}-below`}>
+						<rect x={left} y={zeroY} width={plotWidth} height={Math.max(0, bottom - zeroY)} />
+					</clipPath>
 					<pattern id={hatchId} width={5} height={5} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
 						<rect width={5} height={5} fill={ACTIVE_COLOR} fillOpacity={0.15} />
 						<line x1={0} y1={0} x2={0} y2={5} stroke={IDLE_STROKE} strokeWidth={1.5} strokeOpacity={0.8} />
@@ -164,18 +177,38 @@ export function PopulationChart(props: {
 						))}
 					</>
 				) : (
-					view.sides.map((values, s) =>
-						line(values).map(({ from, d }) => (
+					<>
+						{(['above', 'below'] as const).map((side, s) =>
+							area(view.sideLead, null).map(({ from, d }) => (
+								<path
+									key={`${side}-${from}`}
+									d={d}
+									fill={view.sideDisplays[s].color}
+									fillOpacity={0.3}
+									clipPath={`url(#${clipId}-${side})`}
+								/>
+							)),
+						)}
+						<line
+							className="text-ctl-hi"
+							stroke="currentColor"
+							x1={left}
+							x2={left + plotWidth}
+							y1={Math.round(zeroY) + 0.5}
+							y2={Math.round(zeroY) + 0.5}
+						/>
+						{line(view.sideLead).map(({ from, d }) => (
 							<path
-								key={`side${s}-${from}`}
+								key={`lead-${from}`}
 								d={d}
 								fill="none"
-								stroke={view.sideDisplays[s].color}
+								stroke="currentColor"
+								className="text-text-2"
 								strokeWidth={2}
 								strokeLinejoin="round"
 							/>
-						)),
-					)
+						))}
+					</>
 				)}
 				<g className="text-text-2" stroke="currentColor" strokeWidth={1.5}>
 					{view.bands.map((band) =>
@@ -220,7 +253,7 @@ export function PopulationChart(props: {
 				<g className="fill-current text-text-3 font-mono" fontSize={AXIS_FONT}>
 					{yAxis.ticks.map((tick) => (
 						<text key={tick} x={left - 4} y={yToPx(tick)} textAnchor="end" dominantBaseline="central">
-							{tick}
+							{formatY(tick)}
 						</text>
 					))}
 					{xTicks.map((tick) => {
@@ -249,7 +282,7 @@ export function PopulationChart(props: {
 									...(props.show.active ? [{ key: 'active', value: view.active[hover], color: ACTIVE_COLOR }] : []),
 									{ key: 'total', value: view.total[hover], color: TOTAL_COLOR },
 								]
-							: view.sides.map((values, s) => ({ key: `side${s}`, value: values[hover], color: view.sideDisplays[s].color }))
+							: [{ key: 'lead', value: view.sideLead[hover], color: view.sideDisplays[view.sideLead[hover] >= 0 ? 0 : 1].color }]
 						).map((dot) => (
 							<circle
 								key={dot.key}

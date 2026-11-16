@@ -50,10 +50,10 @@ group.
 
 ![group counts per team](../images/features/teams_breakdown.png)
 
-### Scoreline
+### Scores
 
-The _Scoreline_ chart lists each team's tickets, kills, deaths and wounds, and plots kills, deaths, the kill lead or
-tickets across the match. Tickets update live while the match is in progress. The kill lead is how far one team's kills
+The _Scores_ chart lists each team's tickets, kills, deaths and wounds, and plots tickets, kills, deaths or the kill
+lead across the match. Tickets update live while the match is in progress. The kill lead is how far one team's kills
 are ahead of the other's, shaded in the leading team's colour.
 
 ![the kill lead across a match](../images/features/scoreline.png)
@@ -68,15 +68,16 @@ to show them. Spoilers show by themselves once a match ends.
 
 The _Population_ chart plots how many players were on the server, over one match or over the last 6 hours, 24 hours or
 7 days. The chart splits the players into active and idle players (see
-[Idle players](../guide/configuring/players.md#idle-players)), or draws a line per team. Lines mark where each match
+[Idle players](../guide/configuring/players.md#idle-players)), or plots how many more players one team had than the
+other. Lines mark where each match
 started and where its round ended, and a match picked on the chart opens in the panel and the activity feed.
 
 ![the player count across a match, split into active and idle players](../images/features/population.png)
 
-![the player count of each team across the same match](../images/features/population_teams.png)
+![how many more players one team had across the same match](../images/features/population_teams.png)
 
 _Stats_ summarizes the same time span, such as the peak player count, how long the server was full and how quickly
-players come and go.
+players come and go. For a single match, _Stats_ covers the round, with the player count at its start and end.
 
 ![population figures over six hours](../images/features/population_stats.png)
 
