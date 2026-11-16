@@ -11,9 +11,9 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    # The last nixos-unstable revision with node 24.18.0, the version the production image and .tool-versions pin.
+    # A nixos-unstable revision with node 24.22.2, the version the production image and .tool-versions pin.
     # Bump the two together.
-    nixpkgs-node.url = "github:NixOS/nixpkgs/ed7a5b3882d62c054e84323e6d60cac650d136ee";
+    nixpkgs-node.url = "github:NixOS/nixpkgs/d5cc6833999746cffdfe0598f7bc801a57b887a9";
   };
 
   outputs = { nixpkgs, nixpkgs-node, ... }:

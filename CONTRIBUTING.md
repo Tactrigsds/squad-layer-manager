@@ -30,13 +30,13 @@ change. [CLAUDE.md](CLAUDE.md) states the rules that architecture.md explains.
 
 Set up one of these:
 
-- nodejs 24.18.0 and pnpm. Building the layer engine also needs rust with the `wasm32-unknown-unknown` target.
+- nodejs 24.22.2 and pnpm. Building the layer engine also needs rust with the `wasm32-unknown-unknown` target.
 - [nix](https://nixos.org) with flakes enabled. See [Nix](#nix).
 - Docker on linux, to run the dev container. See [Dev container](#dev-container).
 
 ## Nix
 
-[nix/flake.nix](nix/flake.nix) provides the toolchain the app builds and runs with: node 24.18.0, pnpm through
+[nix/flake.nix](nix/flake.nix) provides the toolchain the app builds and runs with: node 24.22.2, pnpm through
 corepack, rust, the C toolchain for native modules, the .NET SDK for the layer extractor, and the libraries
 Playwright's chromium needs.
 
