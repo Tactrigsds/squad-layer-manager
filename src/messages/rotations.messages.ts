@@ -161,13 +161,16 @@ export const formatYaml = def('YAML')
 
 export const formatText = def('Plain text')
 
+export const saveBlocked = def(
+	'{count, plural, one {Fix # problem in the text} other {Fix # problems in the text}} to save or finish editing',
+	(count: number) => ({ count }),
+)
+
 export const switchViewBlocked = def('{count, plural, one {Fix # problem} other {Fix # problems}} to switch views', (count: number) => ({
 	count,
 }))
 
 export const sourceLabel = def('Layers as {format}', (format: string) => ({ format }))
-
-export const readOnlyHint = def('Read only. Start Editing to change the layers here.')
 
 export const appliesAsYouType = def('Changes apply to the list as you type.')
 
@@ -175,7 +178,7 @@ export const copy = def('Copy')
 
 export const download = def('Download')
 
-export const copyAndDownload = def('Copy and download')
+export const fileActions = def('Open, copy and download')
 
 export const copyAsText = def('Copy as plain text')
 

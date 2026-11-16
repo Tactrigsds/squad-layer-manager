@@ -2,6 +2,7 @@
 // WARNING: only import this from lazily-loaded (React.lazy'd) components -- it statically pulls in the
 // whole CodeMirror + codemirror-json-schema bundle, which we don't want in the initial/route chunk.
 import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
+import { lintGutter, setDiagnostics } from '@codemirror/lint'
 import type { Extension } from '@codemirror/state'
 import { Annotation, Compartment, EditorState } from '@codemirror/state'
 import { EditorView, hoverTooltip, type ViewUpdate } from '@codemirror/view'
@@ -38,6 +39,7 @@ export function yamlEditorExtensions(schema: JsonSchema | undefined): Extension[
 		basicSetup,
 		yamlIndentKeymap,
 		yaml(),
+		lintGutter(),
 		...(schema
 			? [yamlLanguage.data.of({ autocomplete: yamlCompletion() }), hoverTooltip(yamlSchemaHover()), stateExtensions(schema)]
 			: []),
@@ -47,7 +49,7 @@ export function yamlEditorExtensions(schema: JsonSchema | undefined): Extension[
 }
 
 export function plainTextEditorExtensions(): Extension[] {
-	return [basicSetup, foundryTheme, EditorView.lineWrapping]
+	return [basicSetup, lintGutter(), foundryTheme, EditorView.lineWrapping]
 }
 
 export function readOnly(readOnly: boolean): Extension {
@@ -64,4 +66,23 @@ export function isProgrammaticUpdate(update: ViewUpdate) {
 // Replace the entire document contents.
 export function setDoc(view: EditorView, text: string) {
 	view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, annotations: programmaticChange.of(true) })
+}
+
+// Underlines each problem in the text and marks its line in the gutter, replacing what was shown before. The spans
+// must describe the editor's current text.
+export function showProblems(view: EditorView, problems: readonly { from: number; to: number; message: string }[]) {
+	const length = view.state.doc.length
+	const diagnostics = problems.map((p) => ({
+		from: Math.min(p.from, length),
+		to: Math.min(p.to, length),
+		severity: 'error' as const,
+		message: p.message,
+	}))
+	view.dispatch(setDiagnostics(view.state, diagnostics))
+}
+
+export function revealPosition(view: EditorView, pos: number) {
+	const anchor = Math.min(pos, view.state.doc.length)
+	view.dispatch({ selection: { anchor }, effects: EditorView.scrollIntoView(anchor, { y: 'center' }) })
+	view.focus()
 }

@@ -121,6 +121,11 @@
 		cursor: default;
 		pointer-events: none;
 	}
+	/* disabled, but still hoverable so a tooltip can say why */
+	.fd-btn[data-softdisabled='true'] {
+		cursor: not-allowed;
+		pointer-events: auto;
+	}
 	.fd-btn-pri {
 		background: var(--pri);
 		color: var(--pri-text);

@@ -161,11 +161,9 @@ export const textTab = def('Text')
 
 export const builderTab = def('Builder')
 
-export const errorsHeading = def('Errors')
-
 export const filterHeading = def('Filter')
 
-export const resizeErrors = def('Resize the errors pane')
+export const rootMustBeBlock = def('The top of a filter must be one of {types}', (types: string) => ({ types }))
 
 // -------- one node --------
 

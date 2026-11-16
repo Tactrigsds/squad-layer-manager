@@ -157,3 +157,62 @@ export const cannotUndo = def(() => ({
 export const nothingToUndo = def((direction: 'undo' | 'redo') => ({
 	toast: [t('{direction, select, undo {Nothing to undo} other {Nothing to redo}}', { direction })],
 }))
+
+// -------- text editors --------
+
+export const fullscreen = def('Fullscreen')
+
+export const exitFullscreen = def('Exit fullscreen (Esc)')
+
+export const resizeErrors = def('Resize the errors pane')
+
+export const problemAt = def('Line {line}, column {column}: {message}', (line: number, column: number, message: string) => ({
+	line,
+	column,
+	message,
+}))
+
+export const problemLine = def('Line {line}', (line: number) => ({ line }))
+
+export const problemsHeading = def('Problems ({count})', (count: number) => ({ count }))
+
+export const noProblems = def('No problems found.')
+
+export const copyProblems = def('Copy the problems')
+
+export const problemsCopied = def(
+	'{count, plural, one {Copied # problem to the clipboard} other {Copied # problems to the clipboard}}',
+	(count: number) => ({ count }),
+)
+
+// -------- what a schema found wrong in a text editor's value --------
+
+export const issueMissingField = def('Missing field {field}', (field: string) => ({ field }))
+
+export const issueUnknownField = def('Unknown field {field}', (field: string) => ({ field }))
+
+export const issueExpectedType = def('Expected {expected}', (expected: string) => ({ expected }))
+
+export const issueExpectedOneOf = def('Expected one of {values}', (values: string) => ({ values }))
+
+export const issueUnknownOption = def('{field} must be one of {values}', (field: string, values: string) => ({ field, values }))
+
+export const issueNoMatchingForm = def('Does not match any of the forms allowed here')
+
+const count = (count: number) => ({ count })
+
+export const issueMinLength = def('{count, plural, one {Must be at least # character} other {Must be at least # characters}}', count)
+
+export const issueMaxLength = def('{count, plural, one {Must be at most # character} other {Must be at most # characters}}', count)
+
+export const issueMinItems = def('{count, plural, one {Must have at least # item} other {Must have at least # items}}', count)
+
+export const issueMaxItems = def('{count, plural, one {Must have at most # item} other {Must have at most # items}}', count)
+
+export const issueAtLeast = def('Must be at least {bound}', (bound: number) => ({ bound }))
+
+export const issueAtMost = def('Must be at most {bound}', (bound: number) => ({ bound }))
+
+export const issueAbove = def('Must be greater than {bound}', (bound: number) => ({ bound }))
+
+export const issueBelow = def('Must be less than {bound}', (bound: number) => ({ bound }))

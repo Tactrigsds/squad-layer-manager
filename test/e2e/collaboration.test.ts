@@ -505,9 +505,9 @@ test.describe('collaborative rotation editing', () => {
 		await openPath(page, '/rotations/weekend')
 		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible({ timeout: 15_000 })
 
-		// the builder asks which format to download
+		// the builder keeps Download in its menu, with a choice of format
 		const downloading = page.waitForEvent('download')
-		await page.getByRole('button', { name: 'Download', exact: true }).click()
+		await page.getByRole('button', { name: 'Open, copy and download' }).click()
 		await page.getByRole('menuitem', { name: /Download \.yaml/ }).click()
 		const download = await downloading
 		expect(download.suggestedFilename()).toBe('weekend.yaml')
@@ -516,10 +516,18 @@ test.describe('collaborative rotation editing', () => {
 		await page.getByRole('button', { name: 'YAML', exact: true }).click()
 		const editor = page.getByRole('textbox', { name: 'Layers as YAML' })
 		await expect(editor).toContainText('- Gorodok_RAAS_v1 USA+CombinedArms RGF+CombinedArms')
-		await page.getByRole('button', { name: 'Start Editing' }).click()
-		// the editor is read-only until editing has started, and drops keystrokes while it is
+		// the text is writable before editing has started, and typing into it starts editing
 		await expect(editor).toBeEditable()
 		await editor.click()
+		await page.keyboard.press('ControlOrMeta+a')
+		await page.keyboard.insertText('- layer: Narva_RAAS_v1: USA: RGF')
+		await expect(page.getByRole('button', { name: 'Start Editing' })).toBeHidden()
+		const region = page.getByRole('region', { name: /Layers/ })
+		const finish = page.getByRole('button', { name: /^(Save|Finish Editing)$/ })
+		// broken YAML can be neither saved nor left for the builder
+		await expect(region.getByRole('region', { name: /^Problems/ }).getByRole('listitem')).toContainText(['Line 1'])
+		await expect(finish).toHaveAttribute('aria-disabled', 'true')
+		await expect(region.getByRole('button', { name: 'Builder', exact: true })).toHaveAttribute('aria-disabled', 'true')
 		await page.keyboard.press('ControlOrMeta+a')
 		await page.keyboard.insertText(
 			[
@@ -531,10 +539,10 @@ test.describe('collaborative rotation editing', () => {
 				'    - Skorpo_RAAS_v1 USA+CombinedArms RGF+CombinedArms',
 			].join('\n'),
 		)
-		const region = page.getByRole('region', { name: /Layers/ })
 		await expect(region.getByRole('status')).toHaveText('YAML: 2 items, 1 note')
-		// an unknown tag holds the text back, and keeps the view from being switched
+		// an unknown tag holds the text back, and keeps the view from being switched and the draft from being saved
 		await expect(region.getByRole('button', { name: 'Builder', exact: true })).toHaveAttribute('data-softdisabled', 'true')
+		await expect(finish).toHaveAttribute('aria-disabled', 'true')
 		await expect(page.getByRole('heading', { name: 'Layers (1)' })).toBeVisible()
 		await page.getByRole('combobox', { name: 'What to do with Rush Hour' }).click()
 		await page.getByRole('option', { name: 'Drop it' }).click()

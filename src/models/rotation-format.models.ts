@@ -167,7 +167,13 @@ export type ParsedItem =
 	| { type: 'single'; single: ParsedSingle }
 	| { type: 'vote'; line: number; choices: ParsedSingle[]; notes: string[]; config: VoteConfig }
 
-export type ParseError = { line: number; text: string; code: 'err:yaml' | 'err:not-a-list' | 'err:bad-item' | 'err:bad-vote-header' }
+// `text` is the line the error is on. `message` is the YAML parser's, for err:yaml
+export type ParseError = {
+	line: number
+	text: string
+	code: 'err:yaml' | 'err:not-a-list' | 'err:bad-item' | 'err:bad-vote-header'
+	message?: string
+}
 
 export type Parsed = {
 	format: Format
@@ -272,15 +278,17 @@ function commentNotes(node: Yaml.Node): string[] {
 
 export function parseYaml(text: string, opts?: { installedMods?: readonly string[] }): Parsed {
 	const lineCounter = new Yaml.LineCounter()
-	const doc = Yaml.parseDocument(text, { lineCounter })
+	// the error list names the line, and the editor beside it shows the line, so the code frame is left off
+	const doc = Yaml.parseDocument(text, { lineCounter, prettyErrors: false })
 	const lineOf = (node: { range?: [number, number, number] | null } | null | undefined) =>
 		node?.range ? lineCounter.linePos(node.range[0]).line : 1
 	if (doc.errors.length > 0) {
 		const error = doc.errors[0]
+		const line = lineCounter.linePos(error.pos[0]).line
 		return {
 			format: 'yaml',
 			items: [],
-			errors: [{ line: lineCounter.linePos(error.pos[0]).line, text: error.message, code: 'err:yaml' }],
+			errors: [{ line, text: text.split('\n')[line - 1] ?? '', code: 'err:yaml', message: error.message }],
 		}
 	}
 	if (doc.contents === null) return { format: 'yaml', items: [], errors: [] }

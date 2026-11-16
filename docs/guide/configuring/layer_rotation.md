@@ -197,18 +197,22 @@ Narva_AAS_v2 BAF+CombinedArms VDV+AirAssault
   Mutaha_TC_v1 TLF+Armored ADF+Mechanized
 ```
 
-The text can be edited once _Start Editing_ is pressed. A change applies to the rotation's layers when typing pauses.
-SLM names every line it cannot read, and holds the change back until each one is fixed. A tag label that matches no tag
-also holds the change back, until the label is created as a new tag, dropped, or mapped onto an existing tag. While a
-change is held back, the view cannot be switched.
+Typing into the text starts editing, as _Start Editing_ does. A change applies to the rotation's layers when typing
+pauses. SLM lists every line it cannot read under _Problems_, underlines it in the text, and holds the change back until
+each one is fixed. Click a problem to move the cursor to its line. A tag label that matches no tag also holds the change
+back, until the label is created as a new tag, dropped, or mapped onto an existing tag. While a change is held back,
+the view cannot be switched and the rotation cannot be saved.
+
+The expand button beside _Reset_ fills the screen with the text. Press Esc to return to the page.
 
 Use _Open File..._, or drop a `.yaml`, `.cfg` or `.txt` file onto a rotation's layers, to add the file's layers. Pick
 _Add to start_ or _Add to end_ to put them before or after the rotation's layers, or _Replace_ to replace the
 rotation's layers with them. A rotation with no layers takes the file's layers without asking. The result is shown as
 text in the file's format, so any line SLM cannot read is listed there.
 
-Use _Copy_ and _Download_ to take a rotation's layers out as text. In the _Builder_, each one asks for plain text or
-YAML. In _Text_ and _YAML_, _Copy_ and _Download_ use the text on screen. Plain text downloads as a `.cfg` file.
+Use _Copy_ and _Download_ to take a rotation's layers out as text. In the _Builder_, _Open File..._, _Copy_ and
+_Download_ are in the ⋯ menu, which offers each of _Copy_ and _Download_ as plain text or YAML. In _Text_ and _YAML_,
+_Copy_ and _Download_ use the text on screen. Plain text downloads as a `.cfg` file.
 
 _Add Rotation_ on the queue reads the same formats on its _Paste_ tab.
 

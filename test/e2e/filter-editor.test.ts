@@ -469,6 +469,29 @@ test.describe('the filter text editor', () => {
 		await expect(compact).toBeEnabled()
 	})
 
+	test('lists the problems in the text at their lines, and moves the cursor to the one selected', async ({ page }) => {
+		await page.goto(app.loginUrl(app.adminUser, '/filters/text-mode'))
+		await page.getByRole('button', { name: 'Text', exact: true }).click()
+
+		const editor = page.locator('.cm-content')
+		await expect(editor).toContainText('Gamemode', { timeout: 20_000 })
+		const problems = page.getByRole('region', { name: /^Problems/ }).getByRole('listitem')
+
+		await editor.fill('type: and\nchildren: [')
+		await expect(problems).toHaveCount(1)
+		await expect(problems).toContainText(['Line 2'])
+
+		await editor.fill('type: and\nchildren:\n  - { type: bogus }\n  - { type: included-in }')
+		await expect(problems).toHaveText([/Line 3\s*type must be one of/, /Line 4\s*Missing field filterId/])
+		await expect(page.locator('.cm-lintRange-error')).toHaveCount(2)
+
+		await problems.nth(1).getByRole('button').click()
+		await expect(page.locator('.cm-activeLine')).toHaveText('  - { type: included-in }')
+
+		await editor.fill('type: and\nchildren: []')
+		await expect(page.getByRole('region', { name: 'Problems (0)' })).toContainText('No problems found.')
+	})
+
 	test('carries a node comment between the buffer and the tree as a # line', async ({ page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/text-mode'))
 		await page.getByRole('button', { name: 'Text', exact: true }).click()
