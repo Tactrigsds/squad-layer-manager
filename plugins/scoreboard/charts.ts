@@ -17,9 +17,17 @@ const NICE_STEPS = [1, 2, 2.5, 5, 10]
 
 /**
  * `x` is ms since the match started, and `xMax` the match's length. `fitY` fits the y axis to the data instead of
- * starting it at zero.
+ * starting it at zero. `signed` centres the y axis on zero and shades the area between the line and zero, `above`
+ * colour over it and `below` colour under it, for a single series that measures one side against the other. Its
+ * legend names the two shades instead of the series.
  */
-export function lineChart(opts: { title: string; series: Series[]; xMax: number; fitY?: boolean }): string {
+export function lineChart(opts: {
+	title: string
+	series: Series[]
+	xMax: number
+	fitY?: boolean
+	signed?: { above: Omit<Series, 'points'>; below: Omit<Series, 'points'> }
+}): string {
 	const plotW = WIDTH - PAD.left - PAD.right
 	const plotH = HEIGHT - PAD.top - PAD.bottom
 	let minY = Infinity
@@ -34,7 +42,9 @@ export function lineChart(opts: { title: string; series: Series[]; xMax: number;
 		minY = 0
 		maxY = 1
 	}
-	const yAxis = integerAxis(opts.fitY ? minY : 0, opts.fitY ? maxY : Math.max(maxY, 1), 5)
+	const maxAbs = Math.max(1, Math.abs(minY), Math.abs(maxY))
+	const yAxis = opts.signed ? integerAxis(-maxAbs, maxAbs, 6) : integerAxis(opts.fitY ? minY : 0, opts.fitY ? maxY : Math.max(maxY, 1), 5)
+	const formatY = (value: number) => (opts.signed && value > 0 ? `+${value}` : String(value))
 	const xMax = Math.max(opts.xMax, 60_000)
 	const xPx = (x: number) => PAD.left + (Math.min(Math.max(x, 0), xMax) / xMax) * plotW
 	const yPx = (y: number) => PAD.top + plotH - ((y - yAxis.min) / (yAxis.max - yAxis.min)) * plotH
@@ -46,7 +56,8 @@ export function lineChart(opts: { title: string; series: Series[]; xMax: number;
 	]
 
 	let legendX = WIDTH - PAD.right
-	for (const series of opts.series.toReversed()) {
+	const legend = opts.signed ? [opts.signed.above, opts.signed.below] : opts.series
+	for (const series of legend.toReversed()) {
 		const text = escape(series.label)
 		const width = estimateTextWidth(series.label, 13)
 		parts.push(
@@ -61,7 +72,7 @@ export function lineChart(opts: { title: string; series: Series[]; xMax: number;
 		const y = Math.round(yPx(tick)) + 0.5
 		parts.push(`<line x1="${PAD.left}" x2="${PAD.left + plotW}" y1="${y}" y2="${y}" stroke="${GRID}" stroke-width="1"/>`)
 		parts.push(
-			`<text x="${PAD.left - 6}" y="${y + 4}" text-anchor="end" font-family="${FONT_FAMILIES.regular}" font-size="11" fill="${AXIS_TEXT}">${tick}</text>`,
+			`<text x="${PAD.left - 6}" y="${y + 4}" text-anchor="end" font-family="${FONT_FAMILIES.regular}" font-size="11" fill="${AXIS_TEXT}">${formatY(tick)}</text>`,
 		)
 	}
 
@@ -81,6 +92,16 @@ export function lineChart(opts: { title: string; series: Series[]; xMax: number;
 		let d = `M${xPx(series.points[0].x)} ${yPx(series.points[0].y)}`
 		for (let i = 1; i < series.points.length; i++) d += `H${xPx(series.points[i].x)}V${yPx(series.points[i].y)}`
 		d += `H${xPx(xMax)}`
+		if (opts.signed) {
+			const zeroY = yPx(0)
+			parts.push(
+				`<clipPath id="above"><rect x="${PAD.left}" y="${PAD.top}" width="${plotW}" height="${zeroY - PAD.top}"/></clipPath>`,
+				`<clipPath id="below"><rect x="${PAD.left}" y="${zeroY}" width="${plotW}" height="${PAD.top + plotH - zeroY}"/></clipPath>`,
+				`<path d="${d}V${zeroY}H${PAD.left}Z" fill="${opts.signed.above.color}" fill-opacity="0.35" clip-path="url(#above)"/>`,
+				`<path d="${d}V${zeroY}H${PAD.left}Z" fill="${opts.signed.below.color}" fill-opacity="0.35" clip-path="url(#below)"/>`,
+				`<line x1="${PAD.left}" x2="${PAD.left + plotW}" y1="${Math.round(zeroY) + 0.5}" y2="${Math.round(zeroY) + 0.5}" stroke="${AXIS_TEXT}" stroke-width="1"/>`,
+			)
+		}
 		parts.push(`<path d="${d}" fill="none" stroke="${series.color}" stroke-width="2.5" stroke-linejoin="round"/>`)
 		const last = series.points[series.points.length - 1].y
 		finals.push({ y: yPx(last), value: last, color: series.color })
@@ -95,7 +116,7 @@ export function lineChart(opts: { title: string; series: Series[]; xMax: number;
 	finals.forEach((final, i) => {
 		parts.push(`<circle cx="${PAD.left + plotW}" cy="${final.y}" r="3.5" fill="${final.color}"/>`)
 		parts.push(
-			`<text x="${PAD.left + plotW + 8}" y="${labelYs[i] + 4}" font-family="${FONT_FAMILIES.semibold}" font-size="12" fill="${TITLE_TEXT}">${final.value}</text>`,
+			`<text x="${PAD.left + plotW + 8}" y="${labelYs[i] + 4}" font-family="${FONT_FAMILIES.semibold}" font-size="12" fill="${TITLE_TEXT}">${formatY(final.value)}</text>`,
 		)
 	})
 
