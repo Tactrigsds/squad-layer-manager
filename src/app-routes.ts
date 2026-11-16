@@ -51,6 +51,8 @@ export const routes = [
 	defRoute('/layers.bin.gz', [], 'custom'),
 	defRoute('/layer-data.json', [], 'custom'),
 	defRoute('/check-auth', [], 'custom'),
+	// the icon for a configured nav link, ?url=<the link's url> (see nav-link-icons.server.ts)
+	defRoute('/nav-link-icon', [], 'custom'),
 
 	defRoute('/orpc', [], 'custom', { websocket: true }),
 	// server agents authenticate with a per-server token, not a session cookie, so this route is unauthed and

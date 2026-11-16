@@ -39,6 +39,7 @@ import * as History from '@/systems/history.server'
 import * as Landing from '@/systems/landing.server'
 import * as LayerData from '@/systems/layer-data.server'
 import * as LayerEngine from '@/systems/layer-engine.server'
+import * as NavLinkIcons from '@/systems/nav-link-icons.server'
 import * as ApiRegistry from '@/systems/plugin-api-registry.server'
 import * as PluginsSys from '@/systems/plugins.server'
 import * as Rbac from '@/systems/rbac.server'
@@ -444,6 +445,20 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 				assertNever(ENV.NODE_ENV)
 		}
 	}
+
+	instance.get(AR.route('/nav-link-icon'), async (req, res) => {
+		const { url } = req.query as { url?: string }
+		const icon = url ? await NavLinkIcons.get(getAuthedCtx(req), url) : null
+		if (!icon) return res.code(404).send()
+		res.header('Cache-Control', 'private, max-age=86400')
+		res.header('ETag', icon.etag)
+		if (req.headers['if-none-match'] === icon.etag) return res.code(304).send()
+		// an svg icon opened directly as a page must not run scripts on SLM's origin
+		res.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+		res.header('X-Content-Type-Options', 'nosniff')
+		res.header('Content-Type', icon.contentType)
+		return res.send(icon.body)
+	})
 
 	// The history page, or its results as plain text or csv (see HQ.negotiateContentType and History.searchRaw), with
 	// the next page's url in a Link header. The same url answers all three, so it varies on Accept.
