@@ -651,7 +651,7 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 	const afterItemLinks: LL.ItemRelativeCursor[] = [{ type: 'item-relative', position: 'after', itemId: item.itemId }]
 	// what the create-vote zone covers on desktop, hidden while it shows. Phone indicators wrap onto the line below the
 	// name, clear of the zone, so they stay.
-	const underVoteZone = 'group-has-[[data-end-drop-zone]]/single-item:invisible'
+	const underVoteZone = 'group-data-[end-zone]/single-item:invisible'
 
 	return (
 		<>
@@ -668,7 +668,7 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 					ref={dragRef}
 					className={cn(
 						Typo.LayerText,
-						'group/single-item grid gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default has-[[data-end-drop-zone]]:relative',
+						'group/single-item grid gap-1.5 items-center w-full min-h-(--row) px-1 border-t border-[#1f1f21] first:border-t-0 hover:bg-white/4 cursor-default data-[end-zone]:relative',
 						'shadow-[inset_3px_0_0_transparent] data-[mutation=added]:shadow-[inset_3px_0_0_var(--ok)] data-[mutation=moved]:shadow-[inset_3px_0_0_var(--info-c)] data-[mutation=edited]:shadow-[inset_3px_0_0_var(--warn)] rtl:data-[mutation=added]:shadow-[inset_-3px_0_0_var(--ok)] rtl:data-[mutation=moved]:shadow-[inset_-3px_0_0_var(--info-c)] rtl:data-[mutation=edited]:shadow-[inset_-3px_0_0_var(--warn)]',
 						'data-[is-voting=true]:bg-[rgba(95,183,106,0.06)] data-[is-dragging=true]:opacity-50 data-[is-hovered=true]:outline-solid data-[is-hovered=true]:outline-1 data-[is-hovered=true]:outline-pri-lo',
 						isPhone ? 'grid-cols-[28px_minmax(0,1fr)_auto]' : 'grid-cols-[minmax(26px,max-content)_16px_minmax(0,1fr)_auto]',

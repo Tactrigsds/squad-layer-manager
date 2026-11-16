@@ -363,7 +363,7 @@ export function RepeatViolationDisplay(props: RepeatViolationDisplayProps) {
 	return (
 		<Item variant="default" className="w-max">
 			{props.showIcon && (
-				<ItemMedia>
+				<ItemMedia className="self-start translate-y-0.5">
 					<ConstraintViolationIcon />
 				</ItemMedia>
 			)}
