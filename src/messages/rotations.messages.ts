@@ -12,6 +12,10 @@ export const navRotations = def('Rotations')
 
 export const newRotation = def('New Rotation')
 
+export const newDetailsDialogBlurb = def(
+	'The details are kept with the new rotation. Press Create on the rotation page to create it with its layers.',
+)
+
 export const searchPlaceholder = def('Search by name or description')
 
 export const searchLabel = def('Search rotations')
@@ -66,8 +70,6 @@ export const actionFailed = def((reason: string) => ({ toast: [t('Could not chan
 
 // -------- creating and cloning --------
 
-export const newRotationTitle = def('New Rotation')
-
 export const cloneTitle = def('Clone Rotation')
 
 export const cloneBlurb = def(
@@ -82,10 +84,6 @@ export const id = def('ID')
 export const idHelp = def('Follows the name until edited. Lowercase letters, numbers, hyphens and underscores.')
 
 export const description = def('Description')
-
-export const copyFrom = def('Copy from')
-
-export const copyFromNothing = def('Nothing, start empty')
 
 export const copyTags = def('Copy rotation tags')
 
@@ -104,14 +102,6 @@ export const idTaken = def(() => ({ toast: [t('Another rotation already has this
 // -------- the editor --------
 
 export const ownerLabel = def('Owner: {owner}', (owner: string) => ({ owner }))
-
-export const editName = def('Edit name')
-
-export const editDescription = def('Edit description')
-
-export const saveDetails = def('Save')
-
-export const noDescription = def('No description.')
 
 export const layers = def('Layers ({count})', (count: number) => ({ count }))
 

@@ -41,7 +41,8 @@ export function isGeneratedSource(source: Source) {
 
 // what a list being edited belongs to: a server's queue, or a rotation's items. Both are edited with the same list
 // editor and the same ops (see SLL).
-export type ListHost = { type: 'server'; serverId: string } | { type: 'rotation'; rotationId: string }
+// 'new-rotation' is the list of a rotation that has not been created yet, which only the client editing it holds
+export type ListHost = { type: 'server'; serverId: string } | { type: 'rotation'; rotationId: string } | { type: 'new-rotation' }
 
 export const ItemIdSchema = z.string().regex(/^[a-zA-Z0-9_-]{6,24}$/)
 export type ItemId = z.infer<typeof ItemIdSchema>

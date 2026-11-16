@@ -152,6 +152,7 @@ async function recentMatchesFor(host: LL.ListHost) {
 		case 'server':
 			return await Rx.firstValueFrom(MatchHistoryClient.recentMatches$(host.serverId))
 		case 'rotation':
+		case 'new-rotation':
 			return []
 		default:
 			assertNever(host)

@@ -1,11 +1,9 @@
-import * as Form from '@tanstack/react-form'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useBlocker } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
 import React from 'react'
-import Markdown from 'react-markdown'
 
 import * as Typo from '@/components/typography'
 import {
@@ -19,12 +17,9 @@ import {
 	AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
-import { cn } from '@/lib/utils'
-import * as ValidationErrors from '@/lib/validation-errors'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as F from '@/models/filter.models'
@@ -39,20 +34,18 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { ContributorsPopover } from './contributors-popover'
+import { EditDetailsButton, EditDetailsDialog } from './edit-details-dialog'
 import EmojiDisplay from './emoji-display'
-import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
 import { CloneFilterDialog } from './filter-clone-dialog'
+import { FilterDetailsForm } from './filter-details-form'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import { FilterReferences } from './filter-references'
 import LayerTable from './layer-table'
-import { MissExemptionEditor } from './miss-exemption-editor'
+import { MarkdownDescription } from './markdown-description'
 import { PermissionDeniedTooltip, ReasonTooltip } from './permission-denied-tooltip'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Badge } from './ui/badge'
-import { Label } from './ui/label'
 import { Separator } from './ui/separator'
-import { Textarea } from './ui/textarea'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel'
 
 export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | undefined; stores: EditFrame.KeyProp }) {
@@ -60,45 +53,10 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 
 	const navigate = useNavigate()
 
-	const [editingDetails, setEditingDetails] = useState(false)
+	const [detailsOpen, setDetailsOpen] = useState(false)
 	const meta = Zus.useStore(stores.filterEditor, (s) => s.meta)
-	const colConfig = Zus.useStore(stores.filterEditor, (s) => s.layerTable.colConfig)
+
 	const presenceEvent$ = Zus.useStore(stores.filterEditor, (s) => s.presenceEvent$)
-	const form = Form.useForm({
-		defaultValues: {
-			name: meta.name,
-			description: meta.description,
-			alertMessage: meta.alertMessage,
-			emoji: meta.emoji,
-			invertedAlertMessage: meta.invertedAlertMessage,
-			invertedEmoji: meta.invertedEmoji,
-			// unknown: the recursive node type sends the form's field path types into infinite instantiation
-			missExemption: meta.missExemption as unknown,
-		},
-		// the details and the tree are one draft and one save: both go out as a single dependent batch, so
-		// the meta the server persists is the meta this form is showing
-		onSubmit: ({ value, formApi }) => {
-			EditFrame.Actions.dispatch(
-				stores,
-				{
-					code: 'set-meta',
-					patch: {
-						...value,
-						description: value.description?.trim() || null,
-						emoji: value.emoji ?? null,
-						alertMessage: value.alertMessage ?? null,
-						invertedEmoji: value.invertedEmoji ?? null,
-						invertedAlertMessage: value.invertedAlertMessage ?? null,
-						// the field's validator holds the form back until the exemption is complete
-						missExemption: value.missExemption as F.FilterNode | null,
-					},
-				},
-				{ code: 'save' },
-			)
-			formApi.reset(value)
-			setEditingDetails(false)
-		},
-	})
 
 	const loggedInUser = UsersClient.useLoggedInUser()
 
@@ -132,9 +90,9 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 	)
 
 	useBlocker({
-		enableBeforeUnload: filterModified || form.state.isDirty,
+		enableBeforeUnload: filterModified,
 		shouldBlockFn: () => {
-			if (!filterModified && !form.state.isDirty) return false
+			if (!filterModified) return false
 
 			const shouldLeave = confirm(tr.text(F_Msgs.unsavedChangesConfirm()))
 			return !shouldLeave
@@ -143,22 +101,12 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 
 	const saveBtn = React.useMemo(
 		() => (
-			<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty]}>
-				{([canSubmit, isDirty]) => {
-					return (
-						<Button
-							variant="primary"
-							onClick={() => form.handleSubmit()}
-							disabled={!canSubmit || !filterValid || (!filterModified && !isDirty) || !permitEdit}
-						>
-							<Icons.Save />
-							{tr.text(F_Msgs.save())}
-						</Button>
-					)
-				}}
-			</form.Subscribe>
+			<Button variant="primary" onClick={() => EditFrame.Actions.save(stores)} disabled={!filterValid || !filterModified || !permitEdit}>
+				<Icons.Save />
+				{tr.text(F_Msgs.save())}
+			</Button>
 		),
-		[form, filterValid, filterModified, permitEdit],
+		[stores, filterValid, filterModified, permitEdit],
 	)
 
 	const referenceCount = FilterEntityClient.useFilterReferences().get(props.entity.id)?.length ?? 0
@@ -220,293 +168,69 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 			data-draft-editors={draftEditors}
 		>
 			{cloning && <CloneFilterDialog source={props.entity} onClose={() => setCloning(false)} />}
-			<div className="flex justify-between">
-				{!editingDetails ? (
-					<div className="flex w-full flex-col space-y-2">
-						<div className="flex items-center justify-between">
-							<span className="flex items-center space-x-4">
-								{meta.emoji && (
-									<>
-										<EmojiDisplay emoji={meta.emoji} className="text-3xl" />
-										<Icons.Dot />
-									</>
-								)}
-								<h3 className={Typo.H3}>{meta.name}</h3>
+			<div className="flex w-full flex-col space-y-2">
+				<div className="flex items-center justify-between">
+					<span className="flex items-center space-x-4">
+						{meta.emoji && (
+							<>
+								<EmojiDisplay emoji={meta.emoji} className="text-3xl" />
 								<Icons.Dot />
-								<small className="font-light">{tr.text(F_Msgs.ownerLine(ownerName ?? ''))}</small>
-								<Icons.Dot />
-								<Button
-									aria-label={tr.text(F_Msgs.editDetails())}
-									disabled={!permitEdit}
-									onClick={() => setEditingDetails(true)}
-									variant="ghost"
-									size="icon"
-								>
-									<Icons.Edit />
-								</Button>
-							</span>
-							<span className="flex h-min items-center space-x-2 self-end">
-								<UserPresencePanel
-									sourcePresenceFn={sortEditingPresence}
-									matchActivity={UP.Trans.onFilter(props.entity.id).match}
-									statusActivities={UP.FILTER_PAGE_ACTIVITIES}
-									event$={presenceEvent$}
-									className="min-w-0"
-								/>
-								{loggedInUserRole === 'owner' && permitEdit && (
-									<Badge variant="outline" className="text-nowrap border-2 border-primary">
-										{tr.text(F_Msgs.accessOwner())}
-									</Badge>
-								)}
-								{loggedInUserRole === 'contributor' && (
-									<Badge variant="outline" className="text-nowrap border-2 border-info">
-										{tr.text(F_Msgs.accessContributor())}
-									</Badge>
-								)}
-								{!permitEdit && (
-									<Badge variant="outline" className="text-nowrap border-2 border-destructive">
-										{tr.text(F_Msgs.accessNone())}
-									</Badge>
-								)}
-								{permitWriteAll && (
-									<Badge variant="outline" className="border-success text-nowrap border-2">
-										{tr.text(F_Msgs.accessAllFilters())}
-									</Badge>
-								)}
-								<FilterContributors
-									filterId={props.entity.id}
-									canManage={permitEdit && (loggedInUserRole === 'owner' || permitWriteAll)}
-								>
-									<Button variant="outline">
-										<Icons.Users />
-										{tr.text(F_Msgs.showContributors())}
-									</Button>
-								</FilterContributors>
-							</span>
-						</div>
-						<Separator orientation="horizontal" />
-						<DescriptionDisplay description={meta.description} />
-						<FilterReferences filterId={props.entity.id} />
-					</div>
-				) : (
-					<div className="space-y-4 w-full">
-						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-							{/* Left Column - Form Fields */}
-							<div className="space-y-6">
-								{/* Name Section */}
-								<div className="space-y-2">
-									<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
-										{(field) => {
-											const label = tr.text(F_Msgs.nameLabel())
-											return (
-												<div className="flex flex-col space-y-2">
-													<Label htmlFor={field.name}>{label}</Label>
-													<Input
-														id={field.name}
-														placeholder={label}
-														defaultValue={field.state.value}
-														onBlur={field.handleBlur}
-														onChange={(e) => field.handleChange(e.target.value)}
-													/>
-													{field.state.meta.errors.length > 0 && (
-														<Alert variant="destructive">
-															<AlertTitle>{label}:</AlertTitle>
-															<AlertDescription>
-																{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
-															</AlertDescription>
-														</Alert>
-													)}
-												</div>
-											)
-										}}
-									</form.Field>
-								</div>
-
-								{/* Match Indicator Section */}
-								<div className="border rounded-lg p-4 space-y-4">
-									<h3 className="font-semibold text-sm">{tr.text(F_Msgs.matchIndicator())}</h3>
-									<div className="flex gap-4">
-										<form.Field name="emoji">
-											{(field) => {
-												const label = tr.text(F_Msgs.emojiLabel())
-												return (
-													<div className="flex flex-col space-y-2">
-														<Label htmlFor={field.name}>{label}</Label>
-														<EmojiPickerPopover
-															value={field.state.value ?? undefined}
-															onSelect={(id) => {
-																field.handleChange(id?.trim() ?? null)
-															}}
-															disabled={false}
-														/>
-														{field.state.meta.errors.length > 0 && (
-															<Alert variant="destructive">
-																<AlertTitle>{label}:</AlertTitle>
-																<AlertDescription>
-																	{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
-																</AlertDescription>
-															</Alert>
-														)}
-													</div>
-												)
-											}}
-										</form.Field>
-										<form.Field name="alertMessage" validators={{ onChange: F.AlertMessageSchema.nullable() }}>
-											{(field) => {
-												const label = tr.text(F_Msgs.alertMessageLabel())
-												return (
-													<div className="flex flex-col space-y-2 grow">
-														<Label htmlFor={field.name}>{label}</Label>
-														<Textarea
-															id={field.name}
-															placeholder={label}
-															defaultValue={field.state.value ?? ''}
-															onBlur={field.handleBlur}
-															onChange={(e) => field.setValue(e.target.value.trim() || null)}
-															rows={3}
-														/>
-														{field.state.meta.errors.length > 0 && (
-															<Alert variant="destructive">
-																<AlertTitle>{label}:</AlertTitle>
-																<AlertDescription>
-																	{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
-																</AlertDescription>
-															</Alert>
-														)}
-													</div>
-												)
-											}}
-										</form.Field>
-									</div>
-								</div>
-
-								{/* Miss Indicator Section */}
-								<div className="border rounded-lg p-4 space-y-4">
-									<h3 className="font-semibold text-sm">{tr.text(F_Msgs.missIndicator())}</h3>
-									<div className="flex gap-4">
-										<form.Field name="invertedEmoji">
-											{(field) => {
-												const label = tr.text(F_Msgs.emojiLabel())
-												return (
-													<div className="flex flex-col space-y-2">
-														<Label htmlFor={field.name}>{label}</Label>
-														<EmojiPickerPopover
-															value={field.state.value ?? undefined}
-															onSelect={(id) => {
-																field.handleChange(id ?? null)
-															}}
-															disabled={false}
-														/>
-														{field.state.meta.errors.length > 0 && (
-															<Alert variant="destructive">
-																<AlertTitle>{label}:</AlertTitle>
-																<AlertDescription>
-																	{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
-																</AlertDescription>
-															</Alert>
-														)}
-													</div>
-												)
-											}}
-										</form.Field>
-										<form.Field name="invertedAlertMessage" validators={{ onChange: F.AlertMessageSchema.nullable() }}>
-											{(field) => {
-												const label = tr.text(F_Msgs.alertMessageLabel())
-												return (
-													<div className="flex flex-col space-y-2 grow">
-														<Label htmlFor={field.name}>{label}</Label>
-														<Textarea
-															id={field.name}
-															placeholder={label}
-															defaultValue={field.state.value ?? ''}
-															onBlur={field.handleBlur}
-															onChange={(e) => field.setValue(e.target.value.trim() || null)}
-															rows={3}
-														/>
-														{field.state.meta.errors.length > 0 && (
-															<Alert variant="destructive">
-																<AlertTitle>{label}:</AlertTitle>
-																<AlertDescription>
-																	{ValidationErrors.formatFieldErrors(field.state.meta.errors)}
-																</AlertDescription>
-															</Alert>
-														)}
-													</div>
-												)
-											}}
-										</form.Field>
-									</div>
-									<form.Field
-										name="missExemption"
-										validators={{
-											onChange: ({ value }) =>
-												value && !F.isValidFilterNode(value as F.EditableFilterNode)
-													? tr.text(F_Msgs.missExemptionIncomplete())
-													: undefined,
-										}}
-									>
-										{(field) => (
-											<div className="flex flex-col gap-2">
-												<MissExemptionEditor
-													defaultValue={meta.missExemption}
-													onChange={field.handleChange}
-													colConfig={colConfig}
-												/>
-												{field.state.meta.errors.length > 0 && (
-													<Alert variant="destructive">
-														<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-													</Alert>
-												)}
-											</div>
-										)}
-									</form.Field>
-								</div>
-							</div>
-
-							{/* Right Column - Description */}
-							<div className="flex gap-2">
-								<form.Field name="description" validators={{ onChange: F.DescriptionSchema.nullable() }}>
-									{(field) => {
-										const label = tr.text(F_Msgs.descriptionLabel())
-										return (
-											<div className="flex flex-col space-y-2 grow">
-												<Label htmlFor={field.name}>{label}</Label>
-												<Textarea
-													id={field.name}
-													placeholder={label}
-													defaultValue={field.state.value ?? ''}
-													onBlur={field.handleBlur}
-													onChange={(e) => field.handleChange(e.target.value?.trim() || null)}
-													rows={15}
-													className="font-mono text-sm grow"
-												/>
-												{field.state.meta.errors.length > 0 && (
-													<Alert variant="destructive">
-														<AlertTitle>{label}:</AlertTitle>
-														<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-													</Alert>
-												)}
-											</div>
-										)
-									}}
-								</form.Field>
-								<Button
-									aria-label={tr.text(F_Msgs.cancelEditingDetails())}
-									className="self-start"
-									variant="ghost"
-									size="icon"
-									onClick={() => {
-										form.reset()
-										return setEditingDetails(false)
-									}}
-								>
-									<Icons.X />
-								</Button>
-							</div>
-						</div>
-					</div>
-				)}
+							</>
+						)}
+						<h3 className={Typo.H3}>{meta.name}</h3>
+						<Icons.Dot />
+						<small className="font-light">{tr.text(F_Msgs.ownerLine(ownerName ?? ''))}</small>
+						<Icons.Dot />
+						<EditDetailsButton denied={canEditRes} onClick={() => setDetailsOpen(true)} />
+					</span>
+					<span className="flex h-min items-center space-x-2 self-end">
+						<UserPresencePanel
+							sourcePresenceFn={sortEditingPresence}
+							matchActivity={UP.Trans.onFilter(props.entity.id).match}
+							statusActivities={UP.FILTER_PAGE_ACTIVITIES}
+							event$={presenceEvent$}
+							className="min-w-0"
+						/>
+						{loggedInUserRole === 'owner' && permitEdit && (
+							<Badge variant="outline" className="text-nowrap border-2 border-primary">
+								{tr.text(F_Msgs.accessOwner())}
+							</Badge>
+						)}
+						{loggedInUserRole === 'contributor' && (
+							<Badge variant="outline" className="text-nowrap border-2 border-info">
+								{tr.text(F_Msgs.accessContributor())}
+							</Badge>
+						)}
+						{!permitEdit && (
+							<Badge variant="outline" className="text-nowrap border-2 border-destructive">
+								{tr.text(F_Msgs.accessNone())}
+							</Badge>
+						)}
+						{permitWriteAll && (
+							<Badge variant="outline" className="border-success text-nowrap border-2">
+								{tr.text(F_Msgs.accessAllFilters())}
+							</Badge>
+						)}
+						<FilterContributors filterId={props.entity.id} canManage={permitEdit && (loggedInUserRole === 'owner' || permitWriteAll)}>
+							<Button variant="outline">
+								<Icons.Users />
+								{tr.text(F_Msgs.showContributors())}
+							</Button>
+						</FilterContributors>
+					</span>
+				</div>
+				<Separator orientation="horizontal" />
+				<MarkdownDescription description={meta.description} />
+				<FilterReferences filterId={props.entity.id} />
 			</div>
+			<EditDetailsDialog
+				open={detailsOpen}
+				onOpenChange={setDetailsOpen}
+				description={tr.text(F_Msgs.detailsDialogBlurb())}
+				className="max-w-5xl"
+			>
+				<FilterDetailsForm stores={stores} creating={false} onClose={() => setDetailsOpen(false)} />
+			</EditDetailsDialog>
 			<FilterValidationErrorDisplay stores={stores} />
 			{filterCard}
 			<LayerTable stores={{ layerTable: stores.filterEditor }} />
@@ -607,50 +331,4 @@ function DeleteFilterDialog(props: { onDelete: () => void; children: React.React
 			</AlertDialogContent>
 		</AlertDialog>
 	)
-}
-
-function DescriptionDisplay({ description }: { description?: string | null }) {
-	if (!description) return null
-	description = description.trim()
-
-	return (
-		<div>
-			<Markdown components={markdownComponents}>{description}</Markdown>
-		</div>
-	)
-}
-
-const markdownComponents = {
-	h1: ({ ...props }: React.ComponentPropsWithoutRef<'h1'>) => <h1 {...props} className={cn('text-xl font-semibold mt-4 mb-2', Typo.H3)} />,
-	h2: ({ ...props }: React.ComponentPropsWithoutRef<'h2'>) => <h2 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typo.H3)} />,
-	h3: ({ ...props }: React.ComponentPropsWithoutRef<'h3'>) => <h3 {...props} className={cn('text-lg font-medium mt-3 mb-2', Typo.H3)} />,
-	h4: ({ ...props }: React.ComponentPropsWithoutRef<'h4'>) => <h4 {...props} className={cn('text-base font-medium mt-2 mb-1', Typo.H4)} />,
-	p: ({ ...props }: React.ComponentPropsWithoutRef<'p'>) => <p {...props} className="py-2" />,
-	ul: ({ ...props }: React.ComponentPropsWithoutRef<'ul'>) => <ul {...props} className="list-disc ps-6 py-2" />,
-	ol: ({ ...props }: React.ComponentPropsWithoutRef<'ol'>) => <ol {...props} className="list-decimal ps-6 py-2" />,
-	li: ({ ...props }: React.ComponentPropsWithoutRef<'li'>) => <li {...props} className="my-1" />,
-	blockquote: ({ ...props }: React.ComponentPropsWithoutRef<'blockquote'>) => (
-		<blockquote {...props} className={cn('border-s-4 border-line-soft py-2 ps-4 italic', Typo.Blockquote)} />
-	),
-	code: ({ inline, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) =>
-		inline ? (
-			<code {...props} className="rounded bg-panel-hi px-1 py-0.5 font-mono text-sm dark:bg-ground ltr-isolate" />
-		) : (
-			<code {...props} className="my-3 block overflow-x-auto rounded-md bg-panel-hi p-3 font-mono text-sm dark:bg-ground ltr-isolate" />
-		),
-	a: ({ ...props }: React.ComponentPropsWithoutRef<'a'>) => <a {...props} className={Typo.Link} />,
-	hr: ({ ...props }: React.ComponentPropsWithoutRef<'hr'>) => <hr {...props} className="my-6 border-line-soft dark:border-gray-700" />,
-	img: ({ ...props }: React.ComponentPropsWithoutRef<'img'>) => <img {...props} className="my-4 h-auto max-w-full rounded-md" />,
-	table: ({ ...props }: React.ComponentPropsWithoutRef<'table'>) => (
-		<div className="my-4 overflow-x-auto">
-			<table {...props} className="min-w-full divide-y divide-gray-300 dark:divide-gray-700" />
-		</div>
-	),
-	thead: ({ ...props }: React.ComponentPropsWithoutRef<'thead'>) => <thead {...props} className="bg-panel-hi dark:bg-ground" />,
-	tbody: ({ ...props }: React.ComponentPropsWithoutRef<'tbody'>) => (
-		<tbody {...props} className="divide-y divide-gray-200 dark:divide-gray-800" />
-	),
-	tr: ({ ...props }: React.ComponentPropsWithoutRef<'tr'>) => <tr {...props} className="hover:bg-panel-hi dark:hover:bg-ground" />,
-	th: ({ ...props }: React.ComponentPropsWithoutRef<'th'>) => <th {...props} className="px-4 py-3 text-start text-sm font-semibold" />,
-	td: ({ ...props }: React.ComponentPropsWithoutRef<'td'>) => <td {...props} className="px-4 py-3 text-sm" />,
 }

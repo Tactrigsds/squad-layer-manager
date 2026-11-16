@@ -20,6 +20,9 @@ export const RotationIdSchema = z
 	.regex(/^[a-z0-9_-]+$/, { error: 'Must contain only lowercase letters, numbers, hyphens, and underscores' })
 export type RotationId = z.infer<typeof RotationIdSchema>
 
+// the ID of a rotation being created, which may not be `new`: /rotations/new is the page that creates one
+export const NewRotationIdSchema = RotationIdSchema.refine((id) => id !== 'new', { error: 'This ID is reserved' })
+
 export const NameSchema = z.string().trim().min(3).max(128)
 export const DescriptionSchema = F.DescriptionSchema
 
@@ -43,11 +46,10 @@ export const RotationSchema = z.object({
 export type Rotation = z.infer<typeof RotationSchema>
 
 // the fields set when a rotation is created; the rest are filled in by the server
-export const NewRotationSchema = RotationSchema.pick({ id: true, name: true, description: true, repeatRulesetId: true, tags: true }).extend(
-	{
-		items: LL.ListSchema.optional(),
-	},
-)
+export const NewRotationSchema = RotationSchema.pick({ name: true, description: true, repeatRulesetId: true, tags: true }).extend({
+	id: NewRotationIdSchema,
+	items: LL.ListSchema.optional(),
+})
 export type NewRotation = z.infer<typeof NewRotationSchema>
 
 // the fields edited outside the shared list draft, which save as soon as they are changed
@@ -65,7 +67,7 @@ export type UpdatePatch = z.infer<typeof UpdatePatchSchema>
 
 export const CloneInputSchema = z.object({
 	sourceId: RotationIdSchema,
-	id: RotationIdSchema,
+	id: NewRotationIdSchema,
 	name: NameSchema,
 	copyTags: z.boolean(),
 	copyContributors: z.boolean(),

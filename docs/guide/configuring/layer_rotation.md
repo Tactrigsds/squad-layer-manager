@@ -152,6 +152,10 @@ change that needs saving. Once another admin discards the queue's edits, there i
 
 ## Saved rotations
 
+To create a rotation, press _New Rotation_ on the _Rotations_ page, and enter its name, ID and description in the
+dialog that opens. Close the dialog to add layers first, and open it again with the pencil beside the name. Press
+_Create_ to save the rotation with its layers. Other admins cannot see a new rotation's layers until it is created.
+
 Creating a rotation needs `rotations:create`. Whoever created a rotation can edit it, along with the users and roles
 added to it as contributors. `rotations:write-all` allows editing every rotation. Rotation tags, which group rotations on
 the _Rotations_ page, are defined on the settings page under _Rotation tags_.

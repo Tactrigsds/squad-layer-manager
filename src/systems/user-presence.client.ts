@@ -54,6 +54,8 @@ function getCurrentLayerList(host: LL.ListHost): LL.Item[] {
 		}
 		case 'rotation':
 			return frameManager.peekState(RotationEditorFrame.frame, RotationEditorFrame.createInput(host.rotationId))?.queue.layerList ?? []
+		case 'new-rotation':
+			return frameManager.peekState(RotationEditorFrame.frame, RotationEditorFrame.createInput(null))?.queue.layerList ?? []
 		default:
 			assertNever(host)
 	}
@@ -66,6 +68,8 @@ function ensureListHost(host: LL.ListHost): ListHostPrt.Key {
 			return frameManager.ensureSetup(SquadServerFrame.frame, SquadServerFrame.createInput(host.serverId))
 		case 'rotation':
 			return frameManager.ensureSetup(RotationEditorFrame.frame, RotationEditorFrame.createInput(host.rotationId))
+		case 'new-rotation':
+			return frameManager.ensureSetup(RotationEditorFrame.frame, RotationEditorFrame.createInput(null))
 		default:
 			assertNever(host)
 	}
@@ -383,6 +387,14 @@ export namespace Actions {
 
 	export function ensureEditingList(host: LL.ListHost) {
 		ensureEditing(UP.Trans.editingList(host))
+	}
+
+	export function ensureOnNewRotation() {
+		const config = ConfigClient.getConfig()
+		if (!config) return
+		const activity = Store.getState().presence.get(config.wsClientId)?.activityState ?? null
+		if (UP.Trans.onNewRotation.match(activity)) return
+		updateActivity({ code: 'enter-new-rotation' })
 	}
 
 	export function ensureOnRotation(rotationId: string) {

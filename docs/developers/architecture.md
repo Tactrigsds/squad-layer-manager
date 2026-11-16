@@ -592,6 +592,11 @@ save. `LL.ListHost` names what a list belongs to, a server or a rotation. The li
 supplies: its settings, its repeat rules and its item statuses. Server-only parts of a row, such as vote state and the
 next-layer badge, render only for a server host.
 
+A rotation that has not been created yet, on `/rotations/new`, has the host `new-rotation`. No server session holds its
+list: `LayerQueuePrt` applies its ops to the local session and never sends them, as the filter editor does for a filter
+that has not been created yet. Its client is present in the `new-rotation` place, so the add-layers and vote dialogs
+open on it the way they open on a saved rotation's page. Create sends the list with the rotation's details.
+
 ### Undo and redo
 
 Nothing can be taken back out of an ODSM timeline, so undo is a new op that reverses an earlier one, sent like any

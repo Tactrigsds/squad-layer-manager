@@ -22,6 +22,7 @@ import { Route as AppFiltersFilterIdRouteImport } from './routes/_app/filters/$f
 import { Route as AppFiltersNewRouteImport } from './routes/_app/filters/new'
 import { Route as AppRotationsIndexRouteImport } from './routes/_app/rotations/index'
 import { Route as AppRotationsRotationIdRouteImport } from './routes/_app/rotations/$rotationId'
+import { Route as AppRotationsNewRouteImport } from './routes/_app/rotations/new'
 import { Route as AppServersIndexRouteImport } from './routes/_app/servers.index'
 import { Route as AppServersServerIdRouteImport } from './routes/_app/servers.$serverId'
 import { Route as LayersLayerIdTabRouteImport } from './routes/layers.$layerId.$tab'
@@ -90,6 +91,11 @@ const AppRotationsRotationIdRoute = AppRotationsRotationIdRouteImport.update({
   path: '/rotations/$rotationId',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppRotationsNewRoute = AppRotationsNewRouteImport.update({
+  id: '/rotations/new',
+  path: '/rotations/new',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppServersIndexRoute = AppServersIndexRouteImport.update({
   id: '/servers/',
   path: '/servers/',
@@ -117,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
   '/rotations/$rotationId': typeof AppRotationsRotationIdRoute
+  '/rotations/new': typeof AppRotationsNewRoute
   '/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/filters/': typeof AppFiltersIndexRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByTo {
   '/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/filters/new': typeof AppFiltersNewRoute
   '/rotations/$rotationId': typeof AppRotationsRotationIdRoute
+  '/rotations/new': typeof AppRotationsNewRoute
   '/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/filters': typeof AppFiltersIndexRoute
@@ -153,6 +161,7 @@ export interface FileRoutesById {
   '/_app/filters/$filterId': typeof AppFiltersFilterIdRoute
   '/_app/filters/new': typeof AppFiltersNewRoute
   '/_app/rotations/$rotationId': typeof AppRotationsRotationIdRoute
+  '/_app/rotations/new': typeof AppRotationsNewRoute
   '/_app/servers/$serverId': typeof AppServersServerIdRoute
   '/layers/$layerId/$tab': typeof LayersLayerIdTabRoute
   '/_app/filters/': typeof AppFiltersIndexRoute
@@ -172,6 +181,7 @@ export interface FileRouteTypes {
     | '/filters/$filterId'
     | '/filters/new'
     | '/rotations/$rotationId'
+    | '/rotations/new'
     | '/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/filters/'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/filters/$filterId'
     | '/filters/new'
     | '/rotations/$rotationId'
+    | '/rotations/new'
     | '/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/filters'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '/_app/filters/$filterId'
     | '/_app/filters/new'
     | '/_app/rotations/$rotationId'
+    | '/_app/rotations/new'
     | '/_app/servers/$serverId'
     | '/layers/$layerId/$tab'
     | '/_app/filters/'
@@ -313,6 +325,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRotationsRotationIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/rotations/new': {
+      id: '/_app/rotations/new'
+      path: '/rotations/new'
+      fullPath: '/rotations/new'
+      preLoaderRoute: typeof AppRotationsNewRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/servers/': {
       id: '/_app/servers/'
       path: '/servers'
@@ -347,6 +366,7 @@ interface AppRouteRouteChildren {
   AppFiltersFilterIdRoute: typeof AppFiltersFilterIdRoute
   AppFiltersNewRoute: typeof AppFiltersNewRoute
   AppRotationsRotationIdRoute: typeof AppRotationsRotationIdRoute
+  AppRotationsNewRoute: typeof AppRotationsNewRoute
   AppServersServerIdRoute: typeof AppServersServerIdRoute
   AppFiltersIndexRoute: typeof AppFiltersIndexRoute
   AppRotationsIndexRoute: typeof AppRotationsIndexRoute
@@ -363,6 +383,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppFiltersFilterIdRoute: AppFiltersFilterIdRoute,
   AppFiltersNewRoute: AppFiltersNewRoute,
   AppRotationsRotationIdRoute: AppRotationsRotationIdRoute,
+  AppRotationsNewRoute: AppRotationsNewRoute,
   AppServersServerIdRoute: AppServersServerIdRoute,
   AppFiltersIndexRoute: AppFiltersIndexRoute,
   AppRotationsIndexRoute: AppRotationsIndexRoute,

@@ -289,10 +289,6 @@ function NoteDialogBody(props: { state: Exclude<Editing, null>; onClose: () => v
 // a rotation's notes are anonymous, so anyone who may edit the rotation may change any of them
 function useCanManageNote(host: LL.ListHost, note: LNote.Note) {
 	const user = UsersClient.useLoggedInUser()
-	const manageAllDenied = RbacClient.usePermsCheck(
-		host.type === 'server'
-			? RBAC.perm('queue:manage-all-notes', { serverId: host.serverId })
-			: RBAC.getWritePermReqForRotation(host.rotationId),
-	)
+	const manageAllDenied = RbacClient.usePermsCheck(RBAC.getManageAllNotesPermReqForList(host))
 	return LNote.isAuthor(note, user?.discordId) || manageAllDenied === null
 }
