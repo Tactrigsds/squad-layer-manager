@@ -45,5 +45,8 @@ export namespace Ctx {
 		// While a roll is being recorded, the writes of the queue head to the game server that its saves would make.
 		// The roll runs them once it has released its locks (see onNewGameDuringRoll). Null otherwise.
 		deferredServerSyncs: (() => Promise<void>)[] | null
+
+		// MAP_SETs published on the server's event$ that the queue has not yet reconciled with its head
+		mapSetsAwaitingSync: number
 	}
 }

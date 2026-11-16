@@ -1019,7 +1019,9 @@ a file whose tests differ only in starting state re-arranges one running app bet
 **Waiting on the app:** the app learns the roster from a polled `ListPlayers` and the match from a tailed log, so a
 test that acts in-game has to wait for it to catch up. Tests ask the app instead of waiting out an interval: the
 control socket's `sync-roster` fetches the roster at once and answers when the event pipeline holds it, and
-`ingest-status` reports how far the pipeline has read the log. In the browser, src/systems/readiness.client.ts marks
+`ingest-status` reports how far the pipeline has read the log. `queue-settled` answers once the queue has taken up
+what the pipeline reported, such as the next layer the server held when the app connected, so that an edit made
+after it is not overwritten. In the browser, src/systems/readiness.client.ts marks
 `<html>` with `data-ready` and `data-app-ready` as the client finishes starting. Poll interval, worker count and
 per-boot cost all trade against each other, so none should be changed without re-measuring the whole suite.
 

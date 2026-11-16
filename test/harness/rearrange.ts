@@ -1,5 +1,6 @@
 import superjson from 'superjson'
 
+import { assertNever } from '@/lib/type-guards'
 import type * as BB from '@/models/backburner.models'
 import type * as LL from '@/models/layer-list.models'
 import type * as RRS from '@/models/repeat-rulesets.models'
@@ -8,7 +9,7 @@ import * as SLL from '@/models/shared-layer-list.models'
 
 import { type AppFixture, TEST_REPEAT_RULESET_ID } from './app-fixture'
 import { savedBackburner, savedGlobalSettings, savedQueue, savedServerSettings } from './inspect'
-import { createOrpcClient, firstYield, type TestOrpcClient } from './orpc-client'
+import { createOrpcClient, type TestOrpcClient } from './orpc-client'
 
 // Re-arranges a running app the way createAppFixture arranges one before boot, so tests whose only difference is
 // their starting queue, rules or settings can share one boot. Every change goes through the procedures the
@@ -59,6 +60,9 @@ export async function rearrange(app: AppFixture, opts: RearrangeOptions): Promis
 			}
 		})
 	}
+	// right after boot the app is still adopting the server's next layer into the queue, which would skip or
+	// displace the edits below
+	if (opts.layerQueue || opts.backburner) await app.waitForQueueSettled()
 	if (opts.layerQueue) await replaceQueue(app, client, opts.layerQueue)
 	if (opts.backburner) await replaceBackburner(app, client, opts.backburner)
 }
@@ -95,36 +99,83 @@ async function updateServerSettings(app: AppFixture, client: TestOrpcClient, mut
 	if (res.code !== 'ok') throw new Error(`server settings update refused: ${JSON.stringify(res)}`)
 }
 
-async function queueState(app: AppFixture, client: TestOrpcClient): Promise<SLL.State> {
-	const first = await firstYield((signal) => client.layerQueue.watchOps({ serverId: app.serverId }, { signal }), {
-		label: 'the queue session',
-	})
-	if (first.code !== 'init') throw new Error(`expected the queue session's init, got ${first.code}`)
-	return first.state
-}
+const QUEUE_UPDATE_TIMEOUT_MS = 15_000
 
-async function dispatch(app: AppFixture, client: TestOrpcClient, op: SLL.Operation) {
-	const res = await client.layerQueue.dispatchOp({ serverId: app.serverId, op })
-	if (res.code !== 'ok') throw new Error(`${op.op} refused: ${JSON.stringify(res)}`)
+// The admin client's queue session, watched for the length of one step. The app answers dispatchOp with ok for an
+// op it then skips, such as one authored against an edit window that has since closed, and reports the skip only on
+// the originating client's watchOps stream. Each dispatch therefore waits there for its op's ack or rejection.
+async function openQueueSession(app: AppFixture, client: TestOrpcClient) {
+	const ac = new AbortController()
+	const stream = await client.layerQueue.watchOps({ serverId: app.serverId }, { signal: ac.signal })
+	const updates = stream[Symbol.asyncIterator]()
+
+	async function nextUpdate(label: string) {
+		let timer: NodeJS.Timeout | undefined
+		const timeout = new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new Error(`timed out waiting for ${label}`)), QUEUE_UPDATE_TIMEOUT_MS)
+		})
+		try {
+			const res = await Promise.race([updates.next(), timeout])
+			if (res.done) throw new Error(`the queue session ended while waiting for ${label}`)
+			return res.value
+		} finally {
+			clearTimeout(timer)
+		}
+	}
+
+	const first = await nextUpdate("the queue session's init")
+	if (first.code !== 'init') throw new Error(`expected the queue session's init, got ${first.code}`)
+
+	async function dispatch(op: SLL.Operation) {
+		const res = await client.layerQueue.dispatchOp({ serverId: app.serverId, op })
+		if (res.code !== 'ok') throw new Error(`${op.op} refused: ${JSON.stringify(res)}`)
+		while (true) {
+			const update = await nextUpdate(`the app to take up ${op.op}`)
+			switch (update.code) {
+				case 'rejected':
+					if (update.opIds.includes(op.opId)) throw new Error(`the app skipped ${op.op}: ${update.reason}`)
+					break
+				case 'ack':
+					if (update.opIds.includes(op.opId)) return
+					break
+				case 'op':
+					if (update.ops.some((o) => o.opId === op.opId)) return
+					break
+				case 'init':
+					break
+				case 'err:permission-denied':
+				case 'err:server-not-loaded':
+					throw new Error(`the queue session failed while waiting for ${op.op}: ${JSON.stringify(update)}`)
+				default:
+					assertNever(update)
+			}
+		}
+	}
+
+	return { state: first.state, dispatch, close: () => ac.abort() }
 }
 
 // Swaps the whole draft, including anything a previous test left unsaved, for `list` in one op, then saves it.
 async function replaceQueue(app: AppFixture, client: TestOrpcClient, list: LL.List) {
-	const state = await queueState(app, client)
-	const userId = app.adminUser.discordId
-	const source: LL.Source = { type: 'manual', userId }
-	const editWindowSeqId = state.editWindowSeqId
-	await dispatch(app, client, {
-		op: 'add',
-		opId: SLL.createOpId(),
-		userId,
-		source,
-		editWindowSeqId,
-		items: list,
-		index: { outerIndex: 0, innerIndex: null },
-		clearItemIds: state.list.map((item) => item.itemId),
-	})
-	await dispatch(app, client, { op: 'save', opId: SLL.createOpId(), userId, source, editWindowSeqId })
+	const session = await openQueueSession(app, client)
+	try {
+		const userId = app.adminUser.discordId
+		const source: LL.Source = { type: 'manual', userId }
+		const editWindowSeqId = session.state.editWindowSeqId
+		await session.dispatch({
+			op: 'add',
+			opId: SLL.createOpId(),
+			userId,
+			source,
+			editWindowSeqId,
+			items: list,
+			index: { outerIndex: 0, innerIndex: null },
+			clearItemIds: session.state.list.map((item) => item.itemId),
+		})
+		await session.dispatch({ op: 'save', opId: SLL.createOpId(), userId, source, editWindowSeqId })
+	} finally {
+		session.close()
+	}
 	const want = list.map((item) => item.itemId).join()
 	await app.waitFor(
 		() =>
@@ -136,18 +187,22 @@ async function replaceQueue(app: AppFixture, client: TestOrpcClient, list: LL.Li
 }
 
 async function replaceBackburner(app: AppFixture, client: TestOrpcClient, items: BB.BackburnerItem[]) {
-	const state = await queueState(app, client)
-	const userId = app.adminUser.discordId
-	const source: LL.Source = { type: 'manual', userId }
-	const editWindowSeqId = state.backburnerEditWindowSeqId
-	const stale = state.backburner.map((item) => item.itemId)
-	if (stale.length > 0) {
-		await dispatch(app, client, { op: 'backburner-remove', opId: SLL.createOpId(), userId, source, editWindowSeqId, itemIds: stale })
+	const session = await openQueueSession(app, client)
+	try {
+		const userId = app.adminUser.discordId
+		const source: LL.Source = { type: 'manual', userId }
+		const editWindowSeqId = session.state.backburnerEditWindowSeqId
+		const stale = session.state.backburner.map((item) => item.itemId)
+		if (stale.length > 0) {
+			await session.dispatch({ op: 'backburner-remove', opId: SLL.createOpId(), userId, source, editWindowSeqId, itemIds: stale })
+		}
+		for (const item of items) {
+			await session.dispatch({ op: 'backburner-add', opId: SLL.createOpId(), userId, source, editWindowSeqId, item })
+		}
+		await session.dispatch({ op: 'backburner-save', opId: SLL.createOpId(), userId, source })
+	} finally {
+		session.close()
 	}
-	for (const item of items) {
-		await dispatch(app, client, { op: 'backburner-add', opId: SLL.createOpId(), userId, source, editWindowSeqId, item })
-	}
-	await dispatch(app, client, { op: 'backburner-save', opId: SLL.createOpId(), userId, source })
 	const want = items.map((item) => item.itemId).join()
 	await app.waitFor(
 		() =>

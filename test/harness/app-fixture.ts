@@ -254,6 +254,10 @@ export type AppFixture = {
 	waitForRosterSync: (opts?: { timeoutMs?: number }) => Promise<void>
 	// resolves once the app's event pipeline has taken up every line the emulated server has logged so far
 	waitForLogIngested: (opts?: { timeoutMs?: number }) => Promise<void>
+	// resolves once the app's queue has caught up with what the emulated server reported, so an edit made now is not
+	// skipped or rewritten by the app's own reconciliation. Right after boot that includes adopting the server's next
+	// layer. See `queue-settled` in control-socket.server.ts.
+	waitForQueueSettled: (opts?: { timeoutMs?: number }) => Promise<void>
 	// resolves once the app's rcon connection to the emulated server is up, or down
 	waitForRconConnected: (connected: boolean, opts?: { timeoutMs?: number }) => Promise<void>
 	// Resolves once the emulated server's next layer is the head of the app's queue. The server rolls to
@@ -861,6 +865,13 @@ export async function createAppFixture(opts: AppFixtureOptions = {}): Promise<Ap
 				},
 				{ label: 'the app to take up what the server logged', timeoutMs: waitOpts?.timeoutMs ?? 20_000, intervalMs: 50 },
 			)
+		},
+		waitForQueueSettled: async (waitOpts) => {
+			// retried while the server is still loading
+			await waitFor(async () => (await fixture.control('queue-settled', { serverId })).code === 'ok' || null, {
+				label: 'the queue to settle',
+				timeoutMs: waitOpts?.timeoutMs ?? 25_000,
+			})
 		},
 		waitForRconConnected: async (connected, waitOpts) => {
 			await waitFor(
