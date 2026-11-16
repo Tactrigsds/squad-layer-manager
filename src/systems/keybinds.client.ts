@@ -168,6 +168,9 @@ let lastEngaged: { element: Element; scope: Element | null } | null = null
 
 function onEngage(e: Event) {
 	if (!(e.target instanceof Element)) return
+	// a press on something unfocusable focuses its nearest focusable ancestor, such as a draggable window's frame. The
+	// press is the more specific of the two, so focus arriving at its ancestor does not replace it
+	if (e.type === 'focusin' && lastEngaged?.element.isConnected && e.target.contains(lastEngaged.element)) return
 	const scope = e.target.closest(`[${SCOPE_ATTR}], [${TYPE_ATTR}], [${INHERIT_ATTR}]`)
 	const inherited = scope?.getAttribute(INHERIT_ATTR)
 	lastEngaged = { element: e.target, scope: inherited ? (instances.get(inherited)?.element ?? null) : scope }
@@ -284,10 +287,17 @@ function onKeyDown(e: KeyboardEvent) {
 		if (import.meta.env.DEV) warnIfUnexplained(e, target, candidates)
 		return
 	}
-	const chains = !target || target === document.body || target === document.documentElement ? focuslessChains() : [chainFrom(target) ?? []]
+	const chains =
+		!target || target === document.body || target === document.documentElement ? focuslessChains() : [chainFrom(keyOrigin(target)) ?? []]
 	for (const chain of chains) {
 		if (walk(e, chain, candidates) !== 'unhandled') return
 	}
+}
+
+// the focused element, or the element last pressed inside it, which onEngage keeps when focus lands on its ancestor
+function keyOrigin(focused: Element): Element {
+	const engaged = engagedElement()
+	return engaged && focused.contains(engaged) ? engaged : focused
 }
 
 // -------- development checks --------

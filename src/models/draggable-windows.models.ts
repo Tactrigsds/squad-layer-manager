@@ -24,6 +24,8 @@ export interface DraggableWindowContextValue {
 	close: () => void
 	isPinned: boolean
 	setIsPinned: (pinned: boolean) => void
+	isMaximized: boolean
+	setIsMaximized: (maximized: boolean) => void
 	bringToFront: () => void
 	registerDragBar: (element: HTMLElement | null) => void
 	zIndex: number

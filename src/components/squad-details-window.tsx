@@ -4,6 +4,7 @@ import React from 'react'
 
 import { PlayerDisplay } from '@/components/player-display'
 import { SquadMenuItems } from '@/components/squad-context-menu-options'
+import { SubtreeFindBar } from '@/components/subtree-find-bar'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -18,6 +19,7 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useSubtreeFind } from '@/components/use-subtree-find'
 import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import { useTailingScroll } from '@/lib/use-tailing-scroll'
@@ -41,7 +43,13 @@ import { ServerEvent } from './feed/server-event'
 import { useEventsSelectionText, useFollowGroupColors, usePaintedSelection, useRenderCtx } from './feed/use-render-ctx'
 import type { SquadDetailsWindowProps } from './squad-details-window.helpers'
 import { MatchTeamDisplay } from './teams-display'
-import { DraggableWindowClose, DraggableWindowDragBar, DraggableWindowPinToggle, DraggableWindowTitle } from './ui/draggable-window'
+import {
+	DraggableWindowClose,
+	DraggableWindowDragBar,
+	DraggableWindowMaximizeToggle,
+	DraggableWindowPinToggle,
+	DraggableWindowTitle,
+} from './ui/draggable-window'
 import { Separator } from './ui/separator'
 import { Spinner } from './ui/spinner'
 import WarnChatBox from './warn-chat-box'
@@ -100,6 +108,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 
 	const [squadMessagesOnly, setSquadMessagesOnly] = React.useState(false)
 	const [wrapLines, setWrapLines] = React.useState(true)
+	const { stores: findStores, scopeRef: findScopeRef } = useSubtreeFind()
 
 	const { data, isPending } = useQuery(
 		RPC.orpc.matchHistory.getSquadDetails.queryOptions({
@@ -182,6 +191,7 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 					</DropdownMenu>
 				)}
 				<DraggableWindowPinToggle />
+				<DraggableWindowMaximizeToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 
@@ -219,7 +229,10 @@ function SquadDetailsWindow({ uniqueSquadId, stores }: SquadDetailsWindowProps) 
 							<WrapLinesToggle wrap={wrapLines} onToggle={() => setWrapLines((v) => !v)} variant="ghost" className="h-6 w-6" />
 						</div>
 					</div>
-					<div className="relative flex-1 min-h-0">
+					<div ref={findScopeRef} className="relative flex-1 min-h-0">
+						<div style={{ zIndex: aboveChatZIndex }} className="absolute inset-e-3 top-1">
+							<SubtreeFindBar stores={findStores} />
+						</div>
 						<ScrollArea ref={scrollAreaRef} className="h-full">
 							<div
 								ref={contentRef}

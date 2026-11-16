@@ -10,6 +10,7 @@ import EventFilterSelect from '@/components/event-filter-select'
 import HistoryEvents from '@/components/history-events'
 import { PlayerMenuItems } from '@/components/player-context-menu-options'
 import { RequireAccess } from '@/components/require-access'
+import { SubtreeFindBar } from '@/components/subtree-find-bar'
 import { MatchTeamDisplay } from '@/components/teams-display'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,6 +27,7 @@ import {
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useSubtreeFind } from '@/components/use-subtree-find'
 import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -73,6 +75,7 @@ import type { PlayerDetailsWindowProps } from './player-details-window.helpers'
 import {
 	DraggableWindowClose,
 	DraggableWindowDragBar,
+	DraggableWindowMaximizeToggle,
 	DraggableWindowPinToggle,
 	DraggableWindowTitle,
 	useDraggableWindow,
@@ -150,6 +153,8 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 	const [feed, setFeed] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
 	const [activityExpanded, setActivityExpanded] = React.useState(false)
 	const [wrapLines, setWrapLines] = React.useState(true)
+	const { stores: findStores, scopeRef: findScopeRef } = useSubtreeFind()
+	const findBarZIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 	const eventsQuery = React.useMemo(
 		(): HQ.Query => ({ ...HQ.DEFAULT_QUERY, type: 'events', players: [playerId], feed: feed === 'DEFAULT' ? undefined : feed }),
 		[playerId, feed],
@@ -163,6 +168,7 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 				</DraggableWindowTitle>
 				<PlayerBmRefreshButton playerId={playerId} />
 				<DraggableWindowPinToggle />
+				<DraggableWindowMaximizeToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			{!activityExpanded && (
@@ -226,7 +232,10 @@ function FramelessPlayerDetails({ playerId }: { playerId: string }) {
 					{/* no selectedOnly: this window has no teams panel selection to restrict against */}
 					<EventFilterSelect variant="ghost" value={feed} onValueChange={setFeed} />
 				</div>
-				<div data-nowrap={wrapLines ? undefined : ''} className="flex min-h-0 flex-1 flex-col">
+				<div ref={findScopeRef} data-nowrap={wrapLines ? undefined : ''} className="relative flex min-h-0 flex-1 flex-col">
+					<div style={{ zIndex: findBarZIndex }} className="absolute inset-e-3 top-1">
+						<SubtreeFindBar stores={findStores} />
+					</div>
 					<HistoryEvents query={eventsQuery} showTotal={false} linkable className="flex min-h-0 flex-1 flex-col gap-1" />
 				</div>
 			</div>
@@ -327,6 +336,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 	const [filterState, setFilterState] = React.useState<CHAT.SecondaryFilterState>('DEFAULT')
 	const [activityExpanded, setActivityExpanded] = React.useState(false)
 	const [wrapLines, setWrapLines] = React.useState(true)
+	const { stores: findStores, scopeRef: findScopeRef } = useSubtreeFind()
 	const filteredEvents = CHAT.groupBursts(allEvents.filter((e) => CHAT.showEventInFeed(e, filterState)))
 	// the player's events on this server through the same filter, newest first, so a selection of recent rows has its
 	// ends on the first pages of the history results
@@ -411,6 +421,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 					</DropdownMenuContent>
 				</DropdownMenu>
 				<DraggableWindowPinToggle />
+				<DraggableWindowMaximizeToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			{!activityExpanded && (
@@ -558,7 +569,7 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 						}}
 					/>
 				</div>
-				<div className="relative flex-1 min-h-0">
+				<div ref={findScopeRef} className="relative flex-1 min-h-0">
 					<ScrollArea ref={scrollAreaRef} className="h-full">
 						<div
 							ref={contentRef}
@@ -618,6 +629,10 @@ function FramedPlayerDetails({ playerId, stores }: { playerId: string; stores: N
 							<span className="text-xs">{tr.text(CHAT_Msgs.scrollToBottom())}</span>
 						</Button>
 					)}
+					{/* after the load-older strip, which shares its z-index, so the find trigger stays clickable over it */}
+					<div style={{ zIndex: aboveChatZIndex }} className="absolute inset-e-3 top-1">
+						<SubtreeFindBar stores={findStores} />
+					</div>
 				</div>
 			</div>
 			{isOnline && (

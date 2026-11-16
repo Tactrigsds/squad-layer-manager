@@ -10,6 +10,7 @@ import type { ServerConsoleWindowProps } from './server-console-window.helpers'
 import {
 	DraggableWindowClose,
 	DraggableWindowDragBar,
+	DraggableWindowMaximizeToggle,
 	DraggableWindowPinToggle,
 	DraggableWindowTitle,
 	useDraggableWindow,
@@ -40,6 +41,7 @@ function ServerConsoleWindow(props: ServerConsoleWindowProps) {
 			<DraggableWindowDragBar>
 				<DraggableWindowTitle>{tr.text(SC_Msgs.windowTitle(props.serverId))}</DraggableWindowTitle>
 				<DraggableWindowPinToggle />
+				<DraggableWindowMaximizeToggle />
 				<DraggableWindowClose />
 			</DraggableWindowDragBar>
 			<div className="min-h-0 grow p-2">
