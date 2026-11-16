@@ -4,6 +4,7 @@ import * as FB from '@/models/filter-builders.models'
 
 import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { filter, LAYERS, layerText, queue, role, selectableFilter } from '../harness/arrange'
+import { pickOption } from '../harness/combo-box'
 import * as Dash from '../harness/dashboard'
 import { gotoReady } from '../harness/ready'
 import { expectStyleBudget } from '../harness/style-budget'
@@ -222,7 +223,7 @@ test.describe('the explore-layers collection', () => {
 		// pinned to the one layer rather than to its map: with the collection cleared below, every mod's Narva
 		// layers join the result set and a page of 16 rows no longer reliably holds the vanilla one
 		await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
-		await page.getByRole('option', { name: 'Narva_RAAS_v1', exact: true }).click()
+		await pickOption(page, 'Narva_RAAS_v1')
 
 		const collection = dialog.getByRole('combobox', { name: 'Collection' })
 		await collection.click()
@@ -352,7 +353,7 @@ test.describe('the filter menu', { tag: '@firefox' }, () => {
 		// picking a Layer backfills the columns it is composed of (see LayerFilterMenuPrt.Actions.setComparison):
 		// the menu stays internally consistent rather than letting Map and Layer disagree
 		await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
-		await page.getByRole('option', { name: 'Narva_RAAS_v1', exact: true }).click()
+		await pickOption(page, 'Narva_RAAS_v1')
 
 		await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Narva')
 		await expect(dialog.getByRole('combobox', { name: 'Gamemode' })).toHaveText('RAAS')
@@ -377,14 +378,18 @@ test.describe('the filter menu', { tag: '@firefox' }, () => {
 		const team1 = dialog.getByRole('combobox', { name: 'Vehicle T1' })
 		const team2 = dialog.getByRole('combobox', { name: 'Vehicle T2' })
 
-		await expectStyleBudget(page, async () => {
+		// the vehicle lists are long enough to insert over 2,000 elements when every row mounts, rather than only the
+		// rows in view
+		const openT1 = await expectStyleBudget(page, async () => {
 			await team1.click()
 			await expect(team1).toHaveAttribute('aria-expanded', 'true')
 		})
-		await expectStyleBudget(page, async () => {
+		if (openT1) expect(openT1.insertedElements).toBeLessThan(500)
+		const openT2 = await expectStyleBudget(page, async () => {
 			await team2.click()
 			await expect(team2).toHaveAttribute('aria-expanded', 'true')
 		})
+		if (openT2) expect(openT2.insertedElements).toBeLessThan(500)
 		await expect(team1).toHaveAttribute('aria-expanded', 'false')
 		await expect(page.getByRole('listbox')).toHaveCount(1)
 

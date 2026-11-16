@@ -30,14 +30,18 @@ import {
 	groupRuns,
 	type GroupSelection,
 	normalizeOptions,
+	optionRows,
 	optionsInSelection,
+	rankRuns,
 	resolveGroupings,
 	searchKeywords,
 	selectableCount,
+	VIRTUALIZE_MIN_OPTIONS,
 } from './options.ts'
 import { useIsComboBoxSheet } from './sheet.ts'
 import { useGrowOnlyWidth } from './sizing.ts'
 import { ComboBoxSurface } from './surface.tsx'
+import { VirtualOptionRows } from './virtual-rows.tsx'
 
 export type ComboBoxMultiProps<T extends string | null = string | null> = {
 	className?: string
@@ -260,6 +264,42 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	const hideDescription = () => descriptionBoxRef.current?.hide()
 
 	const displayValues = useInternalState ? internalValues : values
+
+	const visibleRuns = React.useMemo(
+		() => (visibleOptions === LOADING ? [] : groupRuns(visibleOptions, primary, suppressHeadings)),
+		[visibleOptions, primary, suppressHeadings],
+	)
+	const virtual = options !== LOADING && options.length >= VIRTUALIZE_MIN_OPTIONS
+	const virtualRows = React.useMemo(
+		() => (virtual ? optionRows(callerControlsInput ? visibleRuns : rankRuns(visibleRuns, query)) : undefined),
+		[virtual, callerControlsInput, visibleRuns, query],
+	)
+	const itemValue = React.useCallback((option: ComboBoxOption<T>) => (option.value === null ? NULL : option.value), [NULL])
+	const renderOption = (option: ComboBoxOption<T>) => (
+		<CommandItem
+			key={itemValue(option)}
+			className="fd-mi-chord"
+			value={itemValue(option)}
+			keywords={searchKeywords(option)}
+			onMouseEnter={() => showDescription(option.value)}
+			onMouseLeave={hideDescription}
+			disabled={option.disabled || (selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false)}
+			onSelect={() => {
+				if (option.disabled) return
+				onSelect((prevValues) => toggled(prevValues, option.value))
+			}}
+		>
+			<Check className={cn('me-2 h-4 w-4 shrink-0', displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0')} />
+			<span className={cn('min-w-0 flex-1', sheet && option.description ? 'flex flex-col' : 'truncate')}>
+				<PrefixedLabel
+					prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
+					label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+					render={prefixRenderer}
+				/>
+				{sheet && option.description && <span className="text-xs font-normal whitespace-normal text-text-2">{option.description}</span>}
+			</span>
+		</CommandItem>
+	)
 
 	const confirmedSet = props.confirm ? new Set(values) : null
 	const hasChanges =
@@ -490,7 +530,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 				{open && !sheet && hasDescriptions && <DescriptionBox ref={descriptionBoxRef} placement="top" />}
 				{open && (
 					<Command
-						shouldFilter={drillEntry ? true : !props.setInputValue}
+						shouldFilter={drillEntry ? true : !virtual && !props.setInputValue}
 						className={cn('min-h-0', sheet && 'flex-1')}
 						onKeyDown={(e) => {
 							if (KEYS.matches(e, 'combo-box-commit')) {
@@ -550,49 +590,14 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 											</CommandItem>
 										</CommandGroup>
 									)}
+									{!drillEntry && virtualRows && (
+										<VirtualOptionRows rows={virtualRows} itemValue={itemValue} rowKey={itemValue} renderOption={renderOption} />
+									)}
 									{!drillEntry &&
-										visibleOptions !== LOADING &&
-										groupRuns(visibleOptions, primary, suppressHeadings).map((run, i) => (
+										!virtualRows &&
+										visibleRuns.map((run, i) => (
 											<CommandGroup key={run.heading ?? `run-${i}`} heading={run.heading}>
-												{run.options.map((option) => (
-													<CommandItem
-														key={option.value}
-														className="fd-mi-chord"
-														value={option.value === null ? NULL : option.value}
-														keywords={searchKeywords(option)}
-														onMouseEnter={() => showDescription(option.value)}
-														onMouseLeave={hideDescription}
-														disabled={
-															option.disabled ||
-															(selectionLimit ? values.length >= selectionLimit && !values.includes(option.value) : false)
-														}
-														onSelect={() => {
-															if (option.disabled) return
-															onSelect((prevValues) => toggled(prevValues, option.value))
-														}}
-													>
-														<Check
-															className={cn(
-																'me-2 h-4 w-4 shrink-0',
-																displayValues.includes(option.value) ? 'opacity-100' : 'opacity-0',
-															)}
-														/>
-														<span
-															className={cn('min-w-0 flex-1', sheet && option.description ? 'flex flex-col' : 'truncate')}
-														>
-															<PrefixedLabel
-																prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
-																label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
-																render={prefixRenderer}
-															/>
-															{sheet && option.description && (
-																<span className="text-xs font-normal whitespace-normal text-text-2">
-																	{option.description}
-																</span>
-															)}
-														</span>
-													</CommandItem>
-												))}
+												{run.options.map(renderOption)}
 											</CommandGroup>
 										))}
 								</CommandList>
