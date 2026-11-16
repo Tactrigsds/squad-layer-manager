@@ -86,6 +86,7 @@ graph.svg
 
 # playwright
 /test-results/
+/integration-results/
 /playwright-report/
 /perf-results/
 
