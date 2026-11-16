@@ -6,6 +6,7 @@ import { type AppFixture, createAppFixture, type TestUser } from '../harness/app
 import { filter, LAYERS, layerText, queue, role, selectableFilter } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
 import { gotoReady } from '../harness/ready'
+import { expectStyleBudget } from '../harness/style-budget'
 import { expect, test } from './fixtures'
 import { settledText, settledTextAfter } from './settle'
 
@@ -368,14 +369,22 @@ test.describe('the filter menu', { tag: '@firefox' }, () => {
 
 	test('opening one picker closes the one already open, and leaves the dialog open', async ({ page }) => {
 		await gotoReady(page, app.loginUrl())
-		const dialog = await openAddLayers(page)
+		let dialog = page.getByRole('dialog', { name: 'Add Layers' })
+		await expectStyleBudget(page, async () => {
+			dialog = await openAddLayers(page)
+			await expect(dialog.getByRole('combobox', { name: 'Vehicle T1' })).toBeVisible()
+		})
 		const team1 = dialog.getByRole('combobox', { name: 'Vehicle T1' })
 		const team2 = dialog.getByRole('combobox', { name: 'Vehicle T2' })
 
-		await team1.click()
-		await expect(team1).toHaveAttribute('aria-expanded', 'true')
-		await team2.click()
-		await expect(team2).toHaveAttribute('aria-expanded', 'true')
+		await expectStyleBudget(page, async () => {
+			await team1.click()
+			await expect(team1).toHaveAttribute('aria-expanded', 'true')
+		})
+		await expectStyleBudget(page, async () => {
+			await team2.click()
+			await expect(team2).toHaveAttribute('aria-expanded', 'true')
+		})
 		await expect(team1).toHaveAttribute('aria-expanded', 'false')
 		await expect(page.getByRole('listbox')).toHaveCount(1)
 

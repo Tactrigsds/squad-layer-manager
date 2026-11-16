@@ -4,6 +4,7 @@ import { LAYERS, queue } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
 import { waitReady } from '../harness/ready'
 import { rearrange } from '../harness/rearrange'
+import { expectStyleBudget } from '../harness/style-budget'
 import { expect, sharedAppTest as test } from './fixtures'
 
 // The layer actions are shared between the queue item menu and the match history rows. A queue item's menu holds its
@@ -16,12 +17,13 @@ test.describe('the layer context menu', () => {
 		const item = queuePanel.getByRole('listitem').first()
 		await expect(item).toBeVisible({ timeout: 20_000 })
 
-		await item
-			.getByText(/^\w+_\w+_v\d+$/)
-			.first()
-			.click({ button: 'right' })
-
-		await expect(page.getByRole('menuitem', { name: 'Show details' })).toBeVisible()
+		await expectStyleBudget(page, async () => {
+			await item
+				.getByText(/^\w+_\w+_v\d+$/)
+				.first()
+				.click({ button: 'right' })
+			await expect(page.getByRole('menuitem', { name: 'Show details' })).toBeVisible()
+		})
 		await expect(page.getByRole('menuitem', { name: 'Show scores' })).toBeVisible()
 		await expect(page.getByRole('menuitem', { name: 'Open in SquadCalc' })).toBeVisible()
 		await expect(page.getByRole('menuitem', { name: 'Clone' })).toBeVisible()
@@ -32,7 +34,10 @@ test.describe('the layer context menu', () => {
 		await expect(page.getByRole('menuitem', { name: 'Copy layer id' })).toBeVisible()
 		await expect(page.getByRole('menuitem', { name: 'Copy AdminSetNextLayer command' })).toBeVisible()
 
-		await page.keyboard.press('Escape')
+		await expectStyleBudget(page, async () => {
+			await page.keyboard.press('Escape')
+			await expect(page.getByRole('menu')).toHaveCount(0)
+		})
 	})
 
 	test('right-clicking a queue item away from its layer opens the same menu', async ({ page }) => {

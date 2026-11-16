@@ -6,6 +6,7 @@ import { filter, LAYERS, layerText, queue, selectableFilter } from '../harness/a
 import * as Dash from '../harness/dashboard'
 import { savedPool, savedQueue } from '../harness/inspect'
 import { gotoReady } from '../harness/ready'
+import { expectStyleBudget } from '../harness/style-budget'
 import { expect, test } from './fixtures'
 
 // One queue, followed through its whole life against a single app: rendered as seeded, edited and
@@ -94,14 +95,17 @@ test.describe('the queue through its lifecycle', { tag: '@firefox' }, () => {
 
 		const queuePanel = Dash.queueSection(page)
 		const items = queuePanel.getByRole('listitem')
-		await page.getByRole('button', { name: 'Start Editing' }).click()
+		const head = items.filter({ hasText: layerText('Gorodok_RAAS_v1') })
+		await expectStyleBudget(page, async () => {
+			await page.getByRole('button', { name: 'Start Editing' }).click()
+			await expect(head.getByRole('button', { name: 'Delete' })).toBeVisible()
+		})
 
 		// the edit is local until saved: the list drops the item, but the server still has it queued
-		await items
-			.filter({ hasText: layerText('Gorodok_RAAS_v1') })
-			.getByRole('button', { name: 'Delete' })
-			.click()
-		await expect(items).toHaveCount(2)
+		await expectStyleBudget(page, async () => {
+			await head.getByRole('button', { name: 'Delete' }).click()
+			await expect(items).toHaveCount(2)
+		})
 		await expect(queuePanel.getByText('Gorodok_RAAS_v1')).toBeHidden()
 		expect(app.emu.world.nextLayer?.layer).toBe('Gorodok_RAAS_v1')
 
