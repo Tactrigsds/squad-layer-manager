@@ -703,20 +703,18 @@ export class World {
 		}
 	}
 
+	// Like a real server, a command that names no factions gets the layer's default factions, bare as in `USA GFI`.
+	// A layer missing from the layer data takes its level from the first segment of its name.
 	#toLayerLike(cmdArgs: string): Fmt.LayerLike {
 		const [layer, f1, f2] = cmdArgs.split(/\s+/)
-		const level = layer.split('_')[0]
+		const config = L.getLayerConfig(layer)
+		const level = config?.Map ?? layer.split('_')[0]
+		const defaultFactions = config?.teams.map((team) => team.defaultFaction).join(' ') ?? 'USA GFI'
 		return {
 			level,
 			layer,
-			factions: f1 && f2 ? `${f1} ${f2}` : (factionsInLayerName(layer) ?? 'USA GFI'),
+			factions: f1 && f2 ? `${f1} ${f2}` : defaultFactions,
 			mapDir: `/Game/Maps/${level}/Gameplay_Layers`,
 		}
 	}
-}
-
-// A training layer names its factions instead of taking them, as in JensensRange_USA-PLA, and the server reports those.
-function factionsInLayerName(layer: string): string | null {
-	const match = /^[A-Za-z]+_([A-Z]+)-([A-Z]+)$/.exec(layer)
-	return match ? `${match[1]} ${match[2]}` : null
 }
