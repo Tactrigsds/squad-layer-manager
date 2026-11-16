@@ -25,7 +25,8 @@ import {
 	useFieldValue,
 	useReset,
 	useSettingComment,
-	ValidationContext,
+	IssuesContext,
+	IssueSel,
 	type ValueState,
 } from '@/components/settings-form/settings-form.helpers'
 import { Button } from '@/components/ui/button'
@@ -285,7 +286,7 @@ export function AdvancedDisclosure({ paths, children }: { paths: string[]; child
 
 	React.useEffect(() => SettingsNav.onAnchorNavigate((id) => covers(id, idPrefix) && setExpanded(true)), [covers, idPrefix])
 
-	const hasIssue = React.useContext(ValidationContext).some((i) => covers(i.path, ''))
+	const hasIssue = Zus.useStore(React.useContext(IssuesContext), IssueSel.anyUnder(paths.join(' ')))
 	const open = expanded || hasIssue
 	return (
 		<div className="rounded-md border border-dashed">

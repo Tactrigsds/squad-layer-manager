@@ -5,7 +5,7 @@ import { StickyGroup } from '@/components/sticky-group'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
-import * as Obj from '@/lib/object-utils'
+import * as RSel from '@/lib/reselect'
 import { cn } from '@/lib/utils'
 import { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
@@ -46,17 +46,8 @@ type HighlightStoreProp = { tocHighlight: HighlightStore }
 
 // Only one table of contents is mounted at a time, so these module-level caches serve every instance. They keep the
 // selected values identity-stable, so an edit to a setting re-renders nothing here.
-function deepStable<A extends unknown[], R>(selector: (...args: A) => R): (...args: A) => R {
-	let prev: { value: R } | undefined
-	return (...args) => {
-		const next = selector(...args)
-		if (prev && Obj.deepEqual(prev.value, next)) return prev.value
-		prev = { value: next }
-		return next
-	}
-}
-const selectTocModes = deepStable(SettingsEditorFrame.Sel.tocModes)
-const selectCommentedAnchorIds = deepStable(SettingsEditorFrame.Sel.commentedAnchorIds)
+const selectTocModes = RSel.deepStable(SettingsEditorFrame.Sel.tocModes)
+const selectCommentedAnchorIds = RSel.deepStable(SettingsEditorFrame.Sel.commentedAnchorIds)
 function selectAdminMessageShorthands(...states: Parameters<typeof SettingsEditorFrame.Sel.globalDraft>) {
 	return SettingsEditorFrame.Sel.globalDraft(...states)?.adminMessageShorthands
 }

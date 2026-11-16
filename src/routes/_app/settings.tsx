@@ -28,6 +28,7 @@ import { useRefConstructor } from '@/lib/react'
 import * as ReactRx from '@/lib/react-rxjs'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
+import type { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as MsgFmt from '@/messages/format'
@@ -151,8 +152,9 @@ function RouteComponent() {
 		}
 	}, [sectionKeys, teardownCtlRef])
 
-	const sectionStates = SettingsEditorFrame.useSectionStates(sectionKeys)
-	const { newServerCreated, anyDirty } = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.pageStatus)
+	const sectionsLoaded = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.loadedSignature)
+	const newServerCreated = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.newServerCreated)
+	const anyDirty = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.anyDirty)
 	const creating = creatingNonce !== null && !newServerCreated
 
 	// block in-app navigation and tab close while any section holds unsaved edits (same pattern as filter-edit)
@@ -175,8 +177,8 @@ function RouteComponent() {
 	const initialAnchorRef = useRefConstructor(() => ({ id: SettingsNav.currentAnchor(), handled: false }))
 
 	// initial page-load fragment: gate on the owning section actually being in the DOM (re-checked as sections stream in
-	// via sectionStates), then hand off to the exact same navigateToAnchor path a TOC click uses. `handled` latches so
-	// later sectionStates changes (form edits) don't re-trigger it; the settle loop self-terminates on unmount.
+	// via sectionsLoaded), then hand off to the exact same navigateToAnchor path a TOC click uses. `handled` latches it
+	// to the first load; the settle loop self-terminates on unmount.
 	React.useEffect(() => {
 		if (initialAnchorRef.current.handled || !initialAnchorRef.current.id) return
 		const id = initialAnchorRef.current.id
@@ -185,7 +187,7 @@ function RouteComponent() {
 		if (section && !document.getElementById(section)) return
 		initialAnchorRef.current.handled = true
 		SettingsNav.navigateToAnchor(id)
-	}, [sectionStates, initialAnchorRef])
+	}, [sectionsLoaded, initialAnchorRef])
 
 	// later hash changes from a pasted/edited link (in-app clicks use replaceState, which fires no hashchange, so no
 	// double-scroll) route through the same path
@@ -703,21 +705,11 @@ function ServerSettingsSection({
 }) {
 	const key = stores.settingsEditor
 	const access = RbacClient.useServerSettingsAccess(server.id)
-	const perms = RbacClient.useSuspendableLoggedInUserPerms()
-	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
-	const { mode, changes, issues, valid, saving, loadFailed, loading, draft, saved } = state
+	const view = Zus.useStore(key, Zus.useShallow(SettingsEditorFrame.Sel.sectionView))
+	const { mode, loadFailed, loading, saved, form } = view
 	// without write-sensitive the server redacts connections, so edit/validate against the connections-free schema
-	const schema = SettingsEditorFrame.Sel.schema(state)
-
-	const value$ = SettingsEditorFrame.draftValueState(key)
-	const reset$ = state.reset$
-	const onFormChange = (v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v)
-	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
+	const schema = SettingsEditorFrame.Sel.schema(view)
 	const headerRef = React.useRef<HTMLDivElement>(null)
-	const openDialog = useAlertDialog()
-
-	// mirror of the server-side grant check so out-of-grant edits surface before save
-	const deniedPaths = SettingsEditorFrame.deniedSettingPaths(state, perms)
 
 	// write-sensitive permits editing connections independent of any general write grant; widen the form's gating so a
 	// sensitive user can edit connections even with no (or only path-restricted) write access
@@ -727,22 +719,11 @@ function ServerSettingsSection({
 		return { kind: 'paths', paths: [...paths, 'connections'] }
 	}, [access.write, access.sensitive])
 
-	async function handleJsonSave() {
-		if (!valid) return
-		const msg = tr.confirm(SETTINGS_Msgs.confirmSave(server.displayName))
-		const result = await openDialog({
-			title: msg.title,
-			content: <SettingsChangeList changes={changes} />,
-			buttons: [{ id: 'save', label: msg.confirmLabel }],
-		})
-		if (result === 'save') void SettingsEditorFrame.Actions.save({ settingsEditor: key })
-	}
-
 	function switchMode(next: 'gui' | 'yaml') {
 		SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, next)
 	}
 
-	const ready = !loadFailed && !loading && draft !== undefined
+	const ready = !loadFailed && !loading && view.ready
 
 	return (
 		<Card>
@@ -792,38 +773,25 @@ function ServerSettingsSection({
 					) : mode === 'gui' ? (
 						<SettingsForm
 							schema={schema}
-							value$={value$}
-							reset$={reset$}
-							onChange={onFormChange}
+							value$={form.value$}
+							reset$={view.reset$}
+							onChange={form.onChange}
 							saved={saved}
 							idPrefix={`setting:server:${server.id}:`}
 							priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
 							advancedPaths={ADVANCED_SERVER_SETTINGS_PATHS}
-							issues={issues}
+							issues$={form.issues$}
 							writeAccess={formWriteAccess}
 						/>
 					) : (
-						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
-							<SchemaYamlEditor
-								ref={editorRef}
-								schema={schema}
-								commentsKey={SETTINGS.COMMENTS_KEY}
-								value={draft}
-								onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid({ settingsEditor: key }, v)}
-								onReady={() => SettingsNav.scrollToAnchorSettled('section:server-settings')}
-								minHeightPx={350}
-								label={tr.text(SETTINGS_Msgs.serverSettings())}
-								toolbar={
-									<YamlEditorToolbar
-										editorRef={editorRef}
-										deniedPaths={deniedPaths}
-										canSave={changes.length > 0 && valid && deniedPaths.length === 0}
-										saving={saving}
-										onSave={handleJsonSave}
-									/>
-								}
-							/>
-						</React.Suspense>
+						<SectionYamlEditor
+							stores={stores}
+							schema={schema}
+							confirmName={server.displayName}
+							label={tr.text(SETTINGS_Msgs.serverSettings())}
+							minHeightPx={350}
+							readyAnchor="section:server-settings"
+						/>
 					)}
 				</CardContent>
 			</StickyGroup>
@@ -836,13 +804,9 @@ function ServerSettingsSection({
 // rather than path grants, so no denied-path mirror here.
 function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame.KeyProp; onCancel: () => void }) {
 	const key = stores.settingsEditor
-	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
-	const { mode, draft, saved, issues, newId, newDisplayName } = state
-
-	const value$ = SettingsEditorFrame.draftValueState(key)
-	const reset$ = state.reset$
-	const onFormChange = (v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v)
-	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
+	const { mode, saved, form, reset$ } = Zus.useStore(key, Zus.useShallow(SettingsEditorFrame.Sel.sectionView))
+	const newId = Zus.useStore(key, selectNewId)
+	const newDisplayName = Zus.useStore(key, selectNewDisplayName)
 	const headerRef = React.useRef<HTMLDivElement>(null)
 
 	const idRes = SS.ServerIdSchema.safeParse(newId)
@@ -904,28 +868,24 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 					{mode === 'gui' ? (
 						<SettingsForm
 							schema={SETTINGS.ServerSettingsSchema}
-							value$={value$}
+							value$={form.value$}
 							reset$={reset$}
-							onChange={onFormChange}
+							onChange={form.onChange}
 							saved={saved}
 							idPrefix="setting:server:__new__:"
 							priorityKeys={SERVER_SETTINGS_PRIORITY_KEYS}
 							advancedPaths={ADVANCED_SERVER_SETTINGS_PATHS}
-							issues={issues}
+							issues$={form.issues$}
 						/>
 					) : (
-						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
-							<SchemaYamlEditor
-								ref={editorRef}
-								schema={SETTINGS.ServerSettingsSchema}
-								commentsKey={SETTINGS.COMMENTS_KEY}
-								value={draft}
-								onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid({ settingsEditor: key }, v)}
-								onReady={() => SettingsNav.scrollToAnchorSettled(`section:server:${NEW_SERVER_SELECTION}`)}
-								minHeightPx={350}
-								label={tr.text(SETTINGS_Msgs.serverSettings())}
-							/>
-						</React.Suspense>
+						<SectionYamlEditor
+							stores={stores}
+							schema={SETTINGS.ServerSettingsSchema}
+							label={tr.text(SETTINGS_Msgs.serverSettings())}
+							minHeightPx={350}
+							readyAnchor={`section:server:${NEW_SERVER_SELECTION}`}
+							inlineSave={false}
+						/>
 					)}
 				</CardContent>
 			</StickyGroup>
@@ -938,20 +898,9 @@ function CreateServerSection({ stores, onCancel }: { stores: SettingsEditorFrame
 function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp }) {
 	const key = stores.settingsEditor
 	const { write: writeAccess } = RbacClient.useGlobalSettingsAccess()
-	const perms = RbacClient.useSuspendableLoggedInUserPerms()
-	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
-	const { mode, changes, issues, valid, saving, draft, saved, denied } = state
-
-	const value$ = SettingsEditorFrame.draftValueState(key)
-	const reset$ = state.reset$
-	const onFormChange = (v: any) => SettingsEditorFrame.Actions.setDraft({ settingsEditor: key }, v)
-	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
+	const { mode, saved, ready, denied, form, reset$ } = Zus.useStore(key, Zus.useShallow(SettingsEditorFrame.Sel.sectionView))
 	// the card header pins to the top of the scroll column; the form's section headers stack beneath it
 	const cardHeaderRef = React.useRef<HTMLDivElement>(null)
-	const openDialog = useAlertDialog()
-
-	// mirror of the server-side grant check so out-of-grant edits surface before save
-	const deniedPaths = SettingsEditorFrame.deniedSettingPaths(state, perms)
 
 	if (denied) {
 		return (
@@ -964,18 +913,7 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 		)
 	}
 
-	if (saved === undefined || draft === undefined) return null
-
-	async function handleJsonSave() {
-		if (!valid) return
-		const msg = tr.confirm(SETTINGS_Msgs.confirmSave())
-		const result = await openDialog({
-			title: msg.title,
-			content: <SettingsChangeList changes={changes} />,
-			buttons: [{ id: 'save', label: msg.confirmLabel }],
-		})
-		if (result === 'save') void SettingsEditorFrame.Actions.save({ settingsEditor: key })
-	}
+	if (saved === undefined || !ready) return null
 
 	function switchMode(next: 'gui' | 'yaml') {
 		SettingsEditorFrame.Actions.setMode({ settingsEditor: key }, next)
@@ -1021,41 +959,96 @@ function GlobalSettingsSection({ stores }: { stores: SettingsEditorFrame.KeyProp
 					{mode === 'gui' ? (
 						<SettingsForm
 							schema={SETTINGS.GlobalSettingsSchema}
-							value$={value$}
+							value$={form.value$}
 							reset$={reset$}
-							onChange={onFormChange}
+							onChange={form.onChange}
 							saved={saved}
 							groups={GLOBAL_SETTINGS_GROUPS}
 							advancedPaths={ADVANCED_GLOBAL_SETTINGS_PATHS}
-							issues={issues}
+							issues$={form.issues$}
 							writeAccess={writeAccess}
 						/>
 					) : (
 						// GUI mode uses the shared bottom control panel; YAML mode keeps its own toolbar, inside the editor
-						<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
-							<SchemaYamlEditor
-								ref={editorRef}
-								schema={SETTINGS.GlobalSettingsSchema}
-								commentsKey={SETTINGS.COMMENTS_KEY}
-								value={draft}
-								onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid({ settingsEditor: key }, v)}
-								onReady={() => SettingsNav.scrollToAnchorSettled('section:global')}
-								minHeightPx={450}
-								label={tr.text(SETTINGS_Msgs.globalSettings())}
-								toolbar={
-									<YamlEditorToolbar
-										editorRef={editorRef}
-										deniedPaths={deniedPaths}
-										canSave={changes.length > 0 && valid && deniedPaths.length === 0}
-										saving={saving}
-										onSave={handleJsonSave}
-									/>
-								}
-							/>
-						</React.Suspense>
+						<SectionYamlEditor
+							stores={stores}
+							schema={SETTINGS.GlobalSettingsSchema}
+							label={tr.text(SETTINGS_Msgs.globalSettings())}
+							minHeightPx={450}
+							readyAnchor="section:global"
+						/>
 					)}
 				</CardContent>
 			</StickyGroup>
 		</Card>
+	)
+}
+
+const selectNewId = (s: SettingsEditorFrame.SettingsEditor) => s.newId
+const selectNewDisplayName = (s: SettingsEditorFrame.SettingsEditor) => s.newDisplayName
+
+// A section's YAML mode. It reads the whole section state, since the toolbar tracks the pending changes, so it is
+// split from the section shell, which an edit in GUI mode should not re-render. `inlineSave` is off for the new-server
+// form, which always saves through the shared panel.
+function SectionYamlEditor({
+	stores,
+	schema,
+	label,
+	minHeightPx,
+	readyAnchor,
+	confirmName,
+	inlineSave = true,
+}: {
+	stores: SettingsEditorFrame.KeyProp
+	schema: z.ZodType
+	label: string
+	minHeightPx: number
+	readyAnchor: string
+	confirmName?: string
+	inlineSave?: boolean
+}) {
+	const key = stores.settingsEditor
+	const state = Zus.useStore(key, (s: SettingsEditorFrame.SettingsEditor) => s)
+	const perms = RbacClient.useSuspendableLoggedInUserPerms()
+	const editorRef = React.useRef<SchemaYamlEditorHandle>(null)
+	const openDialog = useAlertDialog()
+	// mirror of the server-side grant check so out-of-grant edits surface before save
+	const deniedPaths = SettingsEditorFrame.deniedSettingPaths(state, perms)
+
+	async function handleSave() {
+		if (!state.valid) return
+		const msg = tr.confirm(SETTINGS_Msgs.confirmSave(confirmName))
+		const result = await openDialog({
+			title: msg.title,
+			content: <SettingsChangeList changes={state.changes} />,
+			buttons: [{ id: 'save', label: msg.confirmLabel }],
+		})
+		if (result === 'save') void SettingsEditorFrame.Actions.save(stores)
+	}
+
+	return (
+		<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(SETTINGS_Msgs.loadingEditor())}</p>}>
+			<SchemaYamlEditor
+				ref={editorRef}
+				schema={schema}
+				commentsKey={SETTINGS.COMMENTS_KEY}
+				value={state.draft}
+				onValidChange={(v: any) => SettingsEditorFrame.Actions.setYamlValid(stores, v)}
+				onReady={() => SettingsNav.scrollToAnchorSettled(readyAnchor)}
+				minHeightPx={minHeightPx}
+				label={label}
+				toolbar={
+					inlineSave ? (
+						<YamlEditorToolbar
+							editorRef={editorRef}
+							deniedPaths={deniedPaths}
+							canSave={state.changes.length > 0 && state.valid && deniedPaths.length === 0}
+							saving={state.saving}
+							onSave={handleSave}
+						/>
+					) : undefined
+				}
+			/>
+		</React.Suspense>
 	)
 }

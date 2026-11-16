@@ -25,7 +25,7 @@ import * as SettingsNav from '@/systems/settings-nav.client'
 
 const MAX_SHOWN_FIELD_ISSUES = 5
 
-export function FieldIssues({ issues, pathStr }: { issues: NormalizedIssue[]; pathStr: string }) {
+export function FieldIssues({ issues, pathStr }: { issues: readonly NormalizedIssue[]; pathStr: string }) {
 	if (issues.length === 0) return null
 	return (
 		<div className="space-y-0.5 pt-0.5">

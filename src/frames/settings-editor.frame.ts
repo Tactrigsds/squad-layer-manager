@@ -74,6 +74,16 @@ export type SettingsEditor = {
 	changes: Obj.LeafChange[]
 	issues: readonly z.core.$ZodIssue[]
 	valid: boolean
+
+	// what the section's GUI form reads and writes, created once per instance so the form's subscriptions survive
+	// re-renders. A plugin section's form edits only the config half of its draft.
+	form: FormBindings
+}
+
+export type FormBindings = {
+	value$: Zus.ValueObservable<any>
+	issues$: Zus.ValueObservable<readonly z.core.$ZodIssue[]>
+	onChange: (next: any) => void
 }
 
 export type Key = FRM.InstanceKey<Types>
@@ -148,7 +158,7 @@ export function pluginSchema(pluginId: string, manifest: PLG.Manifest): z.ZodTyp
 
 const EMPTY_PLUGIN_SCHEMA = z.object({ config: z.record(z.string(), z.unknown()), commands: CMD.PluginCommandConfigsSchema })
 
-function editSchema(state: SettingsEditor): z.ZodType<any> {
+function editSchema(state: Pick<SettingsEditor, 'kind' | 'pluginId' | 'sensitiveOmitted'>): z.ZodType<any> {
 	switch (state.kind) {
 		case 'global':
 			return SETTINGS.GlobalSettingsSchema
@@ -220,10 +230,58 @@ export function deriveComputed(state: SettingsEditor): Pick<SettingsEditor, 'cha
 	}
 }
 
+// a value observable over one slice of the frame's state. `pick` must return the same reference for unchanged input,
+// since getValue() feeds useSyncExternalStore snapshots.
+function stateValue<T>(
+	get: () => SettingsEditor,
+	update$: Rx.Observable<[SettingsEditor, SettingsEditor]>,
+	pick: (s: SettingsEditor) => T,
+): Zus.ValueObservable<T> {
+	const obs = update$.pipe(
+		Rx.map(([s]) => pick(s)),
+		Rx.distinctUntilChanged(),
+	)
+	return Object.assign(obs, { getValue: () => pick(get()) })
+}
+
+// a plugin's form renders only the config, so it is handed the issues inside it, relative to it
+function configIssuesOf(): (s: SettingsEditor) => readonly z.core.$ZodIssue[] {
+	let lastIn: readonly z.core.$ZodIssue[] | undefined
+	let lastOut: readonly z.core.$ZodIssue[] = NO_ISSUES
+	return (s) => {
+		if (s.issues === lastIn) return lastOut
+		lastIn = s.issues
+		const scoped = s.issues.filter((i) => i.path[0] === 'config').map((i) => ({ ...i, path: i.path.slice(1) }))
+		lastOut = scoped.length > 0 ? scoped : NO_ISSUES
+		return lastOut
+	}
+}
+
+function formBindings(
+	kind: Kind,
+	get: () => SettingsEditor,
+	set: (p: Partial<SettingsEditor>) => void,
+	update$: Rx.Observable<[SettingsEditor, SettingsEditor]>,
+): FormBindings {
+	if (kind === 'plugin') {
+		return {
+			value$: stateValue(get, update$, (s) => s.draft?.config),
+			issues$: stateValue(get, update$, configIssuesOf()),
+			onChange: (config: Record<string, unknown>) => set({ draft: { ...get().draft, config } }),
+		}
+	}
+	return {
+		value$: stateValue(get, update$, (s) => s.draft),
+		issues$: stateValue(get, update$, (s) => s.issues),
+		onChange: (draft: any) => set({ draft }),
+	}
+}
+
 const setup: Frame['setup'] = (args) => {
 	const input = args.input
 	const get = args.get
 	const set = args.set as Zus.Setter<SettingsEditor>
+	const update$ = args.update$ as Rx.Observable<[SettingsEditor, SettingsEditor]>
 
 	const isNew = input.kind === 'new-server'
 	const newDraft = isNew ? newServerDraft() : undefined
@@ -248,6 +306,7 @@ const setup: Frame['setup'] = (args) => {
 		changes: [],
 		issues: NO_ISSUES,
 		valid: false,
+		form: formBindings(input.kind, get, set, update$),
 	} satisfies SettingsEditor)
 
 	// keep the derived fields current; guarded on the source fields so writing them back doesn't loop
@@ -370,10 +429,28 @@ export const frame = frameManager.createFrame<Types>({
 
 export namespace Sel {
 	export const schema = editSchema
+
+	// what a section's shell renders from, leaving out everything an edit changes, so an edit re-renders only the
+	// fields it touches. Pair with Zus.useShallow.
+	export function sectionView(s: SettingsEditor) {
+		return {
+			kind: s.kind,
+			pluginId: s.pluginId,
+			sensitiveOmitted: s.sensitiveOmitted,
+			mode: s.mode,
+			saved: s.saved,
+			ready: s.draft !== undefined,
+			loading: s.loading,
+			loadFailed: s.loadFailed,
+			denied: s.denied,
+			form: s.form,
+			reset$: s.reset$,
+		}
+	}
 	export const dirty = (s: SettingsEditor) =>
 		s.kind === 'new-server' ? !s.created && (s.newId.trim().length > 0 || s.newDisplayName.trim().length > 0) : s.changes.length > 0
 	// DOM anchor prefix matching what SettingsForm emits for this section
-	export function idPrefix(s: SettingsEditor) {
+	export function idPrefix(s: Pick<SettingsEditor, 'kind' | 'serverId' | 'pluginId'>) {
 		switch (s.kind) {
 			case 'global':
 				return 'setting:'
@@ -388,16 +465,14 @@ export namespace Sel {
 		}
 	}
 
-	// what the page as a whole needs from its sections: `newServerCreated` collapses the new-server form once its save
-	// lands (the created server then renders as a regular section via the public-settings watch)
-	export function pageStatus(...states: SettingsEditor[]) {
-		let newServerCreated = false
-		let anyDirty = false
-		for (const s of states) {
-			if (s.kind === 'new-server' && s.created) newServerCreated = true
-			if (dirty(s)) anyDirty = true
-		}
-		return { newServerCreated, anyDirty }
+	// collapses the new-server form once its save lands (the created server then renders as a regular section via the
+	// public-settings watch)
+	export function newServerCreated(...states: SettingsEditor[]) {
+		return states.some((s) => s.kind === 'new-server' && s.created)
+	}
+
+	export function anyDirty(...states: SettingsEditor[]) {
+		return states.some(dirty)
 	}
 
 	// the anchor ids of every setting the drafts carry a comment on, plus each ancestor section and group, so the TOC
@@ -418,6 +493,34 @@ export namespace Sel {
 			}
 		}
 		return Array.from(ids).sort()
+	}
+
+	// changes only when a section finishes loading, fails, or is denied, so a page can react to sections mounting
+	// without re-rendering on every edit
+	export function loadedSignature(...states: SettingsEditor[]): string {
+		let sig = ''
+		for (const s of states) sig += s.draft !== undefined || s.loadFailed !== null || s.denied ? '1' : '0'
+		return sig
+	}
+
+	// what the shared save panel shows about each section. Only GUI-mode sections route through the panel; YAML mode
+	// saves inline. A new-server section counts as one pending change while open.
+	export function panelSections(...states: SettingsEditor[]) {
+		return states.map((s) => {
+			const gui = s.mode === 'gui'
+			return {
+				kind: s.kind,
+				serverId: s.serverId,
+				pluginId: s.pluginId,
+				newDisplayName: s.newDisplayName,
+				changedCount: !gui ? 0 : s.kind === 'new-server' ? (s.created ? 0 : 1) : s.changes.length,
+				changedPaths: gui ? changedSettingPaths(s.changes) : NO_PATHS,
+				issueCount: s.issues.length,
+				valid: s.valid,
+				saving: s.saving,
+				created: s.created,
+			}
+		})
 	}
 
 	export function globalDraft(...states: SettingsEditor[]): any {
@@ -459,19 +562,26 @@ export namespace Sel {
 // settings.server.ts). Kept out of frame state because it depends on the (possibly role-simulated) client perms.
 // A comment change is checked, and reported, at the setting it annotates.
 export function deniedSettingPaths(state: SettingsEditor, perms: RBAC.Permission[]): string[] {
+	return deniedAmong(state, changedSettingPaths(state.changes), perms)
+}
+
+export function changedSettingPaths(changes: Obj.LeafChange[]): string[] {
+	return Array.from(new Set(changes.map((c) => SETTINGS.settingPathForChange(c.path))))
+}
+
+export function deniedAmong(target: Pick<SettingsEditor, 'kind' | 'serverId'>, changed: string[], perms: RBAC.Permission[]): string[] {
 	// a plugin section is only rendered for someone who may manage plugins, which covers all of it
-	if (state.kind === 'new-server' || state.kind === 'plugin') return NO_PATHS
-	const changed = Array.from(new Set(state.changes.map((c) => SETTINGS.settingPathForChange(c.path))))
-	if (state.kind === 'global') {
+	if (target.kind === 'new-server' || target.kind === 'plugin') return NO_PATHS
+	if (target.kind === 'global') {
 		const access = RBAC.globalSettingsWriteAccess(perms)
 		if (access.kind === 'all') return NO_PATHS
 		return changed.filter((p) => !RBAC.settingsPathAllowed(access, p))
 	}
 	// connections paths are gated by write-sensitive, not by path grants; a sensitive user's connection edits are always
 	// allowed (and connections can't appear in the diff at all without it, since they're redacted on read)
-	const write = RBAC.serverSettingsWriteAccess(perms, state.serverId!, RBAC.NO_SCOPED_SERVERS)
+	const write = RBAC.serverSettingsWriteAccess(perms, target.serverId!, RBAC.NO_SCOPED_SERVERS)
 	if (write.kind === 'all') return NO_PATHS
-	const sensitive = RBAC.canWriteSensitiveServerSettings(perms, state.serverId!, RBAC.NO_SCOPED_SERVERS)
+	const sensitive = RBAC.canWriteSensitiveServerSettings(perms, target.serverId!, RBAC.NO_SCOPED_SERVERS)
 	const isConnection = (p: string) => p === 'connections' || p.startsWith('connections.')
 	const paths = changed.filter((p) => !(sensitive && isConnection(p)))
 	if (write.kind === 'none') return paths
@@ -645,25 +755,4 @@ export namespace Actions {
 			s.setState({ saving: false })
 		}
 	}
-}
-
-// the section's draft as a value observable, which is how SettingsForm's fields read the document. `field` narrows
-// it to one top-level field, for a section that renders its draft as more than one form.
-export function draftValueState(key: Key, field?: string): Zus.ValueObservable<any> {
-	const store = Zus.resolveStore<SettingsEditor>(key)
-	const pick = (draft: any) => (field === undefined ? draft : draft?.[field])
-	const obs = Zus.toObservable(store).pipe(
-		Rx.map(([s]) => pick(s.draft)),
-		Rx.distinctUntilChanged(),
-	)
-	return Object.assign(obs, { getValue: () => pick(store.getState().draft) })
-}
-
-// spelled as a selector rather than relying on the no-selector form, which hands back the bare state when a page
-// happens to hold exactly one section
-const asArray = (...states: SettingsEditor[]) => states
-
-// the section states in key order; identity-cached by useStore so it doubles as a stable render input
-export function useSectionStates(keys: Key[]): SettingsEditor[] {
-	return Zus.useStore(...keys, asArray)
 }

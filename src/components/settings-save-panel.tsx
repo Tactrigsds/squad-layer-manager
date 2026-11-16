@@ -3,8 +3,10 @@ import React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { useAlertDialog } from '@/components/ui/lazy-alert-dialog'
+import { frameManager } from '@/frames/frame-manager'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import type * as Obj from '@/lib/object-utils'
+import * as RSel from '@/lib/reselect'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
@@ -46,32 +48,31 @@ export function SettingsChangeList({ changes }: { changes: Obj.LeafChange[] }) {
 	)
 }
 
-// what the panel needs to know about one section, derived per render from its frame state
+type PanelSection = ReturnType<typeof SettingsEditorFrame.Sel.panelSections>[number]
+
+// what the panel needs to know about one section
 type SectionView = {
 	key: SettingsEditorFrame.Key
-	state: SettingsEditorFrame.SettingsEditor
+	summary: PanelSection
 	label: string
-	// only GUI-mode sections route through the panel; JSON mode saves inline
-	changedCount: number
 	deniedIds: string[]
 }
 
-function sectionLabel(
-	state: SettingsEditorFrame.SettingsEditor,
-	serverNames: Map<string, string>,
-	pluginNames: Map<string, string>,
-): string {
-	switch (state.kind) {
+// one save panel is mounted at a time, so one cache serves it
+const selectPanelSections = RSel.deepStable(SettingsEditorFrame.Sel.panelSections)
+
+function sectionLabel(summary: PanelSection, serverNames: Map<string, string>, pluginNames: Map<string, string>): string {
+	switch (summary.kind) {
 		case 'global':
 			return tr.text(SETTINGS_Msgs.globalSettings())
 		case 'server':
-			return serverNames.get(state.serverId!) ?? state.serverId!
+			return serverNames.get(summary.serverId!) ?? summary.serverId!
 		case 'new-server':
-			return state.newDisplayName.trim() || tr.text(SETTINGS_Msgs.newManagedServer())
+			return summary.newDisplayName.trim() || tr.text(SETTINGS_Msgs.newManagedServer())
 		case 'plugin':
-			return pluginNames.get(state.pluginId!) ?? state.pluginId!
+			return pluginNames.get(summary.pluginId!) ?? summary.pluginId!
 		default:
-			assertNever(state.kind)
+			assertNever(summary.kind)
 	}
 }
 
@@ -84,7 +85,7 @@ export function SettingsSavePanel({
 }) {
 	const openDialog = useAlertDialog()
 	const zIndex = useZIndex(ZI_OFFSETS.STICKYGROUP_CEILING)
-	const states = SettingsEditorFrame.useSectionStates(sectionKeys)
+	const summaries = Zus.useStore(...sectionKeys, selectPanelSections)
 	const perms = RbacClient.useSuspendableLoggedInUserPerms()
 	const servers = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.servers)
 	const plugins = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
@@ -93,17 +94,12 @@ export function SettingsSavePanel({
 		const nameById = new Map((servers ?? []).map((s) => [s.id, s.displayName]))
 		const pluginNameById = new Map(plugins.map((p) => [p.id, p.name]))
 		return sectionKeys.map((key, i): SectionView => {
-			const state = states[i]
-			const gui = state.mode === 'gui'
-			const label = sectionLabel(state, nameById, pluginNameById)
-			// a new-server section always counts as one pending change while open; once created it no longer participates
-			const changedCount = !gui ? 0 : state.kind === 'new-server' ? (state.created ? 0 : 1) : state.changes.length
-			const deniedIds = gui
-				? SettingsEditorFrame.deniedSettingPaths(state, perms).map((p) => `${SettingsEditorFrame.Sel.idPrefix(state)}${p}`)
-				: []
-			return { key, state, label, changedCount, deniedIds }
+			const summary = summaries[i]
+			const prefix = SettingsEditorFrame.Sel.idPrefix(summary)
+			const deniedIds = SettingsEditorFrame.deniedAmong(summary, summary.changedPaths, perms).map((p) => `${prefix}${p}`)
+			return { key, summary, label: sectionLabel(summary, nameById, pluginNameById), deniedIds }
 		})
-	}, [sectionKeys, states, perms, servers, plugins])
+	}, [sectionKeys, summaries, perms, servers, plugins])
 
 	let totalChanges = 0
 	let totalErrors = 0
@@ -111,12 +107,12 @@ export function SettingsSavePanel({
 	let anyInvalid = false
 	let anySaving = false
 	for (const s of sections) {
-		totalErrors += s.state.issues.length
-		if (s.changedCount === 0) continue
-		totalChanges += s.changedCount
+		totalErrors += s.summary.issueCount
+		if (s.summary.changedCount === 0) continue
+		totalChanges += s.summary.changedCount
 		totalDenied += s.deniedIds.length
-		if (!s.state.valid) anyInvalid = true
-		if (s.state.saving) anySaving = true
+		if (!s.summary.valid) anyInvalid = true
+		if (s.summary.saving) anySaving = true
 	}
 
 	// cycles through the fields currently flagged with a validation error (document order); each step navigates the
@@ -148,17 +144,17 @@ export function SettingsSavePanel({
 	}
 
 	async function handleSave() {
-		const dirty = sections.filter((s) => s.changedCount > 0)
-		if (dirty.length === 0 || dirty.some((s) => !s.state.valid || s.deniedIds.length > 0)) return
+		const dirty = sections.filter((s) => s.summary.changedCount > 0)
+		if (dirty.length === 0 || dirty.some((s) => !s.summary.valid || s.deniedIds.length > 0)) return
 		const msg = tr.confirm(SETTINGS_Msgs.confirmSaveAll())
 		const result = await openDialog({
 			title: msg.title,
 			content: (
 				<div className="space-y-4">
 					{dirty.map((s) => (
-						<div key={SettingsEditorFrame.Sel.idPrefix(s.state)}>
+						<div key={SettingsEditorFrame.Sel.idPrefix(s.summary)}>
 							{dirty.length > 1 && <p className="mb-1 text-sm font-semibold">{s.label}</p>}
-							<SettingsChangeList changes={s.state.changes} />
+							<SettingsChangeList changes={frameManager.getState(s.key)?.changes ?? []} />
 						</div>
 					))}
 				</div>
@@ -173,77 +169,86 @@ export function SettingsSavePanel({
 	// an unsaved new-server section has no baseline to fall back to, so resetting it means closing the form outright
 	function handleReset() {
 		for (const s of sections) {
-			if (s.state.kind === 'new-server') {
-				if (!s.state.created) onDiscardNewServer()
-			} else if (s.changedCount > 0) {
+			if (s.summary.kind === 'new-server') {
+				if (!s.summary.created) onDiscardNewServer()
+			} else if (s.summary.changedCount > 0) {
 				SettingsEditorFrame.Actions.resetDraft({ settingsEditor: s.key })
 			}
 		}
 	}
 
 	// the panel must stay reachable while multiple errors need chasing down, even with nothing to save yet
-	if (totalChanges === 0 && totalErrors <= 1) return null
+	const visible = totalChanges > 0 || totalErrors > 1
 
+	// The wrapper stays mounted so showing the panel never flips <main>'s :last-child state. A flip restyles every
+	// descendant that a `:last-child X` rule could match: calendar.tsx loads one for every `button` on the page.
 	return (
-		<div
-			style={{ zIndex }}
-			className="fixed bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg"
-		>
-			{totalErrors > 0 && (
-				<span className="flex items-center gap-0.5 text-sm font-medium text-destructive">
-					<Icons.CircleAlert className="me-1 h-4 w-4" />
-					{tr.text(SETTINGS_Msgs.errorCount(totalErrors))}
-					<Button
-						variant="ghost"
-						size="icon"
-						className="ms-1 h-6 w-6 text-destructive"
-						title={tr.text(SETTINGS_Msgs.previousError())}
-						onClick={() => navigateErrors(-1)}
-					>
-						<Icons.ChevronUp className="h-4 w-4" />
+		<div className="contents">
+			{visible && (
+				<div
+					style={{ zIndex }}
+					className="fixed bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background px-4 py-2 shadow-lg"
+				>
+					{totalErrors > 0 && (
+						<span className="flex items-center gap-0.5 text-sm font-medium text-destructive">
+							<Icons.CircleAlert className="me-1 h-4 w-4" />
+							{tr.text(SETTINGS_Msgs.errorCount(totalErrors))}
+							<Button
+								variant="ghost"
+								size="icon"
+								className="ms-1 h-6 w-6 text-destructive"
+								title={tr.text(SETTINGS_Msgs.previousError())}
+								onClick={() => navigateErrors(-1)}
+							>
+								<Icons.ChevronUp className="h-4 w-4" />
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="h-6 w-6 text-destructive"
+								title={tr.text(SETTINGS_Msgs.nextError())}
+								onClick={() => navigateErrors(1)}
+							>
+								<Icons.ChevronDown className="h-4 w-4" />
+							</Button>
+						</span>
+					)}
+					{totalDenied > 0 && (
+						<span
+							className="flex items-center gap-0.5 text-sm font-medium text-warn"
+							title={tr.text(SETTINGS_Msgs.deniedChangesHint())}
+						>
+							<Icons.ShieldAlert className="me-1 h-4 w-4" />
+							{tr.text(SETTINGS_Msgs.deniedCount(totalDenied))}
+							<Button
+								variant="ghost"
+								size="icon"
+								className="ms-1 h-6 w-6 text-warn"
+								title={tr.text(SETTINGS_Msgs.previousDeniedChange())}
+								onClick={() => navigateDenied(-1)}
+							>
+								<Icons.ChevronUp className="h-4 w-4" />
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="h-6 w-6 text-warn"
+								title={tr.text(SETTINGS_Msgs.nextDeniedChange())}
+								onClick={() => navigateDenied(1)}
+							>
+								<Icons.ChevronDown className="h-4 w-4" />
+							</Button>
+						</span>
+					)}
+					<span className="text-sm [&_strong]:font-medium">{tr.richText(SETTINGS_Msgs.changedCount(totalChanges))}</span>
+					<Button variant="outline" size="sm" onClick={handleReset}>
+						{tr.text(SETTINGS_Msgs.reset())}
 					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-6 w-6 text-destructive"
-						title={tr.text(SETTINGS_Msgs.nextError())}
-						onClick={() => navigateErrors(1)}
-					>
-						<Icons.ChevronDown className="h-4 w-4" />
+					<Button variant="primary" size="sm" disabled={anyInvalid || anySaving || totalDenied > 0} onClick={handleSave}>
+						{anySaving ? tr.text(SETTINGS_Msgs.saving()) : tr.text(SETTINGS_Msgs.save())}
 					</Button>
-				</span>
+				</div>
 			)}
-			{totalDenied > 0 && (
-				<span className="flex items-center gap-0.5 text-sm font-medium text-warn" title={tr.text(SETTINGS_Msgs.deniedChangesHint())}>
-					<Icons.ShieldAlert className="me-1 h-4 w-4" />
-					{tr.text(SETTINGS_Msgs.deniedCount(totalDenied))}
-					<Button
-						variant="ghost"
-						size="icon"
-						className="ms-1 h-6 w-6 text-warn"
-						title={tr.text(SETTINGS_Msgs.previousDeniedChange())}
-						onClick={() => navigateDenied(-1)}
-					>
-						<Icons.ChevronUp className="h-4 w-4" />
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-6 w-6 text-warn"
-						title={tr.text(SETTINGS_Msgs.nextDeniedChange())}
-						onClick={() => navigateDenied(1)}
-					>
-						<Icons.ChevronDown className="h-4 w-4" />
-					</Button>
-				</span>
-			)}
-			<span className="text-sm [&_strong]:font-medium">{tr.richText(SETTINGS_Msgs.changedCount(totalChanges))}</span>
-			<Button variant="outline" size="sm" onClick={handleReset}>
-				{tr.text(SETTINGS_Msgs.reset())}
-			</Button>
-			<Button variant="primary" size="sm" disabled={anyInvalid || anySaving || totalDenied > 0} onClick={handleSave}>
-				{anySaving ? tr.text(SETTINGS_Msgs.saving()) : tr.text(SETTINGS_Msgs.save())}
-			</Button>
 		</div>
 	)
 }
