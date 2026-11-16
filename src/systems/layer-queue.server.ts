@@ -84,6 +84,7 @@ export function initPayload(ctx: C.ManagedServerCleanup & CS.ServerId, serverSta
 		op$: new IsolatedSubject<ODSM.Server.Dispatched<SLL.Operation, SLL.Rejection>>(),
 		updateLayerMtx: new Mutex(),
 		deferredServerSyncs: null,
+		mapSetsAwaitingSync: 0,
 	}
 
 	ctx.cleanup.push(payload.update$, payload.nextLayerSyncState$, payload.ingameVote$, payload.op$, payload.updateLayerMtx)
@@ -194,6 +195,7 @@ export const setupInstance = Instr.spanOp(
 			ctx.server.event$
 				.pipe(
 					Rx.filter(([ctx, event]) => event.type === 'MAP_SET'),
+					Rx.tap(() => ctx.layerQueue.mapSetsAwaitingSync++),
 					// a roll writes the new queue head after it has recorded the match, and holds the rolling flag until then.
 					// Comparing against the head before that write lands would fight it.
 					Rx.concatMap((value) =>
@@ -207,42 +209,46 @@ export const setupInstance = Instr.spanOp(
 						'sync-server-map-set',
 						{ module, mutexes: ([evt]) => SquadServer.require(evt.serverId).layerQueue.updateLayerMtx },
 						async ([evtCtx, event], signal) => {
-							const ctx = SquadServer.eventCtx(evtCtx, signal)
-							// skip map sets SLM itself caused (queue save, app-event set-next, or other internal
-							// set-next) -- the saved queue is already in sync, so unshifting would duplicate the layer.
-							// only organic sets (in-game admin, external RCON tool, unattributed) should unshift.
-							if (event.type !== 'MAP_SET' || SE.mapSetIsSlmOriginated(event.source)) return
-							const queue = getSavedQueue(ctx)
-							const savedNextLayerId = LL.getNextLayerId(queue)
-							const savedNextItemId = queue[0]?.itemId || null
-							if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
-							const external = externalActor(event.source)
-							if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
-								const serverState = SquadServer.getServerState(ctx)
-								if (savedNextLayerId === null) {
-									log.warn('no next layer to sync after map set')
-									return
+							try {
+								const ctx = SquadServer.eventCtx(evtCtx, signal)
+								// skip map sets SLM itself caused (queue save, app-event set-next, or other internal
+								// set-next) -- the saved queue is already in sync, so unshifting would duplicate the layer.
+								// only organic sets (in-game admin, external RCON tool, unattributed) should unshift.
+								if (event.type !== 'MAP_SET' || SE.mapSetIsSlmOriginated(event.source)) return
+								const queue = getSavedQueue(ctx)
+								const savedNextLayerId = LL.getNextLayerId(queue)
+								const savedNextItemId = queue[0]?.itemId || null
+								if (savedNextLayerId && L.areLayersCompatible(event.layerId, savedNextLayerId)) return
+								const external = externalActor(event.source)
+								if (ctx.serverSettings.settings.overrideAdminSetNextLayer) {
+									const serverState = SquadServer.getServerState(ctx)
+									if (savedNextLayerId === null) {
+										log.warn('no next layer to sync after map set')
+										return
+									}
+									await syncNextLayerToServer(ctx, serverState.settings, savedNextLayerId, savedNextItemId!, {
+										reason: 'override',
+										overrode: external,
+										overrodeEventId: event.id,
+									})
+								} else {
+									const op: SLL.Operation = {
+										opId: SLL.createOpId(),
+										op: 'unshift-first-saved-layer',
+										itemId: LL.createItemId(),
+										itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
+										layerId: event.layerId,
+										externalSource: external,
+									}
+									externalSetEventIds.set(op.itemId, event.id)
+									try {
+										await dispatchOp(ctx, op)
+									} finally {
+										externalSetEventIds.delete(op.itemId)
+									}
 								}
-								await syncNextLayerToServer(ctx, serverState.settings, savedNextLayerId, savedNextItemId!, {
-									reason: 'override',
-									overrode: external,
-									overrodeEventId: event.id,
-								})
-							} else {
-								const op: SLL.Operation = {
-									opId: SLL.createOpId(),
-									op: 'unshift-first-saved-layer',
-									itemId: LL.createItemId(),
-									itemSource: { type: external.type === 'player' ? 'gameserver' : 'unknown' },
-									layerId: event.layerId,
-									externalSource: external,
-								}
-								externalSetEventIds.set(op.itemId, event.id)
-								try {
-									await dispatchOp(ctx, op)
-								} finally {
-									externalSetEventIds.delete(op.itemId)
-								}
+							} finally {
+								ctx.layerQueue.mapSetsAwaitingSync--
 							}
 						},
 					),

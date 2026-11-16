@@ -47,6 +47,7 @@ const DEFAULT_ANNOUNCEMENT_DURATION = '15m'
 const MAX_ANNOUNCEMENT_DURATION_MS = 24 * 60 * 60 * 1000
 
 const SYNC_ROSTER_TIMEOUT_MS = 15_000
+const QUEUE_SETTLED_TIMEOUT_MS = 15_000
 
 // Whether the pipeline is synced, has processed this poll, and holds its roster. The roster alone is not enough: it
 // matches before a poll that only moved the tickets is processed, and mid-roll the pipeline keeps the pre-roll roster.
@@ -59,6 +60,19 @@ function rosterApplied(state: PendingEvents.State, teams: { players: SM.Player[]
 		const held = state.currTeams?.players.get(id)
 		return held !== undefined && held.teamId === player.teamId && held.squadId === player.squadId
 	})
+}
+
+async function queueSettled(ctx: NonNullable<ReturnType<typeof managedServerCtx>>) {
+	// the pipeline publishes what a pass produced before it releases this lock
+	using _lock = await Prom.acquireInBlock(ctx.server.processEventsMtx, { signal: ctx.signal })
+	const queue = ctx.layerQueue.session.state
+	return (
+		// null until the first RCON_CONNECTED, whose pass reports the next layer the server already held
+		ctx.server.eventState.isFirstConnection !== null &&
+		ctx.layerQueue.mapSetsAwaitingSync === 0 &&
+		!queue.requestingGeneratedQueueItem &&
+		!queue.saving
+	)
 }
 
 function managedServerCtx(serverId: string) {
@@ -132,6 +146,21 @@ async function handle(req: Request): Promise<Response> {
 				await Prom.sleep(50, ctx.signal)
 			}
 			return { code: 'ok', players: teams.players.length }
+		}
+		// answers once a server's queue has caught up with what its event pipeline has reported: the pipeline has taken
+		// up its first rcon connection, every MAP_SET it published has been reconciled with the queue head, and no
+		// generated layer or save is pending. Until then the queue can still change under an edit, as it does when the
+		// app adopts the next layer the server held when the app connected. Rcon need not be up now.
+		case 'queue-settled': {
+			const serverId = typeof req.args?.serverId === 'string' ? req.args.serverId : ''
+			const ctx = managedServerCtx(serverId)
+			if (!ctx) return { code: 'err:server-not-loaded', serverId }
+			const deadline = Date.now() + QUEUE_SETTLED_TIMEOUT_MS
+			while (!(await queueSettled(ctx))) {
+				if (Date.now() > deadline) return { code: 'err:timeout', message: 'the queue did not settle' }
+				await Prom.sleep(50, ctx.signal)
+			}
+			return { code: 'ok' }
 		}
 		// how far a server's event pipeline has read its log, as the time of the newest log event it has taken up, and
 		// whether its rcon is connected
