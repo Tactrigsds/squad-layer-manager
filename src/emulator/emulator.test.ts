@@ -172,8 +172,7 @@ describe('chat-stream packets parse via RCON_EVENT_MATCHERS', () => {
 		const pktPromise = nextServerPacket()
 		const res = await rcon.execute(`AdminWarn "${emu.world.findPlayer('grey275')!.eos}" corpus style warn`)
 		expect((res as { data: string }).data).toBe('Remote admin has warned player  grey275. Message was "corpus style warn"')
-		const [event] = matchLog(await pktPromise, SM.RCON_EVENT_MATCHERS)
-		expect(event).toMatchObject({ type: 'PLAYER_WARNED', reason: 'corpus style warn' })
+		expect(await pktPromise).toBe('Remote admin has warned player  grey275. Message was "corpus style warn"')
 	})
 
 	it('warn on a missing player echoes the error to the chat stream', async () => {

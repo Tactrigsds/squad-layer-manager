@@ -400,10 +400,10 @@ export function expectWarn(state: State, opts: { playerId: SM.PlayerId; reason?:
 function expectationMatches(state: State, match: ExpectationMatch, event: SE.NewEvent): boolean {
 	switch (match.type) {
 		case 'PLAYER_WARNED':
-			// warns have no organic equivalent (players don't warn each other) and never carry a native source,
-			// so match on player + message text alone
+			// warns have no organic equivalent (players don't warn each other), so match on player + message text
 			return (
 				event.type === 'PLAYER_WARNED' &&
+				event.source?.type === 'rcon' &&
 				event.player === match.playerId &&
 				(match.reason === undefined || match.reason === event.reason)
 			)
@@ -1309,6 +1309,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				type: 'PLAYER_WARNED',
 				reason: pendingEvent.reason,
 				player: SM.PlayerIds.getPlayerId(player.ids),
+				source: pendingEvent.source,
 			})
 			break
 		}

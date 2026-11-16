@@ -1595,14 +1595,19 @@ describe('PendingEvents', () => {
 	})
 
 	describe('application-event attribution (warn expectations)', () => {
-		function warnEvent(reason: string, username: string, time: number): SM.RconEvents.Event {
-			return { type: 'PLAYER_WARNED', time, reason, playerIds: { username } }
+		function warnEvent(
+			reason: string,
+			username: string,
+			time: number,
+			source: SM.LogEvents.ActionSource = { type: 'rcon' },
+		): SM.LogEvents.NonChainEvent {
+			return { type: 'PLAYER_WARNED', time, chainID: 0, raw: '', reason, playerIds: { username }, source }
 		}
 
 		it('stamps a matching PLAYER_WARNED with the armed source and consumes the expectation', async () => {
 			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
 			PendingEvents.expectWarn(state, { playerId: 'eos-001', reason: 'stop', source: { type: 'event', id: 'app-1' } })
-			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 200))
+			PendingEvents.onLogEvent(state, warnEvent('stop', 'eos-001', 200))
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
@@ -1614,7 +1619,7 @@ describe('PendingEvents', () => {
 
 		it('records a warn whose echoed name has a doubled space after the tag', async () => {
 			const state = makeSyncedState([makePlayer('eos-001', 1, { ids: { eos: 'eos-001', username: '[TT] Soldierklint' } })], [])
-			PendingEvents.onRconEvent(state, warnEvent('stop', '[TT]  Soldierklint', 200))
+			PendingEvents.onLogEvent(state, warnEvent('stop', '[TT]  Soldierklint', 200))
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
@@ -1624,24 +1629,24 @@ describe('PendingEvents', () => {
 		it('does not attribute when the reason does not match, and leaves the expectation armed', async () => {
 			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
 			PendingEvents.expectWarn(state, { playerId: 'eos-001', reason: 'stop teamkilling', source: { type: 'event', id: 'app-1' } })
-			PendingEvents.onRconEvent(state, warnEvent('a different message', 'eos-001', 200))
+			PendingEvents.onLogEvent(state, warnEvent('a different message', 'eos-001', 200))
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
 			const warn = events.find((e) => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
-			expect(warn.source).toBeUndefined()
+			expect(warn.source).toEqual({ type: 'rcon' })
 			expect(state.expectations).toHaveLength(1)
 		})
 
 		it('does not attribute a warn for a different player', async () => {
 			const state = makeSyncedState([makePlayer('eos-001', 1), makePlayer('eos-002', 1)], [])
 			PendingEvents.expectWarn(state, { playerId: 'eos-002', reason: 'stop', source: { type: 'event', id: 'app-1' } })
-			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 200))
+			PendingEvents.onLogEvent(state, warnEvent('stop', 'eos-001', 200))
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
 			const warn = events.find((e) => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
-			expect(warn.source).toBeUndefined()
+			expect(warn.source).toEqual({ type: 'rcon' })
 		})
 
 		it('attributes each of a repeated warn via one consume-once expectation apiece (warnAll aggregation)', async () => {
@@ -1649,8 +1654,8 @@ describe('PendingEvents', () => {
 			const source = { type: 'event' as const, id: 'app-1' }
 			PendingEvents.expectWarn(state, { playerId: 'eos-001', reason: 'stop', source })
 			PendingEvents.expectWarn(state, { playerId: 'eos-001', reason: 'stop', source })
-			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 200))
-			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 201))
+			PendingEvents.onLogEvent(state, warnEvent('stop', 'eos-001', 200))
+			PendingEvents.onLogEvent(state, warnEvent('stop', 'eos-001', 201))
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(202))
 			const events = await collect(state)
 
@@ -1660,6 +1665,19 @@ describe('PendingEvents', () => {
 			expect(state.expectations).toHaveLength(0)
 		})
 
+		it('does not attribute a warn an admin sent from in-game', async () => {
+			const state = makeSyncedState([makePlayer('eos-001', 1), makePlayer('eos-002', 1)], [])
+			PendingEvents.expectWarn(state, { playerId: 'eos-001', reason: 'stop', source: { type: 'event', id: 'app-1' } })
+			const admin = { type: 'player' as const, playerIds: { eos: 'eos-002', steam: '76561198000000002', username: 'eos-002' } }
+			PendingEvents.onLogEvent(state, warnEvent('stop', 'eos-001', 200, admin))
+			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
+			const events = await collect(state)
+
+			const warn = events.find((e) => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
+			expect(warn.source).toEqual(admin)
+			expect(state.expectations).toHaveLength(1)
+		})
+
 		it('prunes an expired expectation without attributing', async () => {
 			const state = makeSyncedState([makePlayer('eos-001', 1)], [])
 			PendingEvents.pushExpectation(state, {
@@ -1667,12 +1685,12 @@ describe('PendingEvents', () => {
 				source: { type: 'event', id: 'app-1' },
 				expiresAt: -1,
 			})
-			PendingEvents.onRconEvent(state, warnEvent('stop', 'eos-001', 200))
+			PendingEvents.onLogEvent(state, warnEvent('stop', 'eos-001', 200))
 			PendingEvents.onLogEvent(state, makeUnknownLogEvent(201))
 			const events = await collect(state)
 
 			const warn = events.find((e) => e.type === 'PLAYER_WARNED') as SE.PlayerWarned
-			expect(warn.source).toBeUndefined()
+			expect(warn.source).toEqual({ type: 'rcon' })
 			expect(state.expectations).toHaveLength(0)
 		})
 
