@@ -181,7 +181,7 @@ export function SettingsSavePanel({
 	const visible = totalChanges > 0 || totalErrors > 1
 
 	// The wrapper stays mounted so showing the panel never flips <main>'s :last-child state. A flip restyles every
-	// descendant that a `:last-child X` rule could match: calendar.tsx loads one for every `button` on the page.
+	// descendant that any `:last-child X` rule could match (docs/developers/style-invalidation.md).
 	return (
 		<div className="contents">
 			{visible && (
