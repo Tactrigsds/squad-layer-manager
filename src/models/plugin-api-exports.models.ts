@@ -277,6 +277,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'create',
 		'get',
 		'getContributors',
+		'pageUrl',
 		'remove',
 		'removeContributor',
 		'search',
