@@ -28,6 +28,14 @@ cd <dir>/<test-dir> && mkdir tr && cd tr && unzip -oq ../trace.zip
   day. To reproduce at any time of day, open the spec's context with a custom minute offset, such as
   `browser.newContext({ timezoneId: 'GMT-05:31' })`, computed to put local time just after midnight.
 
+A failed integration job uploads an `integration-app-logs` artifact. Each failed test gets a directory per live app,
+holding the full `app.log` (debug lines included), the emulator's `SquadGame.log` and a `main.sqlite3` snapshot taken
+at the moment of failure.
+
+```sh
+gh run download <run-id> -R Tactrigsds/squad-layer-manager -n integration-app-logs -D <dir>
+```
+
 ## Reproduce at CI speed
 
 ```sh

@@ -6,7 +6,7 @@ import * as L from '@/models/layer.models'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
-import { savedQueue } from '../harness/inspect'
+import { latestMatch, savedQueue } from '../harness/inspect'
 import { rearrange } from '../harness/rearrange'
 
 // The failure modes a long-running server actually hits: the app itself is down when the map rolls, rcon
@@ -33,6 +33,9 @@ describe('a map roll that happened while the app was down', () => {
 	it('consumes the queue head the server already played', async () => {
 		// the head is the item the server is about to play in the roll below
 		expect(savedQueue(app)[0]?.layerId).toBe(LAYERS.gorodokRaas)
+		// The fixture returns before the first boot records the match it found playing. Restarting before then makes the
+		// roll below the server's first recorded match, and the app consumes the head only once it has history for the server.
+		await app.waitFor(() => latestMatch(app), { label: 'the first boot recording the match it found playing' })
 
 		await app.restart(() => {
 			app.emu.world.handleCommand(L.getLayerCommand(LAYERS.gorodokRaas, 'set-next'))
