@@ -76,7 +76,7 @@ describe('rcon frontend via the app client', () => {
 		expect(res).toEqual({ code: 'ok', data: 'Next level is Sumari, layer is Sumari_Seed_v1, factions RGF VDV' })
 	})
 
-	it("reports a training layer's factions from its name when the command gives none", async () => {
+	it("reports a layer's default factions when the command gives none", async () => {
 		await rcon.execute('AdminSetNextLayer JensensRange_USA-PLA')
 		const res = await rcon.execute('ShowNextMap')
 		expect(res).toEqual({ code: 'ok', data: 'Next level is JensensRange, layer is JensensRange_USA-PLA, factions USA PLA' })
