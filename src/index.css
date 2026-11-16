@@ -12,6 +12,29 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* An open modal Radix layer changes two inherited values on <body>, and each change restyled every element on the page.
+   - `pointer-events: none`: #root sets its own, and ModalLayerShield blocks the page instead (see
+     modal-layer-shield.tsx).
+   - react-remove-scroll's `--removed-body-scroll-bar-size`: <body> holds the value the lock sets, so locking changes
+     nothing. Overriding it on #root does not help, since a change to a parent's custom properties reaches every
+     descendant whatever its own values. The document never scrolls, so the size is always 0. */
+body {
+	--removed-body-scroll-bar-size: 0px;
+}
+#root {
+	pointer-events: auto;
+}
+[data-modal-layer-shield] {
+	display: none;
+	position: fixed;
+	inset: 0;
+	pointer-events: auto;
+}
+/* only beside its layer's open content: a Select's portal, and its shield, stay mounted while it is closed */
+body[style*='pointer-events: none'] [data-modal-layer-shield]:not(:last-child) {
+	display: block;
+}
+
 /* stands in for a value hidden with spoilers (see SpoilerRedaction) */
 @utility spoiler-hatch {
 	background: repeating-linear-gradient(135deg, var(--line) 0 5px, var(--panel-hi) 5px 7px);

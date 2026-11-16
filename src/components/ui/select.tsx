@@ -3,6 +3,7 @@ import * as SelectPrimitive from '@radix-ui/react-select'
 import * as React from 'react'
 
 import * as MenuSizing from '@/components/ui/menu-sizing.ts'
+import { ModalLayerShield } from '@/components/ui/modal-layer-shield'
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as KBClient from '@/systems/keybinds.client'
@@ -82,30 +83,33 @@ const SelectContent = React.forwardRef<
 	const inheritKeys = KBClient.useInheritAttrs()
 	return (
 		<SelectPrimitive.Portal>
-			<SelectPrimitive.Content
-				ref={ref}
-				className={cn(
-					'fd-menu relative overflow-hidden',
-					MenuSizing.MENU_MIN_WIDTH_CLASS,
-					MenuSizing.MENU_MAX_WIDTH_CLASS,
-					position === 'popper' && 'max-h-(--radix-select-content-available-height)',
-					position === 'popper' &&
-						'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
-					className,
-				)}
-				position={position}
-				style={{ zIndex, ...style }}
-				{...inheritKeys}
-				{...props}
-			>
-				<SelectScrollUpButton />
-				<SelectPrimitive.Viewport
-					className={cn(MenuSizing.MENU_LIST_MAX_HEIGHT_CLASS, position === 'popper' && 'h-(--radix-select-trigger-height) w-full')}
+			<div className="contents">
+				<ModalLayerShield zIndex={zIndex} />
+				<SelectPrimitive.Content
+					ref={ref}
+					className={cn(
+						'fd-menu relative overflow-hidden',
+						MenuSizing.MENU_MIN_WIDTH_CLASS,
+						MenuSizing.MENU_MAX_WIDTH_CLASS,
+						position === 'popper' && 'max-h-(--radix-select-content-available-height)',
+						position === 'popper' &&
+							'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
+						className,
+					)}
+					position={position}
+					style={{ zIndex, ...style }}
+					{...inheritKeys}
+					{...props}
 				>
-					<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
-				</SelectPrimitive.Viewport>
-				<SelectScrollDownButton />
-			</SelectPrimitive.Content>
+					<SelectScrollUpButton />
+					<SelectPrimitive.Viewport
+						className={cn(MenuSizing.MENU_LIST_MAX_HEIGHT_CLASS, position === 'popper' && 'h-(--radix-select-trigger-height) w-full')}
+					>
+						<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
+					</SelectPrimitive.Viewport>
+					<SelectScrollDownButton />
+				</SelectPrimitive.Content>
+			</div>
 		</SelectPrimitive.Portal>
 	)
 })

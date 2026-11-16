@@ -2,6 +2,7 @@ import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, DotFilledIcon } from '@radix-ui/react-icons'
 import * as React from 'react'
 
+import { ModalLayerShield } from '@/components/ui/modal-layer-shield'
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as KBClient from '@/systems/keybinds.client'
@@ -62,20 +63,23 @@ const DropdownMenuContent = React.forwardRef<
 
 	return (
 		<DropdownMenuPrimitive.Portal>
-			<DropdownMenuPrimitive.Content
-				ref={ref}
-				sideOffset={sideOffset}
-				collisionPadding={collisionPadding}
-				className={cn(
-					'fd-menu min-w-40 max-w-[calc(100vw-16px)] max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto',
-					className,
-				)}
-				style={{ zIndex, ...style }}
-				{...inheritKeys}
-				{...props}
-			>
-				<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
-			</DropdownMenuPrimitive.Content>
+			<div className="contents">
+				<ModalLayerShield zIndex={zIndex} />
+				<DropdownMenuPrimitive.Content
+					ref={ref}
+					sideOffset={sideOffset}
+					collisionPadding={collisionPadding}
+					className={cn(
+						'fd-menu min-w-40 max-w-[calc(100vw-16px)] max-h-(--radix-dropdown-menu-content-available-height) overflow-y-auto',
+						className,
+					)}
+					style={{ zIndex, ...style }}
+					{...inheritKeys}
+					{...props}
+				>
+					<BaseZIndexContext.Provider value={zIndex}>{children}</BaseZIndexContext.Provider>
+				</DropdownMenuPrimitive.Content>
+			</div>
 		</DropdownMenuPrimitive.Portal>
 	)
 })
