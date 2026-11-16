@@ -1,3 +1,5 @@
+import { defaultFilter } from 'cmdk'
+
 import * as DH from '@/models/display-helpers.models'
 
 import type { ComboBoxOption } from './combo-box.tsx'
@@ -292,4 +294,44 @@ export function groupRuns<T extends string | null>(
 		else runs.push({ key, heading: key == null ? undefined : labelOf(key), options: [option] })
 	}
 	return runs
+}
+
+// -------- virtualization --------
+
+// From this many options the list mounts only the rows in view. Below it cmdk mounts every row, and filters and
+// ranks them itself.
+export const VIRTUALIZE_MIN_OPTIONS = 100
+
+export type OptionRun<T extends string | null> = ReturnType<typeof groupRuns<T>>[number]
+
+export type OptionRow<T extends string | null> =
+	| { kind: 'heading'; key: string; label: string }
+	| { kind: 'option'; option: ComboBoxOption<T> }
+
+export function optionRows<T extends string | null>(runs: readonly OptionRun<T>[]): OptionRow<T>[] {
+	const rows: OptionRow<T>[] = []
+	for (const [i, run] of runs.entries()) {
+		if (run.heading !== undefined) rows.push({ kind: 'heading', key: run.key ?? `run-${i}`, label: run.heading })
+		for (const option of run.options) rows.push({ kind: 'option', option })
+	}
+	return rows
+}
+
+// Filters and orders runs as cmdk does when every row is mounted: options scoring zero drop out, options rank by
+// score within their run, and runs rank by their best option.
+export function rankRuns<T extends string | null>(runs: readonly OptionRun<T>[], search: string): OptionRun<T>[] {
+	if (!search) return [...runs]
+	const ranked: { run: OptionRun<T>; best: number }[] = []
+	for (const run of runs) {
+		const scored: { option: ComboBoxOption<T>; score: number }[] = []
+		for (const option of run.options) {
+			const score = defaultFilter(cmdkItemKey(option) ?? '', search, searchKeywords(option))
+			if (score > 0) scored.push({ option, score })
+		}
+		if (scored.length === 0) continue
+		scored.sort((a, b) => b.score - a.score)
+		ranked.push({ run: { ...run, options: scored.map((s) => s.option) }, best: scored[0].score })
+	}
+	ranked.sort((a, b) => b.best - a.best)
+	return ranked.map((r) => r.run)
 }

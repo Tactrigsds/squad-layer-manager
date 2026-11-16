@@ -1,4 +1,4 @@
-import { useCommandState } from 'cmdk'
+import { defaultFilter, useCommandState } from 'cmdk'
 import { Check, ChevronDown, LoaderCircle, Unlock } from 'lucide-react'
 import React, { useCallback, useImperativeHandle, useRef, useState } from 'react'
 
@@ -19,6 +19,7 @@ import { GroupDrillIn, GroupDrillInHeader, GroupingBar, PrefixedLabel } from './
 import { clearOnMiddleClickProps } from './middle-click.ts'
 import {
 	ALL_GROUPS,
+	cmdkItemKey,
 	type ComboBoxGroupingDef,
 	descriptionsByItemKey,
 	descriptionTitle,
@@ -30,14 +31,18 @@ import {
 	groupRuns,
 	type GroupSelection,
 	normalizeOptions,
+	optionRows,
 	optionsInSelection,
+	rankRuns,
 	resolveGroupings,
 	searchKeywords,
 	selectableCount,
+	VIRTUALIZE_MIN_OPTIONS,
 } from './options.ts'
 import { useIsComboBoxSheet } from './sheet.ts'
 import { useGrowOnlyWidth } from './sizing.ts'
 import { ComboBoxSurface } from './surface.tsx'
+import { VirtualOptionRows } from './virtual-rows.tsx'
 
 export type ComboBoxHandle = Focusable & Clearable
 export type ComboBoxProps<T extends string | null = string | null> = {
@@ -122,6 +127,8 @@ function HighlightedDescriptionSync<T extends string | null>(props: {
 	return null
 }
 
+const rowKey = (option: ComboBoxOption<string | null>) => option.value ?? ''
+
 export default function ComboBox<T extends string | null>(props: ComboBoxProps<T>) {
 	const disabled = props.disabled ?? false
 	const groupings = React.useMemo(() => resolveGroupings(props.groupings), [props.groupings])
@@ -195,6 +202,53 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	const callerControlsInput = props.setInputValue !== undefined
 	const inputValue = drillEntry ? drillQuery : callerControlsInput ? props.inputValue : query
 	const onInputChange = drillEntry ? setDrillQuery : callerControlsInput ? props.setInputValue : setQuery
+
+	const visibleRuns = React.useMemo(
+		() => (visibleOptions === LOADING ? [] : groupRuns(visibleOptions, primary, suppressHeadings)),
+		[visibleOptions, primary, suppressHeadings],
+	)
+	// cmdk can only filter the rows it sees mounted, so a virtualized list filters itself, unless the caller owns the
+	// input and has filtered already
+	const virtual = options !== LOADING && options.length >= VIRTUALIZE_MIN_OPTIONS
+	const virtualRows = React.useMemo(
+		() => (virtual ? optionRows(callerControlsInput ? visibleRuns : rankRuns(visibleRuns, query)) : undefined),
+		[virtual, callerControlsInput, visibleRuns, query],
+	)
+	const emptyLabel = props.emptyLabel ?? DH.MISSING_DISPLAY
+	const showEmptyOption = !!props.allowEmpty && (!virtual || callerControlsInput || !query || defaultFilter(emptyLabel, query) > 0)
+	const renderOption = (option: ComboBoxOption<T>) => (
+		<CommandItem
+			key={option.value}
+			value={option.value ?? undefined}
+			keywords={searchKeywords(option)}
+			disabled={option.disabled}
+			onSelect={() => {
+				if (option.disabled) return
+				onSelect(option.value)
+			}}
+		>
+			<Check className={cn('me-2 h-4 w-4 shrink-0', props.value === option.value ? 'opacity-100' : 'opacity-0')} />
+			{/* one line per row: too long ellipsizes rather than wrapping the list into a wall of text */}
+			<span className={cn('min-w-0 flex-1', sheet && option.description ? 'flex flex-col' : 'truncate')}>
+				<PrefixedLabel
+					prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
+					label={
+						option.locked && props.onUnlock ? (
+							<LockedOptionLabel
+								label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
+								unlockLabel={props.unlockLabel}
+								onUnlock={props.onUnlock}
+							/>
+						) : (
+							(option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value))
+						)
+					}
+					render={prefixRenderer}
+				/>
+				{sheet && option.description && <span className="text-xs font-normal whitespace-normal text-text-2">{option.description}</span>}
+			</span>
+		</CommandItem>
+	)
 
 	const btnRef = useRef<HTMLButtonElement | null>(null)
 	const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -335,7 +389,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 				{open && !sheet && describedOptions.size > 0 && <DescriptionBox ref={descriptionBoxRef} placement="end" />}
 				{open && (
 					<Command
-						shouldFilter={drillEntry ? true : !props.setInputValue}
+						shouldFilter={drillEntry ? true : !virtual && !props.setInputValue}
 						className={cn('min-h-0', sheet ? 'flex-1' : [MenuSizing.MENU_MIN_WIDTH_CLASS, MenuSizing.MENU_MAX_WIDTH_CLASS])}
 						onKeyDown={(e) => {
 							if (e.key !== 'Tab') return
@@ -381,61 +435,22 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 									</CommandItem>
 								</CommandGroup>
 							)}
-							{!drillEntry && options !== LOADING && props.allowEmpty && (
+							{!drillEntry && options !== LOADING && showEmptyOption && (
 								<CommandGroup>
-									<CommandItem
-										value={props.emptyLabel ?? DH.MISSING_DISPLAY}
-										onSelect={() => {
-											if (!props.allowEmpty) return
-											onSelect(undefined)
-										}}
-									>
+									<CommandItem value={emptyLabel} onSelect={() => onSelect(undefined)}>
 										<Check className={cn('me-2 h-4 w-4', props.value === undefined ? 'opacity-100' : 'opacity-0')} />
-										{props.emptyLabel ?? DH.MISSING_DISPLAY}
+										{emptyLabel}
 									</CommandItem>
 								</CommandGroup>
 							)}
+							{!drillEntry && virtualRows && (
+								<VirtualOptionRows rows={virtualRows} itemValue={cmdkItemKey} rowKey={rowKey} renderOption={renderOption} />
+							)}
 							{!drillEntry &&
-								visibleOptions !== LOADING &&
-								groupRuns(visibleOptions, primary, suppressHeadings).map((run, i) => (
+								!virtualRows &&
+								visibleRuns.map((run, i) => (
 									<CommandGroup key={run.heading ?? `run-${i}`} heading={run.heading}>
-										{run.options.map((option) => (
-											<CommandItem
-												key={option.value}
-												value={option.value ?? undefined}
-												keywords={searchKeywords(option)}
-												disabled={option.disabled}
-												onSelect={() => {
-													if (option.disabled) return
-													onSelect(option.value)
-												}}
-											>
-												<Check
-													className={cn('me-2 h-4 w-4 shrink-0', props.value === option.value ? 'opacity-100' : 'opacity-0')}
-												/>
-												{/* one line per row: too long ellipsizes rather than wrapping the list into a wall of text */}
-												<span className={cn('min-w-0 flex-1', sheet && option.description ? 'flex flex-col' : 'truncate')}>
-													<PrefixedLabel
-														prefix={prefixInList ? groupPrefixOf(option, primary) : undefined}
-														label={
-															option.locked && props.onUnlock ? (
-																<LockedOptionLabel
-																	label={option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value)}
-																	unlockLabel={props.unlockLabel}
-																	onUnlock={props.onUnlock}
-																/>
-															) : (
-																(option.label ?? (option.value === null ? DH.NULL_DISPLAY : option.value))
-															)
-														}
-														render={prefixRenderer}
-													/>
-													{sheet && option.description && (
-														<span className="text-xs font-normal whitespace-normal text-text-2">{option.description}</span>
-													)}
-												</span>
-											</CommandItem>
-										))}
+										{run.options.map(renderOption)}
 									</CommandGroup>
 								))}
 						</CommandList>

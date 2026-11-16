@@ -332,21 +332,30 @@ test.describe('option groupings', () => {
 		await picker.getByRole('option', { name: /Tracked IFV/ }).click()
 		await expect(facet).toHaveText(/Vehicle type:\s*Tracked IFV/)
 
-		await expect(picker.getByRole('option', { name: 'BMP-2', exact: true })).toBeVisible()
-		await expect(picker.getByRole('option', { name: 'M1A1', exact: true })).toHaveCount(0)
-		// a SuperMod tracked IFV: present under every collection, gone once the collection tab narrows too
+		// the list mounts only the rows in view, so each row is searched for rather than looked up
+		const search = picker.getByRole('combobox')
+		const noResults = picker.getByText('No results found.')
+		await search.fill('BMP-2')
+		await expect(picker.getByRole('option', { name: /^BMP-2( |$)/ })).toBeVisible()
+		// a SuperMod tracked IFV: present under every collection, gone once the collection tab narrows too. The search
+		// matches it loosely, which also says the search has applied before M1A1's absence is read.
+		await search.fill('M1A1')
+		await expect(picker.getByRole('option', { name: /Marder 1A3/ })).toBeVisible()
+		await expect(picker.getByRole('option', { name: /^M1A1( |$)/ })).toHaveCount(0)
+		await search.fill('Marder 1A3')
 		await expect(picker.getByRole('option', { name: /Marder 1A3/ })).toBeVisible()
 
 		await picker.getByRole('tab', { name: 'OWI' }).click()
-		await expect(picker.getByRole('option', { name: 'BMP-2', exact: true })).toBeVisible()
-		await expect(picker.getByRole('option', { name: /Marder 1A3/ })).toHaveCount(0)
+		await expect(noResults).toBeVisible()
+		await search.fill('BMP-2')
+		await expect(picker.getByRole('option', { name: /^BMP-2( |$)/ })).toBeVisible()
 
 		// escape backs out of the drill-in rather than closing the picker out from under it
 		await facet.click()
 		await expect(picker.getByRole('button', { name: 'Back to options' })).toBeVisible()
 		await page.keyboard.press('Escape')
 		await expect(facet).toBeVisible()
-		await expect(picker.getByRole('option', { name: 'BMP-2', exact: true })).toBeVisible()
+		await expect(picker.getByRole('option', { name: /^BMP-2( |$)/ })).toBeVisible()
 	})
 })
 

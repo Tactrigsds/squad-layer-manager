@@ -5,6 +5,7 @@ import * as RRS from '@/models/repeat-rulesets.models'
 
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { filter, LAYERS, layerTag, layerText, queue, queueItem, selectableFilter } from '../harness/arrange'
+import { pickOption } from '../harness/combo-box'
 import * as Dash from '../harness/dashboard'
 import { savedPool, savedServerRepeatRuleset } from '../harness/inspect'
 import { gotoReady } from '../harness/ready'
@@ -152,7 +153,7 @@ test.describe('queue item constraints', () => {
 
 		// add a second Gorodok layer, which repeats the head
 		await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
-		await page.getByRole('option', { name: 'Gorodok_AAS_v1', exact: true }).click()
+		await pickOption(page, 'Gorodok_AAS_v1')
 		await dialog
 			.getByRole('row')
 			.filter({ hasText: layerText('Gorodok_AAS_v1') })
@@ -210,7 +211,7 @@ test.describe('queue item constraints', () => {
 		await page.getByRole('button', { name: 'Add Layers' }).click()
 		const dialog = page.getByRole('dialog', { name: 'Add Layers' })
 		await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
-		await page.getByRole('option', { name: 'Narva_RAAS_v1', exact: true }).click()
+		await pickOption(page, 'Narva_RAAS_v1')
 		await dialog
 			.getByRole('row')
 			.filter({ hasText: layerText('Narva_RAAS_v1') })
@@ -302,7 +303,7 @@ test.describe('queue item constraints', () => {
 		await page.getByRole('button', { name: 'Add Layers' }).click()
 		const dialog = page.getByRole('dialog', { name: 'Add Layers' })
 		await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
-		await page.getByRole('option', { name: 'Narva_RAAS_v1', exact: true }).click()
+		await pickOption(page, 'Narva_RAAS_v1')
 		await dialog
 			.getByRole('row')
 			.filter({ hasText: layerText('Narva_RAAS_v1') })
