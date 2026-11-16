@@ -14,10 +14,12 @@ import * as RRS from '@/models/repeat-rulesets.models'
 import type * as RFMT from '@/models/rotation-format.models'
 import type * as ROT from '@/models/rotations.models'
 import * as SETTINGS from '@/models/settings.models'
+import * as UP from '@/models/user-presence.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 import * as RotationClient from '@/systems/rotation.client'
 import * as SettingsClient from '@/systems/settings.client'
+import * as UPClient from '@/systems/user-presence.client'
 
 import { frameManager } from './frame-manager'
 
@@ -62,6 +64,8 @@ export type Source = {
 export type State = ListHostPrt.Store & {
 	rotationId: ROT.RotationId
 	view: View
+	// the layers panel covers the viewport. Only the text views offer it, so leaving them clears it
+	fullscreen: boolean
 	source: Source
 	tagChoices: ReadonlyMap<string, TagChoice>
 	// a file waiting on where its items go
@@ -112,6 +116,7 @@ export const frame: Frame = frameManager.createFrame<Types>({
 			listHost: { type: 'rotation', rotationId },
 			settings: { saved: SETTINGS.catalogSettings() },
 			view: 'builder',
+			fullscreen: false,
 			source: { text: '', textSeq: 0, edited: false, analysis: null },
 			tagChoices: new Map(),
 			openedFile: null,
@@ -174,9 +179,14 @@ export function problemCount(analysis: SourceAnalysis | null): number {
 	return analysis.parseErrors.length + analysis.lineErrors.length + analysis.unknownTags.length
 }
 
-// the problems that keep the view from being switched: those in text the user changed, which switching would lose
+// the problems that keep the view from being switched and the draft from being saved: those in text the user changed,
+// which either would lose
 export function blockingProblems(source: Source): number {
 	return source.edited ? problemCount(source.analysis) : 0
+}
+
+export namespace Sel {
+	export const blockingProblemCount = (state: State) => blockingProblems(state.source)
 }
 
 function writtenSource(prev: Source, text: string): Source {
@@ -284,10 +294,13 @@ export namespace Actions {
 	// Shows the draft as text in `view`, or as the list. Leaving text that cannot be applied is refused, since what it
 	// says would be lost.
 	export async function setView(key: StateKey, view: View) {
+		if (view === Zus.getState(key).view) return
+		// the analysis may still describe the text from before the last keystrokes
+		await flushSource(key)
 		const state = Zus.getState(key)
 		if (view === state.view || blockingProblems(state.source) > 0) return
 		if (view === 'builder') {
-			store(key).setState({ view })
+			store(key).setState({ view, fullscreen: false })
 			return
 		}
 		const mod = await loadRfmt()
@@ -297,18 +310,25 @@ export namespace Actions {
 		void analyzeAndApply(key, text)
 	}
 
-	// an edit typed into the text, read once typing pauses
+	export function setFullscreen(key: StateKey, fullscreen: boolean) {
+		store(key).setState({ fullscreen })
+	}
+
+	// An edit typed into the text, read once typing pauses. The text stays writable outside editing, so typing starts
+	// editing, as Start Editing does.
 	export function editSource(key: StateKey, text: string) {
 		const state = Zus.getState(key)
+		UPClient.Actions.setActivityActive(UP.Trans.editingRotation(state.rotationId), true)
 		state.sourceRuntime.pendingEdit = true
 		store(key).setState({ source: { ...state.source, text, edited: true } })
 		state.sourceEdits$.next(text)
 	}
 
-	// applies the text now rather than after the pause, for a save that must include the last keystrokes
+	// Applies the text now rather than after the pause, for a save that must include the last keystrokes. Resolves
+	// once blockingProblems describes the current text.
 	export async function flushSource(key: StateKey) {
 		const state = Zus.getState(key)
-		if (state.view === 'builder') return
+		if (state.view === 'builder' || !state.source.edited) return
 		await analyzeAndApply(key, state.source.text)
 	}
 
@@ -365,6 +385,7 @@ export namespace Actions {
 
 	// 'create' makes the tag right away, after which the label matches it
 	export async function chooseTag(key: StateKey, label: string, choice: TagChoice | { type: 'create' }) {
+		UPClient.Actions.setActivityActive(UP.Trans.editingRotation(Zus.getState(key).rotationId), true)
 		let resolved: TagChoice
 		if (choice.type === 'create') {
 			const created = await RotationClient.Actions.createLayerTags([label])

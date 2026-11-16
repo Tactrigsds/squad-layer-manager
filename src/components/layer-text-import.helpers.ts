@@ -122,7 +122,7 @@ export function useLayerTextImport(opts: { installedMods?: readonly string[]; va
 export function describeParseError(error: RFMT.ParseError): string {
 	switch (error.code) {
 		case 'err:yaml':
-			return tr.text(ROT_Msgs.yamlError(error.text))
+			return tr.text(ROT_Msgs.yamlError(error.message ?? ''))
 		case 'err:not-a-list':
 			return tr.text(ROT_Msgs.notAList())
 		case 'err:bad-item':

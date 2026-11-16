@@ -2,7 +2,7 @@
 // WARNING: only import this from lazily-loaded (React.lazy'd) components -- it statically pulls in the whole `yaml`
 // package, which we don't want in the initial/route chunk.
 import type { Node, YAMLMap, YAMLSeq } from 'yaml'
-import { Document, isMap, isNode, isScalar, isSeq, parseDocument, visit } from 'yaml'
+import { Document, isMap, isNode, isPair, isScalar, isSeq, parseDocument, visit } from 'yaml'
 
 export * from 'yaml'
 
@@ -30,9 +30,51 @@ export function stringifyDocWithComments(value: unknown, comments: PathComments,
 	return render(doc, compact)
 }
 
+// `yaml` appends a code frame to an error's message by default. The editors show errors beside the text, where the
+// frame only repeats a line already on screen, so the first error is thrown without one. Its `pos` holds its span.
+function parseOrThrow(text: string) {
+	const doc = parseDocument(text, { prettyErrors: false })
+	if (doc.errors[0]) throw doc.errors[0]
+	return doc
+}
+
+export function parseValue(text: string): unknown {
+	return parseOrThrow(text).toJS()
+}
+
+// Where a path into a document's value is written: the span of the value, or of its key when `key` is set. A path
+// that leads nowhere resolves to the nearest node on it that exists, with `found` false.
+export function locate(doc: Document, path: readonly PropertyKey[], opts?: { key?: boolean }) {
+	let node: unknown = doc.contents
+	let span = spanOf(node) ?? { from: 0, to: 0 }
+	for (let i = 0; i < path.length; i++) {
+		const segment = path[i]
+		let next: unknown
+		if (isMap(node)) {
+			const pair = node.items.find((item) => (isScalar(item.key) ? item.key.value : item.key) === segment)
+			if (!pair) return { ...span, found: false }
+			const last = i === path.length - 1
+			// a key with no value has no value node, so the key stands in for it
+			next = last && opts?.key ? pair.key : (pair.value ?? pair.key)
+		} else if (isSeq(node) && typeof segment === 'number') {
+			next = node.items[segment]
+			if (next === undefined) return { ...span, found: false }
+		} else {
+			return { ...span, found: false }
+		}
+		node = isPair(next) ? next.key : next
+		span = spanOf(node) ?? span
+	}
+	return { ...span, found: true }
+}
+
+function spanOf(node: unknown) {
+	if (!isNode(node) || !node.range) return null
+	return { from: node.range[0], to: node.range[1] }
+}
+
 export function parseWithComments(text: string): { value: unknown; comments: PathComments } {
-	const doc = parseDocument(text)
-	if (doc.errors.length > 0) throw doc.errors[0]
+	const doc = parseOrThrow(text)
 	const comments: PathComments = {}
 	collectComments(doc.contents, [], comments)
 	return { value: doc.toJS(), comments }

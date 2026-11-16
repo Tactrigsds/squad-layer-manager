@@ -23,6 +23,7 @@ export default function TabsList<T extends string>(props: {
 						data-state={seg ? (props.active === option.value ? 'on' : 'off') : props.active === option.value && 'active'}
 						aria-pressed={seg ? props.active === option.value : undefined}
 						data-softdisabled={isDisabled}
+						aria-disabled={isDisabled || undefined}
 						onClick={() => {
 							if (isDisabled) return
 							props.setActive(option.value)

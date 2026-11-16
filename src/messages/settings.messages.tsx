@@ -571,12 +571,6 @@ export const serverAgentSetupGuide = def('Server agent setup guide')
 
 export const loadingEmojis = def('Loading emojis...')
 
-export const fullscreen = def('Fullscreen')
-
-export const exitFullscreen = def('Exit fullscreen (Esc)')
-
-export const yamlErrors = def('Errors')
-
 // -------- the pool config window --------
 
 export const poolConfigTitle = def('Pool Configuration')

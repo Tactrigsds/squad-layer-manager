@@ -6,7 +6,8 @@ import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
 
-const SELECTION = 'color-mix(in oklab, var(--ctl-hi) 55%, transparent)'
+const SELECTION = 'color-mix(in oklab, var(--pri) 40%, transparent)'
+const SELECTION_MATCH = 'color-mix(in oklab, var(--ctl-hi) 60%, transparent)'
 const LINE_HI = 'color-mix(in oklab, var(--panel-hi) 60%, transparent)'
 const PRI_WASH = 'color-mix(in oklab, var(--pri) 25%, transparent)'
 
@@ -22,11 +23,13 @@ const chrome = EditorView.theme(
 		'.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font-mono)', lineHeight: '1.5' },
 		'.cm-content': { caretColor: 'var(--pri-hi)' },
 		'.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--pri-hi)' },
-		'&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+		'&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
 			backgroundColor: SELECTION,
 		},
-		'.cm-selectionMatch': { backgroundColor: 'color-mix(in oklab, var(--pri) 14%, transparent)' },
+		'.cm-selectionMatch': { backgroundColor: SELECTION_MATCH },
 		'.cm-activeLine': { backgroundColor: LINE_HI },
+		// the active line paints over the selection layer, so it would dim the selected text on its line
+		'&:has(.cm-selectionBackground) .cm-activeLine': { backgroundColor: 'transparent' },
 
 		'.cm-gutters': {
 			backgroundColor: 'var(--ctl-lo)',
@@ -89,6 +92,9 @@ const chrome = EditorView.theme(
 		},
 		'.cm-button:active': { backgroundColor: 'var(--ctl-lo)' },
 		'.cm-searchMatch': { backgroundColor: PRI_WASH, outline: '1px solid var(--pri-lo)' },
+		'.cm-diagnostic': { fontFamily: 'var(--font-sans)', padding: '4px 8px' },
+		'.cm-diagnostic-error': { borderLeftColor: 'var(--danger)' },
+		'.cm-gutter-lint': { width: '0.9em' },
 		'.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'var(--pri-lo)' },
 	},
 	{ dark: true },

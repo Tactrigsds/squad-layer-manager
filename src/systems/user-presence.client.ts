@@ -317,6 +317,15 @@ export namespace Actions {
 		dispatch(...updates.map((update): UP.NewClientOp => ({ code: 'update-activity', update })))
 	}
 
+	// enters or leaves an activity, doing nothing when this client is already in that state
+	export function setActivityActive<P>(transitions: UP.ActivityTransitions<P>, active: boolean) {
+		const config = ConfigClient.getConfig()
+		const state = config ? Store.getState().presence.get(config.wsClientId)?.activityState : undefined
+		const alreadyActive = !!transitions.match(state ?? null)
+		if (active && !alreadyActive) updateActivity(transitions.create())
+		if (!active && alreadyActive) updateActivity(transitions.destroy())
+	}
+
 	// remotely reset one of the current user's OTHER clients (clears its activity, marks it away). the
 	// reducer enforces same-user ownership.
 	export function resetClient(targetClientId: string) {
@@ -589,16 +598,12 @@ export function useActivityState<P>(opts: UP.ActivityTransitions<P>) {
 		(update) => {
 			const config = ConfigClient.getConfig()
 			const state = config ? Store.getState().presence.get(config?.wsClientId)?.activityState : undefined
-
 			const alreadyActive = !!matchActivity(state ?? null)
 			const newActive = typeof update === 'function' ? update(alreadyActive) : update
-
-			if (newActive && !alreadyActive) {
-				Actions.updateActivity(createActivityRef.current())
-			}
-			if (!newActive && alreadyActive) {
-				Actions.updateActivity(removeActivityRef.current())
-			}
+			Actions.setActivityActive(
+				{ match: matchActivity, create: createActivityRef.current, destroy: removeActivityRef.current },
+				newActive,
+			)
 		},
 		[matchActivity],
 	)

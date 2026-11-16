@@ -1,5 +1,8 @@
 import React from 'react'
 
+import EditorErrorsSplit from '@/components/editor-errors-split'
+import EditorProblems from '@/components/editor-problems'
+import { FullscreenSurface, FullscreenToggle } from '@/components/fullscreen'
 import * as Typo from '@/components/typography'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
 import * as CM from '@/lib/codemirror'
@@ -7,14 +10,14 @@ import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { useDebounced } from '@/lib/use-debounce'
-import * as Yaml from '@/lib/yaml'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
+import type * as EP from '@/models/editor-problems.models'
 import * as F from '@/models/filter.models'
-import * as FilterEditClient from '@/systems/filter-edit.client'
-import * as MessagesClient from '@/systems/messages.client'
+import * as EditorProblemsClient from '@/systems/editor-problems.client'
 import { tr } from '@/systems/messages.client'
 
+import { problemAtPath, schemaProblems, yamlErrorProblem } from './editor-problems.helpers'
 import { parseWithNodeComments, stringifyWithNodeComments } from './filter-text-editor.helpers'
 import type { FilterTextEditorProps } from './filter-text-editor.types'
 import YamlCompactSwitch from './yaml-compact-switch'
@@ -24,13 +27,11 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	const viewRef = React.useRef<CM.EditorView | null>(null)
 	// the filter the buffer currently represents, so the editor's own edits don't come back as a re-serialization
 	const lastEmittedRef = React.useRef<F.EditableFilterNode | null>(null)
-	const [errorText, setErrorText] = React.useState('')
+	const [problems, setProblems] = React.useState<EP.Problem[]>([])
 	// re-rendering the buffer means parsing it first, so the switch is only offered while that can succeed
 	const [parsable, setParsable] = React.useState(true)
 	const [compact, setCompact] = React.useState(true)
-	const gridRef = React.useRef<HTMLDivElement>(null)
-	const dragging = React.useRef(false)
-	const [errorsFraction, setErrorsFraction] = React.useState(FilterEditClient.loadErrorsFraction)
+	const [fullscreen, setFullscreen] = React.useState(false)
 	// the editor is built once; the store subscription below reads the current mode without tearing it down
 	const compactRef = React.useRef(compact)
 	compactRef.current = compact
@@ -52,27 +53,30 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 		(value: string) => {
 			// a setDoc since this edit has replaced it
 			if (viewRef.current && value !== viewRef.current.state.doc.toString()) return
+			const report = (next: EP.Problem[]) => {
+				setProblems(next)
+				if (viewRef.current) CM.showProblems(viewRef.current, next)
+			}
 			let obj: any
 			try {
 				obj = parseWithNodeComments(value)
 			} catch (err) {
-				// a YAMLParseError message already carries the line, column and a code frame
-				setErrorText(err instanceof Error ? err.message : String(err))
+				report([yamlErrorProblem(value, err)])
 				setParsable(false)
 				return
 			}
 			setParsable(true)
 			const res = F.FilterNodeSchema.safeParse(obj)
 			if (!res.success) {
-				setErrorText(Yaml.stringifyDoc(res.error.issues))
+				report(schemaProblems(value, res.error.issues))
 				return
 			}
 			if (!F.isBlockType(res.data.type)) {
-				setErrorText(`root node must be a block node: (${F.BLOCK_TYPES.join(', ')})`)
+				report([problemAtPath(value, ['type'], tr.text(F_Msgs.rootMustBeBlock(F.BLOCK_TYPES.join(', '))))])
 				return
 			}
 
-			setErrorText('')
+			report([])
 			const valueChanged = !Obj.deepEqual(res.data, F.treeToFilterNode(getState().tree))
 			if (valueChanged) {
 				lastEmittedRef.current = res.data
@@ -98,7 +102,9 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			extensions: [
 				...CM.yamlEditorExtensions(schemaJson),
 				CM.EditorView.updateListener.of((u) => {
-					if (u.docChanged && !CM.isProgrammaticUpdate(u)) onChangeDebounced(u.state.doc.toString())
+					// a setDoc is checked too, so the problems shown always describe the text. Applying it is a no-op, since
+					// it matches the filter already.
+					if (u.docChanged) onChangeDebounced(u.state.doc.toString())
 				}),
 			],
 		})
@@ -144,9 +150,8 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			try {
 				obj = parseWithNodeComments(view.state.doc.toString())
 			} catch (err) {
-				if (err instanceof Error) {
-					toast.error(...tr.toast(F_Msgs.formatFailed(err.message)))
-				}
+				const text = view.state.doc.toString()
+				toast.error(...tr.toast(F_Msgs.formatFailed(EditorProblemsClient.describe(yamlErrorProblem(text, err)))))
 				return
 			}
 			CM.setDoc(view, stringifyWithNodeComments(obj, compactRef.current))
@@ -155,49 +160,23 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 	}))
 
 	return (
-		<div
-			ref={gridRef}
-			className="grid h-[500px] w-full grid-rows-[min-content_minmax(0,1fr)] gap-y-2 rounded-md"
-			style={{ gridTemplateColumns: `minmax(0,${1 - errorsFraction}fr) auto minmax(0,${errorsFraction}fr)` }}
-		>
-			<div className="mb-2 ms-[45px] flex items-center gap-3">
-				<h3 className={Typo.Small}>{tr.text(F_Msgs.filterHeading())}</h3>
-				<YamlCompactSwitch className="ms-auto" compact={compact} disabled={!parsable} onChange={switchCompact} />
-			</div>
-			<span />
-			<h3 className={Typo.Small + 'mb-2'}>{tr.text(F_Msgs.errorsHeading())}</h3>
-			<div ref={editorEltRef} dir="ltr" className="min-h-0 overflow-hidden rounded-md border"></div>
-			<div
-				role="separator"
-				aria-orientation="vertical"
-				aria-label={tr.text(F_Msgs.resizeErrors())}
-				className="group flex w-2 cursor-col-resize touch-none justify-center"
-				onPointerDown={(e) => {
-					dragging.current = true
-					e.currentTarget.setPointerCapture(e.pointerId)
+		<FullscreenSurface fullscreen={fullscreen} onExit={() => setFullscreen(false)} className="flex flex-col">
+			<EditorErrorsSplit
+				storageKey={EditorProblemsClient.STORAGE_KEYS.filter}
+				className={fullscreen ? 'min-h-0 flex-1' : 'h-[500px]'}
+				headers={{
+					editor: (
+						<div className="mb-2 ms-[45px] flex items-center gap-3">
+							<h3 className={Typo.Small}>{tr.text(F_Msgs.filterHeading())}</h3>
+							<YamlCompactSwitch className="ms-auto" compact={compact} disabled={!parsable} onChange={switchCompact} />
+							<FullscreenToggle fullscreen={fullscreen} onToggle={() => setFullscreen((v) => !v)} />
+						</div>
+					),
+					errors: null,
 				}}
-				onPointerMove={(e) => {
-					if (!dragging.current) return
-					const rect = gridRef.current!.getBoundingClientRect()
-					// the errors pane is at the inline end
-					const fromEnd = MessagesClient.textDirection() === 'rtl' ? e.clientX - rect.left : rect.right - e.clientX
-					setErrorsFraction(FilterEditClient.clampErrorsFraction(fromEnd / rect.width))
-				}}
-				onPointerUp={(e) => {
-					dragging.current = false
-					e.currentTarget.releasePointerCapture(e.pointerId)
-					FilterEditClient.saveErrorsFraction(errorsFraction)
-				}}
-				onDoubleClick={() => {
-					setErrorsFraction(FilterEditClient.ERRORS_FRACTION.default)
-					FilterEditClient.saveErrorsFraction(FilterEditClient.ERRORS_FRACTION.default)
-				}}
-			>
-				<div className="w-0.5 rounded-full bg-transparent group-hover:bg-line-soft" />
-			</div>
-			<pre className="min-h-0 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs text-destructive ltr-isolate">
-				{errorText}
-			</pre>
-		</div>
+				editor={<div ref={editorEltRef} dir="ltr" className="min-h-0 overflow-hidden rounded-md border"></div>}
+				errors={<EditorProblems problems={problems} onSelect={(problem) => CM.revealPosition(viewRef.current!, problem.from)} />}
+			/>
+		</FullscreenSurface>
 	)
 }
