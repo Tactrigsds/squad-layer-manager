@@ -365,6 +365,24 @@ test.describe('the filter menu', { tag: '@firefox' }, () => {
 		await expect(dialog.getByRole('combobox', { name: 'Map' })).toHaveText('Select Map...')
 		await expect(dialog.getByRole('combobox', { name: 'Layer', exact: true })).toHaveText('Select Layer...')
 	})
+
+	test('opening one picker closes the one already open, and leaves the dialog open', async ({ page }) => {
+		await gotoReady(page, app.loginUrl())
+		const dialog = await openAddLayers(page)
+		const team1 = dialog.getByRole('combobox', { name: 'Vehicle T1' })
+		const team2 = dialog.getByRole('combobox', { name: 'Vehicle T2' })
+
+		await team1.click()
+		await expect(team1).toHaveAttribute('aria-expanded', 'true')
+		await team2.click()
+		await expect(team2).toHaveAttribute('aria-expanded', 'true')
+		await expect(team1).toHaveAttribute('aria-expanded', 'false')
+		await expect(page.getByRole('listbox')).toHaveCount(1)
+
+		await page.keyboard.press('Escape')
+		await expect(team2).toHaveAttribute('aria-expanded', 'false')
+		await expect(dialog).toHaveCount(1)
+	})
 })
 
 // A layer whose mod the server does not have cannot load at all, so no permission makes it selectable. The

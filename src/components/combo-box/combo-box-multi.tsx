@@ -249,6 +249,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	// the option the mouse is over (in either column) is pushed straight into the description box rather than
 	// held in state: hovering restated as a render would rebuild the whole option list for every row crossed
 	const descriptionBoxRef = useRef<DescriptionBoxHandle | null>(null)
+	const triggerRef = useRef<HTMLButtonElement | null>(null)
 	const popoverRef = useGrowOnlyWidth<HTMLDivElement>()
 	const hasDescriptions = options !== LOADING && options.some((o) => o.description != null)
 	const showDescription = (value: T) => {
@@ -311,6 +312,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 	}
 	const trigger = (
 		<PopoverTrigger
+			ref={triggerRef}
 			asChild
 			data-combobox-trigger=""
 			{...clearOnMiddleClickProps(disabled || displayValues.length === 0 ? undefined : clearValues)}
@@ -383,8 +385,9 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 		</PopoverTrigger>
 	)
 
-	useComboBoxDismissal(
+	const guardCloseAutoFocus = useComboBoxDismissal(
 		open,
+		triggerRef,
 		() => setOpen(false),
 		() => {
 			if (drillInto === null) return false
@@ -479,6 +482,7 @@ export default function ComboBoxMulti<T extends string | null>(props: ComboBoxMu
 					className: cn('relative p-0', POPOVER_SIZING_CLASSES),
 					// see ComboBox
 					onEscapeKeyDown: (e) => e.preventDefault(),
+					onCloseAutoFocus: guardCloseAutoFocus,
 				}}
 			>
 				{/* gate on open so the option elements aren't built on every render while closed --

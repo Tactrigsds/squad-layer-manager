@@ -197,6 +197,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 	const onInputChange = drillEntry ? setDrillQuery : callerControlsInput ? props.setInputValue : setQuery
 
 	const btnRef = useRef<HTMLButtonElement | null>(null)
+	const triggerRef = useRef<HTMLButtonElement | null>(null)
 	const popoverRef = useGrowOnlyWidth<HTMLDivElement>()
 	const inputRef = useRef<HTMLInputElement | null>(null)
 	// records whether the pending close was caused by a selection (vs. a dismiss). Reset on open, so it never
@@ -252,8 +253,9 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 		selectedOptionDisplay = props.value ?? props.placeholder ?? `Select ${props.title}...`
 	}
 
-	useComboBoxDismissal(
+	const guardCloseAutoFocus = useComboBoxDismissal(
 		open,
+		triggerRef,
 		() => {
 			setOpen(false)
 			props.onOpenChange?.(false)
@@ -278,6 +280,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 			}}
 		>
 			<PopoverTrigger
+				ref={triggerRef}
 				asChild
 				data-combobox-trigger=""
 				{...clearOnMiddleClickProps(
@@ -319,7 +322,7 @@ export default function ComboBox<T extends string | null>(props: ComboBoxProps<T
 					// one owner, which is what useComboBoxDismissal already claims to be.
 					onEscapeKeyDown: (e) => e.preventDefault(),
 					onCloseAutoFocus: (e) => {
-						if (!props.preventCloseAutoFocus) return
+						if (guardCloseAutoFocus(e) || !props.preventCloseAutoFocus) return
 						// take full control of close-focus: Radix never restores. On a dismiss we reproduce the
 						// default by focusing the trigger ourselves; on a selection we leave focus for the hand-off.
 						e.preventDefault()
