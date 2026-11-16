@@ -12,6 +12,9 @@ import * as path from 'node:path'
 //   pnpm audit:style            medium and high findings
 //   pnpm audit:style --min=0    every finding
 //   pnpm audit:style --json     every finding, as JSON
+//   pnpm audit:style --strict   fails on a high finding, unless `style-invalidation:` and a reason are written in a
+//                               comment on the line that uses the rule or the line above (in a stylesheet, anywhere
+//                               in the comment block above the rule)
 
 const repoRoot = process.cwd()
 const srcDir = path.join(repoRoot, 'src')
@@ -205,10 +208,12 @@ function analyze(sel: Selector, text: string, ruleClasses: string[]): Finding[] 
 					`a mount or unmount beside the ${relation} restyles every ${breadth.label} it covers`,
 				)
 			} else if (t.kind === 'has') {
+				// unlike the other kinds, the target's breadth does not bound the cost: a `group-has-*` rule with a
+				// variant-class target made one insertion in the queue panel restyle 857 of the page's 885 elements
 				push(
 					`:has() ${relation}`,
 					t.detail,
-					broad ? 3 : 2,
+					relation === 'parent' ? 2 : 3,
 					`any change inside the ${relation} re-checks :has() and restyles every ${breadth.label} it covers`,
 				)
 			} else if (t.root) {
@@ -385,7 +390,57 @@ const report = [...byRule.values()]
 	.map((f) => ({ ...f, origin: originOf(f.classes) }))
 	.sort((a, b) => b.severity - a.severity || a.kind.localeCompare(b.kind) || b.origin.uses - a.origin.uses)
 
-if (process.argv.includes('--json')) {
+const ALLOW_MARKER = 'style-invalidation:'
+
+// whether every place that uses the rule carries the marker: the rule's utility class in a source file, or, for a
+// stylesheet, a line holding the rule's first class and its trigger
+function allowed(f: (typeof report)[number]): boolean {
+	const cls = f.classes[0]
+	if (!cls) return false
+	const sites: { lines: string[]; at: number; css: boolean }[] = []
+	for (const file of sourceFiles) {
+		const css = file.file.endsWith('.css')
+		if (css && cls.includes(':')) continue
+		const lines = file.text.split('\n')
+		lines.forEach((line, at) => {
+			if (countToken(line, cls) === 0) return
+			if (css && !line.includes(f.trigger.replace(/\(\)$/, ''))) return
+			sites.push({ lines, at, css })
+		})
+	}
+	if (sites.length === 0) return false
+	return sites.every(({ lines, at, css }) => {
+		if (lines[at].includes(ALLOW_MARKER)) return true
+		// the comment block directly above the use, skipping the rest of its statement (`const X =`, `cond &&`) or,
+		// in a stylesheet, the rule's other selector lines
+		let inComment = false
+		for (let i = at - 1; i >= 0; i--) {
+			const line = lines[i].trim()
+			if (line.includes(ALLOW_MARKER)) return true
+			const comment = /^(\/\/|\/\*|\*)/.test(line)
+			if (comment) inComment = true
+			else if (inComment || line === '') return false
+			else if (css ? line.endsWith('}') || line.endsWith('{') : !/(=|&&|\|\||\(|,|\?|:)$/.test(line)) return false
+		}
+		return false
+	})
+}
+
+if (process.argv.includes('--strict')) {
+	const violations = report.filter((f) => f.severity >= 3 && !allowed(f))
+	for (const f of violations) {
+		console.log(`${f.origin.files[0]?.replace(/ \(\d+\)$/, '') ?? '(unknown source)'}: ${f.kind} ${f.trigger} -> ${f.target}`)
+		console.log(`    ${f.rule.length > 160 ? f.rule.slice(0, 160) + '…' : f.rule}`)
+		console.log(`    ${f.why}`)
+	}
+	if (violations.length) {
+		console.log(
+			`\n${violations.length} CSS rule(s) can make one DOM change restyle most of the page. See docs/developers/style-invalidation.md,` +
+				` or add a "${ALLOW_MARKER} <reason>" comment where the rule is used.`,
+		)
+		process.exit(1)
+	}
+} else if (process.argv.includes('--json')) {
 	console.log(JSON.stringify(report, null, 1))
 } else {
 	const min = Number(process.argv.find((a) => a.startsWith('--min='))?.slice(6) ?? 2)

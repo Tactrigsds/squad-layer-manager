@@ -2,7 +2,8 @@
 
 A CSS rule that tests state on an ancestor or a sibling makes Chrome restyle every element that rule could match
 whenever that state changes. One such rule with a broad target can make a small DOM change restyle thousands of
-elements. `pnpm audit:style` lists the rules in the app's compiled CSS that have this shape.
+elements. `pnpm audit:style` lists the rules in the app's compiled CSS that have this shape, and `pnpm lint` fails on
+the ones that can restyle most of a page.
 
 ## How Chrome decides what to restyle
 
@@ -19,6 +20,11 @@ A rule that tests `:last-child` on the element it styles costs little: a flip re
 state test onto the subject, and passing the result down as an inherited custom property, keeps a flip to the
 flipped element's own subtree.
 
+A `:has()` on an ancestor costs more than its target suggests. Tailwind's `group-has-*` variants compile to that shape.
+While one was loaded, inserting a Radix scrollbar element into the queue panel restyled 857 of the page's 885
+elements, although the rule's target was a variant class that only a few elements carry. Marking the row with a data
+attribute at render, and styling it with `group-data-*`, brought the same insertion down to 97.
+
 Tailwind emits CSS for every class string in `src/`, so a rule is loaded on every page, whether or not the component
 that uses it is mounted.
 
@@ -31,7 +37,7 @@ Each finding names the state tested, the target it reaches, and the source files
 | structural ancestor              | `.fd-grp > :last-child .fd-btn`  | a sibling mounting or unmounting                                  | Set a custom property on the child itself and let the target inherit it, or give the rule a narrow target |
 | positional                       | `tr:nth-child(2n) td`            | inserting or removing any sibling, which shifts every later index | Stripe or number rows from a data attribute set at render                                                 |
 | structural subject, no narrowing | `.space-y-4 > :not(:last-child)` | a sibling mounting or unmounting                                  | Info only. Restyled nothing on its own when measured, but adds to a structural-ancestor rule's cost       |
-| `:has()` ancestor or parent      | `.group:has([data-x]) *`         | any change inside the `:has()` element                            | Set an attribute on the element at render instead of querying its children                                |
+| `:has()` ancestor or parent      | `.group:has([data-x]) *`         | an insertion or attribute change inside the `:has()` element      | Set an attribute on the element at render instead of querying its children, and use `group-data-*`        |
 | dynamic ancestor                 | `tr:hover td`                    | hover, focus or another interaction state                         | Style the hovered element itself, or keep the target narrow                                               |
 | document-root state              | `html[data-mode] button`         | an attribute or class change on `<html>` or `<body>`              | Avoid broad targets under root state                                                                      |
 
@@ -42,6 +48,19 @@ sits only on the elements written to use it. A shared class such as `.fd-btn` co
 pnpm audit:style            # medium and high findings
 pnpm audit:style --min=0    # every finding
 pnpm audit:style --json     # every finding, as JSON
+pnpm lint:style-invalidation  # fails on high findings, part of pnpm lint
+```
+
+## Allowing a rule
+
+A high finding is allowed when its cost is bounded, such as a state that rarely flips or a subtree that stays small.
+Write `style-invalidation:` and the reason in a comment where the rule is used: on the line holding the class string,
+or in the comment block above that statement. In a stylesheet, put the comment in the block above the rule.
+
+```ts
+// style-invalidation: the bar mounts only when the content starts or stops overflowing, and the restyle stays inside
+// the area (97 elements for the queue panel's).
+const GUTTER_PADDING = 'not-pointer-coarse:[&:has(>[data-orientation=vertical][data-state=visible])>…]:pe-2.5'
 ```
 
 ## Confirming a finding

@@ -5,7 +5,8 @@
 	"type": "module",
 	"packageManager": "pnpm@10.22.0",
 	"scripts": {
-		"lint": "oxlint --type-aware && pnpm run lint:logical-css && pnpm run lint:namespace-aliases",
+		"lint": "oxlint --type-aware && pnpm run lint:logical-css && pnpm run lint:namespace-aliases && pnpm run lint:style-invalidation",
+		"lint:style-invalidation": "tsx --tsconfig tsconfig.node.json src/scripts/audit-style-invalidation.ts --strict",
 		"lint:logical-css": "tsx --tsconfig tsconfig.node.json src/scripts/lint-logical-css.ts",
 		"lint:namespace-aliases": "tsx --tsconfig tsconfig.node.json src/scripts/lint-namespace-aliases.ts",
 		"audit:style": "tsx --tsconfig tsconfig.node.json src/scripts/audit-style-invalidation.ts",
