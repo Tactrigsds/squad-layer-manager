@@ -77,7 +77,8 @@ Use the toggle in front of the filter to set whether matching layers are in-pool
 ## Match and miss indicators
 
 A filter carries a name, a description, a _Match Indicator_ and a _Miss Indicator_. Each indicator has an
-_Emoji_ and an _Alert Message_. Edit them from the filter itself:
+_Emoji_ and an _Alert Message_. To edit them, press _Edit Details_ beside the filter's name. _Apply_ adds the
+changes to the filter's draft, and _Save_ on the filter page saves them:
 
 ![the Edit Details button beside a filter's name](../../images/configuring/filter_extra_fields_edit_button.png)
 ![a filter's details, with its match and miss indicators](../../images/configuring/filter_extra_fields.png)

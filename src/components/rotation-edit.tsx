@@ -1,12 +1,15 @@
+import * as Form from '@tanstack/react-form'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { ContributorsPopover } from '@/components/contributors-popover'
+import { EditDetailsButton, EditDetailsDialog, EditDetailsForm, FieldErrors, MarkdownHint } from '@/components/edit-details-dialog'
 import { FullscreenSurface, FullscreenToggle } from '@/components/fullscreen'
 import { LayerList } from '@/components/layer-list'
 import { LayerTags } from '@/components/layer-tags'
+import { MarkdownDescription } from '@/components/markdown-description'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import { RepeatRulesetPanel } from '@/components/pool-config-panels'
 import * as Typo from '@/components/typography'
@@ -23,6 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import TabsList from '@/components/ui/tabs-list'
 import { Textarea } from '@/components/ui/textarea'
@@ -33,6 +37,7 @@ import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import { useFrameLifecycle } from '@/frames/frame-manager'
 import * as RepeatRulesetEditorFrame from '@/frames/repeat-ruleset-editor.frame'
 import * as RotationEditorFrame from '@/frames/rotation-editor.frame'
+import * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as LL_Msgs from '@/messages/layer-list.messages'
@@ -53,7 +58,7 @@ import * as RotationClient from '@/systems/rotation.client'
 import * as UPClient from '@/systems/user-presence.client'
 
 import { StartActivityInteraction } from './activity'
-import { DeleteRotationDialog, RotationFormDialog } from './rotation-dialogs'
+import { CloneRotationDialog, DeleteRotationDialog } from './rotation-dialogs'
 
 const RotationSourceEditor = React.lazy(() => import('./rotation-source-editor'))
 
@@ -68,6 +73,7 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 	const { rotation } = props
 	const navigate = useNavigate()
 	const listHost = useFrameLifecycle(RotationEditorFrame.frame, { input: RotationEditorFrame.createInput(rotation.id) })
+	const host = RotationEditorFrame.listHostFor(rotation.id)
 	const repeatRulesetEditorInput = React.useMemo(
 		() => RepeatRulesetEditorFrame.createInput({ type: 'rotation', rotationId: rotation.id }),
 		[rotation.id],
@@ -76,7 +82,7 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(rotation.id))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.getManagePermReqForRotation(rotation.id))
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('rotations:create'))
-	const [dialog, setDialog] = React.useState<'name' | 'description' | 'clone' | 'delete' | null>(null)
+	const [dialog, setDialog] = React.useState<'details' | 'clone' | 'delete' | null>(null)
 
 	// leaving loses the user's edits to the shared draft and unsaved repeat rules, so it asks first, as the filter editor does
 	const [isEditing] = UPClient.useActivityState(UP.Trans.editingRotation(rotation.id))
@@ -92,31 +98,35 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 
 	return (
 		<div className="container mx-auto py-4 px-4 space-y-4">
-			<header className="flex flex-wrap items-center gap-3 border-b pb-3">
-				<Link to="/rotations" className="text-sm text-muted-foreground hover:underline">
-					‹ {tr.text(ROT_Msgs.pageTitle())}
-				</Link>
-				<h2 className={cn(Typo.H2, 'min-w-0 truncate')}>{rotation.name}</h2>
-				<EditFieldButton label={tr.text(ROT_Msgs.editName())} denied={writeDenied} onClick={() => setDialog('name')} />
-				<span className="font-mono text-xs text-muted-foreground">{rotation.id}</span>
-				{rotation.archived && <Badge variant="secondary">{tr.text(ROT_Msgs.archivedBadge())}</Badge>}
-				<span className="text-sm text-muted-foreground">{tr.text(ROT_Msgs.ownerLabel(ownerName ?? ''))}</span>
-				<RotationContributors rotationId={rotation.id} canManage={!manageDenied} />
+			<Link to="/rotations" className="text-sm text-muted-foreground hover:underline">
+				‹ {tr.text(ROT_Msgs.pageTitle())}
+			</Link>
+			<header className="flex flex-col gap-2">
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<span className="flex min-w-0 items-center gap-x-4">
+						<h3 className={cn(Typo.H3, 'min-w-0 truncate')}>{rotation.name}</h3>
+						<Icons.Dot className="shrink-0" />
+						<small className="font-light">{tr.text(ROT_Msgs.ownerLabel(ownerName ?? ''))}</small>
+						<Icons.Dot className="shrink-0" />
+						<EditDetailsButton denied={writeDenied} onClick={() => setDialog('details')} />
+					</span>
+					<span className="flex flex-wrap items-center gap-2">
+						<span className="font-mono text-xs text-muted-foreground">{rotation.id}</span>
+						{rotation.archived && <Badge variant="secondary">{tr.text(ROT_Msgs.archivedBadge())}</Badge>}
+						<RotationContributors rotationId={rotation.id} canManage={!manageDenied} />
+					</span>
+				</div>
+				<Separator orientation="horizontal" />
+				<MarkdownDescription description={rotation.description} />
 			</header>
 
-			<LiveBar listHost={listHost} host={{ type: 'rotation', rotationId: rotation.id }} />
+			<LiveBar listHost={listHost} host={host} />
 
-			<div className="flex flex-wrap items-start gap-x-6 gap-y-2">
-				<div className="flex min-w-0 flex-[1_1_20rem] items-start gap-1">
-					<p className={cn('min-w-0 whitespace-pre-wrap text-sm', !rotation.description && 'text-muted-foreground')}>
-						{rotation.description ?? tr.text(ROT_Msgs.noDescription())}
-					</p>
-					<EditFieldButton label={tr.text(ROT_Msgs.editDescription())} denied={writeDenied} onClick={() => setDialog('description')} />
-				</div>
-				<div className="ms-auto">
-					<RotationTagsRow rotation={rotation} disabled={!!writeDenied} />
-				</div>
-			</div>
+			<RotationTagsRow
+				tags={rotation.tags}
+				disabled={!!writeDenied}
+				onChange={(tags) => void RotationClient.Actions.updateMeta(rotation.id, { tags })}
+			/>
 
 			{/* one column puts the actions above the layers and the repeat ruleset below them. Two columns put both beside
 			    the layers. YAML keeps one column at any width, since its editor shares its width with an errors column. */}
@@ -128,9 +138,9 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 							"@[960px]:grid-cols-[minmax(0,1fr)_fit-content(40%)] @[960px]:grid-rows-[auto_1fr] @[960px]:[grid-template-areas:'layers_actions'_'layers_ruleset']",
 					)}
 				>
-					<ListSection listHost={listHost} rotation={rotation}>
-						<ListToolbar listHost={listHost} rotation={rotation} />
-						<ListBody listHost={listHost} rotationId={rotation.id} />
+					<ListSection listHost={listHost} host={host}>
+						<ListToolbar listHost={listHost} host={host} />
+						<ListBody listHost={listHost} host={host} />
 					</ListSection>
 					<OpenedFileDialog listHost={listHost} />
 
@@ -174,15 +184,16 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 				</div>
 			</div>
 
-			{(dialog === 'name' || dialog === 'description') && (
-				<FieldDialog rotation={rotation} field={dialog} onClose={() => setDialog(null)} />
-			)}
-			<RotationFormDialog
-				mode="clone"
-				source={rotation}
-				open={dialog === 'clone'}
-				onOpenChange={(open) => setDialog(open ? 'clone' : null)}
-			/>
+			<EditDetailsDialog open={dialog === 'details'} onOpenChange={(open) => setDialog(open ? 'details' : null)}>
+				<RotationDetailsForm
+					initial={{ id: rotation.id, name: rotation.name, description: rotation.description }}
+					creating={false}
+					submitLabel={tr.text(UI_Msgs.save())}
+					onSubmit={(values) => RotationClient.Actions.updateMeta(rotation.id, { name: values.name, description: values.description })}
+					onClose={() => setDialog(null)}
+				/>
+			</EditDetailsDialog>
+			<CloneRotationDialog source={rotation} open={dialog === 'clone'} onOpenChange={(open) => setDialog(open ? 'clone' : null)} />
 			<DeleteRotationDialog
 				rotation={rotation}
 				open={dialog === 'delete'}
@@ -206,7 +217,7 @@ function RotationContributors(props: { rotationId: ROT.RotationId; canManage: bo
 			onRemoveUser={(userId) => void RotationClient.Actions.removeContributor(rotationId, { userId })}
 			onRemoveRole={(roleId) => void RotationClient.Actions.removeContributor(rotationId, { roleId })}
 		>
-			<Button variant="outline" size="sm">
+			<Button variant="outline">
 				<Icons.Users />
 				{tr.text(ROT_Msgs.contributors())}
 			</Button>
@@ -240,27 +251,27 @@ function LiveBar(props: { listHost: RotationEditorFrame.Key; host: LL.ListHost }
 	)
 }
 
-function RotationTagsRow(props: { rotation: ROT.Rotation; disabled: boolean }) {
-	const { rotation } = props
-	const setTags = (tags: string[]) => void RotationClient.Actions.updateMeta(rotation.id, { tags })
+function RotationTagsRow(props: { tags: string[]; disabled: boolean; onChange: (tags: string[]) => void }) {
+	const { tags } = props
 	return (
 		<div className="flex flex-wrap items-center gap-2">
 			<span className={cn(Typo.Label, 'min-w-32')}>{tr.text(ROT_Msgs.rotationTags())}</span>
 			<LayerTags
 				kind="rotation"
-				tags={rotation.tags}
+				tags={tags}
 				disabled={props.disabled}
-				onAdd={(tagId) => setTags([...rotation.tags, tagId])}
-				onRemove={(tagId) => setTags(rotation.tags.filter((id) => id !== tagId))}
+				onAdd={(tagId) => props.onChange([...tags, tagId])}
+				onRemove={(tagId) => props.onChange(tags.filter((id) => id !== tagId))}
 			/>
 		</div>
 	)
 }
 
 // opens a file dropped anywhere on the layers, as Open File... does
-function ListSection(props: { listHost: RotationEditorFrame.Key; rotation: ROT.Rotation; children: React.ReactNode }) {
-	const [, setIsEditing] = UPClient.useActivityState(UP.Trans.editingRotation(props.rotation.id))
-	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(props.rotation.id))
+function ListSection(props: { listHost: RotationEditorFrame.Key; host: LL.ListHost; children: React.ReactNode }) {
+	const [, setIsEditing] = UPClient.useActivityState(UP.Trans.editingList(props.host))
+	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForList(props.host))
+	const layerCount = Zus.useStore(props.listHost, (s) => s.queue.layerList.length)
 	const [dragging, setDragging] = React.useState(false)
 	// dragenter and dragleave fire for every child the drag crosses, so the overlay shows while the count is above 0
 	const dragDepth = React.useRef(0)
@@ -280,7 +291,7 @@ function ListSection(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 					ref={kbScope.ref}
 					className="relative flex min-h-0 flex-1 flex-col rounded border bg-card"
 					{...{ [LLDnd.BOUNDS_ATTR]: '' }}
-					aria-label={tr.text(ROT_Msgs.layers(props.rotation.items.length))}
+					aria-label={tr.text(ROT_Msgs.layers(layerCount))}
 					onDragEnter={(e) => {
 						if (!carriesFiles(e) || writeDenied) return
 						dragDepth.current++
@@ -359,9 +370,9 @@ function OpenedFileDialog(props: { listHost: RotationEditorFrame.Key }) {
 	)
 }
 
-function ListBody(props: { listHost: RotationEditorFrame.Key; rotationId: ROT.RotationId }) {
+function ListBody(props: { listHost: RotationEditorFrame.Key; host: LL.ListHost }) {
 	const view = Zus.useStore(props.listHost, (s) => s.view)
-	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(props.rotationId))
+	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForList(props.host))
 	if (view === 'builder') {
 		return (
 			<div className="p-1">
@@ -376,8 +387,8 @@ function ListBody(props: { listHost: RotationEditorFrame.Key; rotationId: ROT.Ro
 	)
 }
 
-function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.Rotation }) {
-	const [, setIsEditing] = UPClient.useActivityState(UP.Trans.editingRotation(props.rotation.id))
+function ListToolbar(props: { listHost: RotationEditorFrame.Key; host: LL.ListHost }) {
+	const [, setIsEditing] = UPClient.useActivityState(UP.Trans.editingList(props.host))
 	const [layerCount, isModified, fixingRepeats, view, fullscreen, problems] = Zus.useStore(
 		props.listHost,
 		Zus.useShallow(
@@ -392,7 +403,7 @@ function ListToolbar(props: { listHost: RotationEditorFrame.Key; rotation: ROT.R
 				] as const,
 		),
 	)
-	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(props.rotation.id))
+	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForList(props.host))
 	const [undoKind, redoKind] = Zus.useStore(
 		props.listHost,
 		Zus.useShallow((s) => [LayerQueuePrt.Sel.undoEntry(s)?.kind ?? null, LayerQueuePrt.Sel.redoEntry(s)?.kind ?? null] as const),
@@ -693,83 +704,240 @@ function EditingControls(props: { listHost: RotationEditorFrame.Key; rotationId:
 	)
 }
 
-function EditFieldButton(props: { label: string; denied: ReturnType<typeof RbacClient.usePermsCheck>; onClick: () => void }) {
+type DetailsValues = { id: string; name: string; description: string | null }
+
+// The fields of a rotation's Edit Details dialog. A rotation that has not been created yet also takes its ID here,
+// which follows the name until it is edited by hand. onSubmit resolves to whether the dialog may close.
+function RotationDetailsForm(props: {
+	initial: DetailsValues
+	creating: boolean
+	submitLabel: string
+	onSubmit: (values: DetailsValues) => Promise<boolean> | boolean
+	onClose: () => void
+}) {
+	const form = Form.useForm({
+		defaultValues: props.initial,
+		onSubmit: async ({ value }) => {
+			const values = { id: value.id, name: value.name.trim(), description: value.description?.trim() || null }
+			if (await props.onSubmit(values)) props.onClose()
+		},
+	})
+	const idRef = React.useRef<HTMLInputElement>(null)
+	const onNameChange = (name: string, setName: (name: string) => void) => {
+		const id = form.getFieldValue('id')
+		if (props.creating && idRef.current && (id === '' || id === ROT.idFromName(form.getFieldValue('name')))) {
+			idRef.current.value = ROT.idFromName(name)
+			form.setFieldValue('id', idRef.current.value)
+		}
+		setName(name)
+	}
 	return (
-		<PermissionDeniedTooltip denied={props.denied}>
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				aria-label={props.label}
-				title={props.label}
-				disabled={!!props.denied}
-				onClick={props.onClick}
-			>
-				<Icons.Pencil />
-			</Button>
-		</PermissionDeniedTooltip>
+		<form.Subscribe selector={(v) => [v.canSubmit, v.isDirty, v.isSubmitting] as const}>
+			{([canSubmit, isDirty, isSubmitting]) => (
+				<EditDetailsForm
+					onSubmit={() => void form.handleSubmit()}
+					onCancel={props.onClose}
+					submitLabel={props.submitLabel}
+					submitDisabled={!canSubmit || !isDirty || isSubmitting}
+					className="flex flex-col gap-4"
+				>
+					<form.Field name="name" validators={{ onChange: ROT.NameSchema }}>
+						{(field) => {
+							const label = tr.text(ROT_Msgs.name())
+							return (
+								<div className="flex flex-col space-y-2">
+									<Label htmlFor={field.name}>{label}</Label>
+									<Input
+										id={field.name}
+										placeholder={label}
+										defaultValue={field.state.value}
+										autoFocus
+										onBlur={field.handleBlur}
+										onChange={(e) => onNameChange(e.target.value, field.handleChange)}
+									/>
+									<FieldErrors label={label} errors={field.state.meta.errors} />
+								</div>
+							)
+						}}
+					</form.Field>
+					{props.creating && (
+						<form.Field name="id" validators={{ onChange: ROT.NewRotationIdSchema }}>
+							{(field) => {
+								const label = tr.text(ROT_Msgs.id())
+								return (
+									<div className="flex flex-col space-y-2">
+										<Label htmlFor={field.name}>{label}</Label>
+										<p id={`${field.name}-hint`} className="text-xs text-muted-foreground">
+											{tr.text(ROT_Msgs.idHelp())}
+										</p>
+										<Input
+											id={field.name}
+											aria-describedby={`${field.name}-hint`}
+											ref={idRef}
+											placeholder={label}
+											defaultValue={field.state.value}
+											className="font-mono"
+											onBlur={field.handleBlur}
+											onChange={(e) => field.handleChange(e.target.value.trim())}
+										/>
+										<FieldErrors label={label} errors={field.state.meta.errors} />
+									</div>
+								)
+							}}
+						</form.Field>
+					)}
+					<form.Field name="description" validators={{ onChange: ROT.DescriptionSchema.nullable() }}>
+						{(field) => {
+							const label = tr.text(ROT_Msgs.description())
+							return (
+								<div className="flex flex-col space-y-2">
+									<Label htmlFor={field.name}>{label}</Label>
+									<MarkdownHint id={`${field.name}-hint`} />
+									<Textarea
+										id={field.name}
+										aria-describedby={`${field.name}-hint`}
+										placeholder={label}
+										defaultValue={field.state.value ?? ''}
+										onBlur={field.handleBlur}
+										onChange={(e) => field.handleChange(e.target.value.trim() || null)}
+										rows={12}
+										className="font-mono text-sm"
+									/>
+									<FieldErrors label={label} errors={field.state.meta.errors} />
+								</div>
+							)
+						}}
+					</form.Field>
+				</EditDetailsForm>
+			)}
+		</form.Subscribe>
 	)
 }
 
-// edits one of the rotation's name and description
-function FieldDialog(props: { rotation: ROT.Rotation; field: 'name' | 'description'; onClose: () => void }) {
-	const nameRef = React.useRef<HTMLInputElement>(null)
-	const descriptionRef = React.useRef<HTMLTextAreaElement>(null)
-	const id = React.useId()
-	const submit = async (e: React.FormEvent) => {
-		e.preventDefault()
-		let patch: ROT.MetaPatch
-		if (props.field === 'name') {
-			const name = nameRef.current?.value.trim() ?? ''
-			if (!ROT.NameSchema.safeParse(name).success) return
-			patch = { name }
-		} else {
-			patch = { description: descriptionRef.current?.value.trim() || null }
+// The page of a rotation that has not been created yet. Its details dialog opens with the page, and can be closed to
+// edit the layers first. Create opens it again while the name or the ID is missing.
+export function RotationNew(props: { listHost: RotationEditorFrame.Key }) {
+	const { listHost } = props
+	const host = RotationEditorFrame.listHostFor(null)
+	const navigate = useNavigate()
+	const [detailsOpen, setDetailsOpen] = React.useState(true)
+	const [creating, setCreating] = React.useState(false)
+	const details = Zus.useStore(listHost, RotationEditorFrame.Sel.newDetails)
+	const layerCount = Zus.useStore(listHost, (s) => s.queue.layerList.length)
+	const singleColumn = Zus.useStore(listHost, (s) => s.view) === 'yaml'
+	const createDenied = RbacClient.usePermsCheck(RBAC.perm('rotations:create'))
+	const repeatRulesetEditorInput = React.useMemo(
+		() =>
+			RepeatRulesetEditorFrame.createInput({
+				type: 'pool-draft',
+				value$: Zus.toObservable(listHost, true).pipe(Rx.map(([s]) => s.newDetails ?? undefined)),
+			}),
+		[listHost],
+	)
+	const repeatRulesetEditor = useFrameLifecycle(RepeatRulesetEditorFrame.frame, { input: repeatRulesetEditorInput })
+
+	// leaving loses the new rotation, so it asks first once there is something to lose
+	const unsaved = layerCount > 0 || details.name !== '' || details.description !== null
+	useBlocker({
+		enableBeforeUnload: unsaved,
+		shouldBlockFn: () => unsaved && !confirm(tr.text(ROT_Msgs.unsavedChangesConfirm())),
+	})
+
+	const create = async () => {
+		if (!RotationEditorFrame.newDetailsComplete(details)) {
+			setDetailsOpen(true)
+			return
 		}
-		if (await RotationClient.Actions.updateMeta(props.rotation.id, patch)) props.onClose()
+		setCreating(true)
+		try {
+			if (await RotationEditorFrame.Actions.create(listHost)) {
+				void navigate({ to: '/rotations/$rotationId', params: { rotationId: details.id }, ignoreBlocker: true })
+			}
+		} finally {
+			setCreating(false)
+		}
 	}
+
 	return (
-		<Dialog open onOpenChange={(open) => !open && props.onClose()}>
-			<DialogContent className="max-w-md">
-				<form onSubmit={submit} className="space-y-4">
-					<DialogHeader>
-						<DialogTitle>{tr.text(props.field === 'name' ? ROT_Msgs.editName() : ROT_Msgs.editDescription())}</DialogTitle>
-					</DialogHeader>
-					{props.field === 'name' ? (
-						<div className="space-y-1.5">
-							<Label htmlFor={`${id}-name`}>{tr.text(ROT_Msgs.name())}</Label>
-							<Input
-								id={`${id}-name`}
-								ref={nameRef}
-								defaultValue={props.rotation.name}
-								required
-								minLength={3}
-								maxLength={128}
-								autoFocus
-							/>
-						</div>
-					) : (
-						<div className="space-y-1.5">
-							<Label htmlFor={`${id}-description`}>{tr.text(ROT_Msgs.description())}</Label>
-							<Textarea
-								id={`${id}-description`}
-								ref={descriptionRef}
-								defaultValue={props.rotation.description ?? ''}
-								maxLength={2048}
-								rows={4}
-								autoFocus
-							/>
-						</div>
+		<div className="container mx-auto py-4 px-4 space-y-4">
+			<Link to="/rotations" className="text-sm text-muted-foreground hover:underline">
+				‹ {tr.text(ROT_Msgs.pageTitle())}
+			</Link>
+			<header className="flex flex-col gap-2">
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<span className="flex min-w-0 items-center gap-x-4">
+						<h3 className={cn(Typo.H3, 'min-w-0 truncate', !details.name && 'text-muted-foreground')}>
+							{details.name || tr.text(ROT_Msgs.newRotation())}
+						</h3>
+						<Icons.Dot className="shrink-0" />
+						<EditDetailsButton denied={createDenied} onClick={() => setDetailsOpen(true)} />
+					</span>
+					{details.id && <span className="font-mono text-xs text-muted-foreground">{details.id}</span>}
+				</div>
+				<Separator orientation="horizontal" />
+				<MarkdownDescription description={details.description} />
+			</header>
+
+			<RotationTagsRow
+				tags={details.tags}
+				disabled={!!createDenied}
+				onChange={(tags) => RotationEditorFrame.Actions.setNewDetails(listHost, { tags })}
+			/>
+
+			<div className="@container">
+				<div
+					className={cn(
+						"grid gap-4 [grid-template-areas:'actions'_'layers'_'ruleset']",
+						!singleColumn &&
+							"@[960px]:grid-cols-[minmax(0,1fr)_fit-content(40%)] @[960px]:grid-rows-[auto_1fr] @[960px]:[grid-template-areas:'layers_actions'_'layers_ruleset']",
 					)}
-					<DialogFooter>
-						<Button type="button" variant="ghost" onClick={props.onClose}>
-							{tr.text(UI_Msgs.cancel())}
-						</Button>
-						<Button submitChord="manual" type="submit" variant="primary">
-							{tr.text(ROT_Msgs.saveDetails())}
-						</Button>
-					</DialogFooter>
-				</form>
-			</DialogContent>
-		</Dialog>
+				>
+					<ListSection listHost={listHost} host={host}>
+						<ListToolbar listHost={listHost} host={host} />
+						<ListBody listHost={listHost} host={host} />
+					</ListSection>
+					<OpenedFileDialog listHost={listHost} />
+
+					<div className="flex flex-wrap content-start gap-1.5 [grid-area:actions]">
+						<PermissionDeniedTooltip denied={createDenied}>
+							<Button variant="primary" disabled={!!createDenied || creating} onClick={() => void create()}>
+								<Icons.Save />
+								{tr.text(ROT_Msgs.create())}
+							</Button>
+						</PermissionDeniedTooltip>
+					</div>
+					<section className="min-w-0 self-start rounded border bg-card p-3 [grid-area:ruleset]">
+						<RepeatRulesetPanel
+							title={tr.text(ROT_Msgs.repeatRuleset())}
+							help={tr.text(ROT_Msgs.repeatRulesetHelp())}
+							repeatRulesetId={details.repeatRulesetId}
+							selectDisabled={!!createDenied}
+							onSelect={(repeatRulesetId) => RotationEditorFrame.Actions.setNewDetails(listHost, { repeatRulesetId })}
+							repeatRulesetEditor={repeatRulesetEditor}
+							inlineSave
+							rulesInDialog
+						/>
+					</section>
+				</div>
+			</div>
+
+			<EditDetailsDialog
+				open={detailsOpen}
+				onOpenChange={setDetailsOpen}
+				title={tr.text(ROT_Msgs.newRotation())}
+				description={tr.text(ROT_Msgs.newDetailsDialogBlurb())}
+			>
+				<RotationDetailsForm
+					initial={{ id: details.id, name: details.name, description: details.description }}
+					creating
+					submitLabel={tr.text(UI_Msgs.apply())}
+					onSubmit={(values) => {
+						RotationEditorFrame.Actions.setNewDetails(listHost, values)
+						return true
+					}}
+					onClose={() => setDetailsOpen(false)}
+				/>
+			</EditDetailsDialog>
+		</div>
 	)
 }

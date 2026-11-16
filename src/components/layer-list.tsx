@@ -108,11 +108,8 @@ const dragHandleTouchProps = {
 	},
 }
 
-// who may edit the list: queue:write on a server's queue, rotations:write on a rotation
 function useListWriteDenied(host: LL.ListHost) {
-	return RbacClient.usePermsCheck(
-		host.type === 'server' ? RBAC.perm('queue:write', { serverId: host.serverId }) : RBAC.getWritePermReqForRotation(host.rotationId),
-	)
+	return RbacClient.usePermsCheck(RBAC.getWritePermReqForList(host))
 }
 
 export function LayerList(props: { stores: ListHostPrt.KeyProp }) {
@@ -1478,12 +1475,7 @@ function ItemMenuItems(props: {
 	const configuredTags = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.layerTags ?? [])
 	const canManageTags = !RbacClient.useAccess('settings.global.upsertLayerTag')
 	const appliedTags = item.type === 'single-list-item' ? (item.tags ?? []) : []
-	// someone else's note needs queue:manage-all-notes on a queue; a rotation's notes are anyone's who may edit it
-	const manageAllNotesDenied = RbacClient.usePermsCheck(
-		host.type === 'server'
-			? RBAC.perm('queue:manage-all-notes', { serverId: host.serverId })
-			: RBAC.getWritePermReqForRotation(host.rotationId),
-	)
+	const manageAllNotesDenied = RbacClient.usePermsCheck(RBAC.getManageAllNotesPermReqForList(host))
 	const editActivity = {
 		code: 'EDITING_ITEM' as const,
 		itemId: item.itemId,

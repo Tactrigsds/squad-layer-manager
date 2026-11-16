@@ -5,6 +5,7 @@ import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import type * as CS from '@/models/context-shared.models'
 import * as F from '@/models/filter.models'
+import type * as LL from '@/models/layer-list.models'
 import { t } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
 import * as USR from '@/models/users.models'
@@ -606,6 +607,26 @@ export function getWritePermReqForRotation(rotationId: string): Req {
 }
 export function getManagePermReqForRotation(rotationId: string): Req {
 	return Req.any(perm('rotations:manage', { rotationId }), perm('rotations:write-all'))
+}
+
+// who may edit a list: queue:write on a server's queue, rotations:write on a rotation, rotations:create on a rotation
+// that has not been created yet
+export function getWritePermReqForList(host: LL.ListHost): ReqInput {
+	switch (host.type) {
+		case 'server':
+			return perm('queue:write', { serverId: host.serverId })
+		case 'rotation':
+			return getWritePermReqForRotation(host.rotationId)
+		case 'new-rotation':
+			return perm('rotations:create')
+		default:
+			assertNever(host)
+	}
+}
+
+// someone else's note needs queue:manage-all-notes on a queue; a rotation's notes are anyone's who may edit it
+export function getManageAllNotesPermReqForList(host: LL.ListHost): ReqInput {
+	return host.type === 'server' ? perm('queue:manage-all-notes', { serverId: host.serverId }) : getWritePermReqForList(host)
 }
 
 // the effective max kick-timeout duration a set of perms grants on `serverId`: undefined = no grant at all,

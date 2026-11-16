@@ -86,6 +86,25 @@ test.describe('the filter editor form', { tag: '@firefox' }, () => {
 		await id.fill('custom-id')
 		await name.fill('Armored Layers Revised')
 		await expect(id).toHaveValue('custom-id')
+
+		// the details dialog can be closed and opened again, and keeps what was applied
+		const dialog = page.getByRole('dialog', { name: 'New Filter' })
+		await dialog.getByRole('button', { name: 'Apply' }).click()
+		await expect(dialog).toBeHidden()
+		await expect(page.getByRole('heading', { name: 'Armored Layers Revised' })).toBeVisible()
+		await page.getByRole('button', { name: 'Edit Details' }).click()
+		await expect(dialog.getByRole('textbox', { name: 'ID' })).toHaveValue('custom-id')
+		await dialog.getByRole('button', { name: 'Cancel' }).click()
+
+		await page.getByRole('button', { name: 'Create' }).click()
+		await expect(page).toHaveURL(/\/filters\/custom-id$/)
+		await app.waitFor(
+			() => {
+				const row = app.readDb().prepare('select name from filters where id = ?').get('custom-id') as { name: string } | undefined
+				return row?.name === 'Armored Layers Revised' ? row : null
+			},
+			{ label: 'new filter created' },
+		)
 	})
 })
 
@@ -183,13 +202,15 @@ test.describe('filter references', () => {
 	test('saves an edited name back to the filter', async ({ page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
 
-		// the entity fields are behind the details toggle; the tree is what the page opens on
+		// the entity fields are in the details dialog; the tree is what the page opens on
 		await page.getByRole('button', { name: 'Edit Details' }).click()
 
 		const name = page.getByRole('textbox', { name: 'Name' })
 		await expect(name).toHaveValue('RAAS Only')
 		await name.fill('RAAS Only (renamed)')
 
+		await page.getByRole('button', { name: 'Apply' }).click()
+		await expect(page.getByRole('heading', { name: 'RAAS Only (renamed)' })).toBeVisible()
 		await page.getByRole('button', { name: 'Save' }).click()
 
 		await app.waitFor(
@@ -202,7 +223,7 @@ test.describe('filter references', () => {
 	})
 
 	// The exemption tree has an editor frame of its own, and reaches the shared draft only through the details
-	// form's save, so this follows it into the db both ways: emptied, and restored.
+	// dialog's Apply, so this follows it into the db both ways: emptied, and restored.
 	test('saves the miss exemption with the details, an emptied one as none', async ({ page }) => {
 		const savedExemption = () =>
 			(app.readDb().prepare('select missExemption from filters where id = ?').get('raas-only') as { missExemption: string | null })
@@ -229,6 +250,7 @@ test.describe('filter references', () => {
 		await rows.nth(1).hover()
 		await exemption.getByRole('button', { name: 'Remove condition' }).click()
 		await expect(rows).toHaveText(['any of'])
+		await page.getByRole('button', { name: 'Apply' }).click()
 		await page.getByRole('button', { name: 'Save' }).click()
 		await exemptionSaved(null, 'emptied exemption persisted as none')
 
@@ -237,6 +259,7 @@ test.describe('filter references', () => {
 		await expect(rows).toHaveText(['any of'])
 		await exemption.getByRole('button', { name: 'Reset to default' }).click()
 		await expect(rows).toHaveText(['any of', /^Gamemode.*Seed.*Training$/])
+		await page.getByRole('button', { name: 'Apply' }).click()
 		await page.getByRole('button', { name: 'Save' }).click()
 		await exemptionSaved(FB.or([FB.inValues('Gamemode', ['Seed', 'Training'])]), 'default exemption restored')
 	})
@@ -288,6 +311,7 @@ test.describe('collaborative filter editing', () => {
 test.describe('option groupings', () => {
 	test('narrows a vehicle picker by collection and class together', async ({ page }) => {
 		await page.goto(app.loginUrl(app.adminUser, '/filters/new'))
+		await page.getByRole('dialog', { name: 'New Filter' }).getByRole('button', { name: 'Cancel' }).click()
 		const addCondition = page.getByRole('button', { name: 'Add condition' }).first()
 		await expect(addCondition).toBeVisible({ timeout: 20_000 })
 

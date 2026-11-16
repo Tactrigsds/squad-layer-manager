@@ -88,6 +88,12 @@ export const restoreWindow = def('Restore window')
 
 export const cancel = def('Cancel')
 
+export const apply = def('Apply')
+
+export const editDetails = def('Edit Details')
+
+export const markdownHint = def(rt('Formatted as <link>Markdown</link>.'))
+
 export const loading = def('Loading')
 
 export const loadingEllipsis = def('Loading...')

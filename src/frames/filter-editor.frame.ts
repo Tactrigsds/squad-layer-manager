@@ -10,6 +10,7 @@ import * as ODSM from '@/lib/odsm'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
+import { assertNever } from '@/lib/type-guards'
 import * as UNDO from '@/lib/undo-stack'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
@@ -20,6 +21,7 @@ import * as FR from '@/models/filter-references.models'
 import * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as UP from '@/models/user-presence.models'
+import * as RPC from '@/orpc.client'
 import * as FilterEditClient from '@/systems/filter-edit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
@@ -58,6 +60,8 @@ export type CreateHint = {
 
 type FilterEditorBase = {
 	editedFilterId?: string
+	// the ID a filter that has not been created yet will be created under
+	createId: string
 	// the shared draft this editor is a replica of. A filter that has not been created yet has no entity to
 	// share, so its session stays local and its ops are never sent (see dispatch).
 	session: ODSM.Client.Session<FE.Op, FE.State>
@@ -139,6 +143,7 @@ const setup: Frame['setup'] = (args) => {
 		setErrors: (errors) => set({ errors }),
 
 		editedFilterId: filterId,
+		createId: '',
 		session,
 		shared: !!filterId,
 		tree: session.localState.draft.tree,
@@ -330,6 +335,46 @@ export type NodeActions = {
 type UpdateNodeFn = (cb: (draft: Im.Draft<F.ShallowEditableFilterNode>) => void) => void
 
 export namespace Actions {
+	export function setCreateId(stores: KeyProp, createId: string) {
+		store(stores).setState({ createId })
+	}
+
+	// whether a filter that has not been created yet has the details it needs to be created
+	export function detailsComplete(state: FilterEditor) {
+		return (
+			F.NewFilterEntitySchema.shape.name.safeParse(state.meta.name).success &&
+			F.NewFilterEntitySchema.shape.id.safeParse(state.createId).success
+		)
+	}
+
+	// Creates a filter that has not been created yet from its draft, under its createId. Resolves to whether it was
+	// created.
+	export async function create(stores: KeyProp): Promise<boolean> {
+		const state = store(stores).getState()
+		if (!state.validatedFilter) {
+			toast.warning(...tr.toast(F_Msgs.invalid()))
+			return false
+		}
+		const res = await RPC.orpc.filters.createFilter.call({ id: state.createId, ...state.meta, filter: state.validatedFilter })
+		switch (res.code) {
+			case 'ok':
+				UsersClient.invalidateLoggedInUser()
+				toast(...tr.toast(F_Msgs.created()))
+				return true
+			case 'err:permission-denied':
+				RbacClient.handlePermissionDenied(res)
+				return false
+			case 'err:cyclical-reference':
+				toast.error(...tr.toast(F_Msgs.cyclicalReference(res.cycle)))
+				return false
+			case 'err:already-exists':
+				toast.error(...tr.toast(F_Msgs.idTaken(state.createId)))
+				return false
+			default:
+				assertNever(res)
+		}
+	}
+
 	function store(stores: KeyProp) {
 		return Zus.resolveStore<FilterEditor>(stores.filterEditor)
 	}

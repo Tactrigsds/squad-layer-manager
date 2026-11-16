@@ -8,7 +8,7 @@ import { LayerTagDialog } from '@/components/layer-tags'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
 import * as Typo from '@/components/typography'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
 	ContextMenu,
@@ -51,7 +51,7 @@ import * as RotationClient from '@/systems/rotation.client'
 import * as SettingsClient from '@/systems/settings.client'
 
 import { MatchSnippet, OwnerFilter, SortControl } from './entity-index'
-import { DeleteRotationDialog, RotationFormDialog, type RotationFormMode } from './rotation-dialogs'
+import { CloneRotationDialog, DeleteRotationDialog } from './rotation-dialogs'
 
 type Props = {
 	search: ROT.IndexSearch
@@ -64,7 +64,7 @@ export default function RotationsIndex(props: Props) {
 	const facets = useQuery(RotationClient.facetsQuery()).data
 	const rotationTags = Zus.useStore(SettingsClient.PublicSettingsStore, (s) => s?.rotationTags ?? [])
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('rotations:create'))
-	const [dialog, setDialog] = React.useState<RotationFormMode | null>(null)
+	const [cloning, setCloning] = React.useState<Pick<ROT.Meta, 'id' | 'name'> | null>(null)
 
 	const shown = searchRes.data?.pages.flatMap((page) => page.rotations) ?? []
 	const matched = searchRes.data?.pages[0]?.matched ?? 0
@@ -84,10 +84,17 @@ export default function RotationsIndex(props: Props) {
 				</div>
 				<span className="flex-1" />
 				<PermissionDeniedTooltip denied={createDenied}>
-					<Button variant="primary" disabled={!!createDenied} onClick={() => setDialog({ mode: 'new' })}>
-						<Icons.Plus />
-						{tr.text(ROT_Msgs.newRotation())}
-					</Button>
+					{createDenied ? (
+						<Button variant="primary" disabled>
+							<Icons.Plus />
+							{tr.text(ROT_Msgs.newRotation())}
+						</Button>
+					) : (
+						<Link className={buttonVariants({ variant: 'primary' })} to="/rotations/new">
+							<Icons.Plus />
+							{tr.text(ROT_Msgs.newRotation())}
+						</Link>
+					)}
 				</PermissionDeniedTooltip>
 			</header>
 
@@ -140,22 +147,13 @@ export default function RotationsIndex(props: Props) {
 					{searching ? (
 						<ul className="flex flex-col divide-y rounded border bg-card">
 							{shown.map((rotation) => (
-								<RotationRow
-									key={rotation.id}
-									rotation={rotation}
-									query={search.q!.trim()}
-									onClone={() => setDialog({ mode: 'clone', source: rotation })}
-								/>
+								<RotationRow key={rotation.id} rotation={rotation} query={search.q!.trim()} onClone={() => setCloning(rotation)} />
 							))}
 						</ul>
 					) : (
 						<ul className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(min(100%,26rem),1fr))]">
 							{shown.map((rotation) => (
-								<RotationCard
-									key={rotation.id}
-									rotation={rotation}
-									onClone={() => setDialog({ mode: 'clone', source: rotation })}
-								/>
+								<RotationCard key={rotation.id} rotation={rotation} onClone={() => setCloning(rotation)} />
 							))}
 						</ul>
 					)}
@@ -171,7 +169,7 @@ export default function RotationsIndex(props: Props) {
 					)}
 				</main>
 			</div>
-			{dialog && <RotationFormDialog {...dialog} open onOpenChange={(open) => !open && setDialog(null)} />}
+			{cloning && <CloneRotationDialog source={cloning} open onOpenChange={(open) => !open && setCloning(null)} />}
 		</div>
 	)
 }

@@ -339,9 +339,9 @@ export const ownerLine = def('Owner: {owner}', (owner: string) => ({ owner }))
 
 export const contributorsLabel = def('Contributors:')
 
-export const editDetails = def('Edit Details')
+export const detailsDialogBlurb = def("The changes join the filter's draft. Press Save on the filter page to save them.")
 
-export const cancelEditingDetails = def('Cancel Editing Details')
+export const newDetailsDialogBlurb = def('The details are kept with the new filter. Press Create on the filter page to create it.')
 
 // why the viewer may or may not edit this filter, one per way of holding (or not holding) the grant
 export const accessOwner = def('You are the owner of this filter')
@@ -535,6 +535,8 @@ export const filtersButton = def('Filters')
 // -------- the filter details form --------
 
 export const nameLabel = def('Name')
+
+export const idLabel = def('ID')
 
 export const emojiLabel = def('Emoji')
 

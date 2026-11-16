@@ -208,12 +208,14 @@ function watchOps(host: LL.ListHost): Rx.Observable<SLL.Update> {
 				() => RPC.orpc.rotationEdit.watchOps.call({ rotationId: host.rotationId }),
 				{ apply: (update$) => update$.pipe(RPC.holdWhenNotFound()) },
 			)
+		case 'new-rotation':
+			return Rx.NEVER
 		default:
 			assertNever(host)
 	}
 }
 
-async function dispatchToHost(host: LL.ListHost, op: SLL.Operation) {
+async function dispatchToHost(host: Exclude<LL.ListHost, { type: 'new-rotation' }>, op: SLL.Operation) {
 	switch (host.type) {
 		case 'server':
 			return await RPC.orpc.layerQueue.dispatchOp.call({ serverId: host.serverId, op })
@@ -498,6 +500,9 @@ export namespace Actions {
 			if (isBackburnerOp && host.type === 'server') UPClient.Actions.ensureEditingLayerRequests(host.serverId)
 			else UPClient.Actions.ensureEditingList(host)
 		}
+
+		// a new rotation's list is the client's own: its ops apply here and stay pending until the rotation is created
+		if (host.type === 'new-rotation') return true
 
 		let res: Awaited<ReturnType<typeof dispatchToHost>>
 		try {

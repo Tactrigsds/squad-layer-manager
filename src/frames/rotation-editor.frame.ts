@@ -12,7 +12,7 @@ import type * as LTag from '@/models/layer-tags.models'
 import * as L from '@/models/layer.models'
 import * as RRS from '@/models/repeat-rulesets.models'
 import type * as RFMT from '@/models/rotation-format.models'
-import type * as ROT from '@/models/rotations.models'
+import * as ROT from '@/models/rotations.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as UP from '@/models/user-presence.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
@@ -27,12 +27,17 @@ import { frameManager } from './frame-manager'
 // statuses shown on them. A rotation has no server, so it has no match history, and the catalog stands in for a
 // server's settings; its repeat rules are those of its ruleset.
 //
+// A rotation that has not been created yet (rotationId null) has a list only this client holds, and keeps the details
+// it will be created with in newDetails until Create sends both.
+//
 // The draft can also be edited as text, in either exchange format. Each pause in typing reads the text, and once
 // every line of it can be used, replaces the whole draft with what it reads. Only text the user typed or opened is ever
 // applied, so showing the text never writes to the draft. The text follows changes made to the draft some other way,
 // such as another editor's edit, except while it holds typing that has not been applied yet.
 
-export type Input = { rotationId: ROT.RotationId }
+export type Input = { rotationId: ROT.RotationId | null }
+
+export type NewDetails = Pick<ROT.NewRotation, 'id' | 'name' | 'description' | 'repeatRulesetId' | 'tags'>
 
 export type View = 'builder' | RFMT.Format
 
@@ -62,7 +67,8 @@ export type Source = {
 }
 
 export type State = ListHostPrt.Store & {
-	rotationId: ROT.RotationId
+	rotationId: ROT.RotationId | null
+	newDetails: NewDetails | null
 	view: View
 	// the layers panel covers the viewport. Only the text views offer it, so leaving them clears it
 	fullscreen: boolean
@@ -78,7 +84,7 @@ export type State = ListHostPrt.Store & {
 
 export type Types = {
 	name: 'rotationEditor'
-	key: FRM.RawInstanceKey<{ rotationId: ROT.RotationId }>
+	key: FRM.RawInstanceKey<{ rotationId: ROT.RotationId | null }>
 	input: Input
 	state: State
 }
@@ -89,8 +95,18 @@ export type Frame = FRM.Frame<Types>
 // what setup holds as well as what components hold
 type StateKey = FRM.InstanceKeyOfState<State>
 
-export function createInput(rotationId: ROT.RotationId): Input {
+export function createInput(rotationId: ROT.RotationId | null): Input {
 	return { rotationId }
+}
+
+export function listHostFor(rotationId: ROT.RotationId | null): LL.ListHost {
+	return rotationId === null ? { type: 'new-rotation' } : { type: 'rotation', rotationId }
+}
+
+// the configured default, else the ruleset of the default server
+function defaultRepeatRulesetId(): RRS.RulesetId | null {
+	const settings = SettingsClient.PublicSettingsStore.getState()
+	return settings?.defaultRotationRepeatRulesetId ?? settings?.servers.find((server) => server.defaultServer)?.repeatRulesetId ?? null
 }
 
 const EDIT_DEBOUNCE_MS = 250
@@ -108,12 +124,15 @@ export const frame: Frame = frameManager.createFrame<Types>({
 	createKey: (frameId, input) => ({ frameId, rotationId: input.rotationId }),
 	setup(args) {
 		const { rotationId } = args.input
-		LayerQueuePrt.initLayerQueue(args, { type: 'rotation', rotationId })
+		const listHost = listHostFor(rotationId)
+		LayerQueuePrt.initLayerQueue(args, listHost)
 		const sourceEdits$ = new Rx.Subject<string>()
 		args.set({
 			...ListHostPrt.INITIAL,
 			rotationId,
-			listHost: { type: 'rotation', rotationId },
+			newDetails:
+				rotationId === null ? { id: '', name: '', description: null, repeatRulesetId: defaultRepeatRulesetId(), tags: [] } : null,
+			listHost,
 			settings: { saved: SETTINGS.catalogSettings() },
 			view: 'builder',
 			fullscreen: false,
@@ -148,12 +167,13 @@ export const frame: Frame = frameManager.createFrame<Types>({
 			}),
 		)
 
+		const repeatRulesetId$ =
+			rotationId === null
+				? state$.pipe(Rx.map(([state]) => state.newDetails?.repeatRulesetId ?? null))
+				: RotationClient.rotation$(rotationId).pipe(Rx.map((rotation) => rotation?.repeatRulesetId ?? null))
 		args.cleanup.push(
 			Rx.combineLatest([
-				RotationClient.rotation$(rotationId).pipe(
-					Rx.map((rotation) => rotation?.repeatRulesetId ?? null),
-					Rx.distinctUntilChanged(),
-				),
+				repeatRulesetId$.pipe(Rx.distinctUntilChanged()),
 				Zus.toStream(SettingsClient.PublicSettingsStore, SettingsClient.selectRepeatRulesets, { fireImmediately: true }),
 			]).subscribe(([repeatRulesetId, rulesets]) => args.set({ repeatRules: [...RRS.rulesFor(rulesets, repeatRulesetId)] })),
 		)
@@ -172,6 +192,20 @@ function runtimeOf(key: StateKey) {
 
 function configuredTags() {
 	return SettingsClient.PublicSettingsStore.getState()?.layerTags ?? []
+}
+
+// whether a rotation that has not been created yet has the details it needs to be created
+export function newDetailsComplete(details: NewDetails): boolean {
+	return ROT.NameSchema.safeParse(details.name).success && ROT.NewRotationIdSchema.safeParse(details.id).success
+}
+
+const NO_NEW_DETAILS: NewDetails = { id: '', name: '', description: null, repeatRulesetId: null, tags: [] }
+
+export namespace Sel {
+	// the details of a rotation that has not been created yet; empty for a saved one
+	export function newDetails(state: State): NewDetails {
+		return state.newDetails ?? NO_NEW_DETAILS
+	}
 }
 
 export function problemCount(analysis: SourceAnalysis | null): number {
@@ -291,6 +325,20 @@ async function analyzeAndApplyUnsafe(key: StateKey, text: string) {
 }
 
 export namespace Actions {
+	export function setNewDetails(key: StateKey, patch: Partial<NewDetails>) {
+		const newDetails = Zus.getState(key).newDetails
+		if (newDetails) store(key).setState({ newDetails: { ...newDetails, ...patch } })
+	}
+
+	// Creates a rotation that has not been created yet from its details and its list, applying unread text first.
+	// Resolves to whether it was created.
+	export async function create(key: StateKey): Promise<boolean> {
+		await flushSource(key)
+		const state = Zus.getState(key)
+		if (!state.newDetails) return false
+		return await RotationClient.Actions.create({ ...state.newDetails, items: state.queue.layerList })
+	}
+
 	// Shows the draft as text in `view`, or as the list. Leaving text that cannot be applied is refused, since what it
 	// says would be lost.
 	export async function setView(key: StateKey, view: View) {
@@ -318,7 +366,7 @@ export namespace Actions {
 	// editing, as Start Editing does.
 	export function editSource(key: StateKey, text: string) {
 		const state = Zus.getState(key)
-		UPClient.Actions.setActivityActive(UP.Trans.editingRotation(state.rotationId), true)
+		UPClient.Actions.setActivityActive(UP.Trans.editingList(state.listHost), true)
 		state.sourceRuntime.pendingEdit = true
 		store(key).setState({ source: { ...state.source, text, edited: true } })
 		state.sourceEdits$.next(text)
@@ -385,7 +433,7 @@ export namespace Actions {
 
 	// 'create' makes the tag right away, after which the label matches it
 	export async function chooseTag(key: StateKey, label: string, choice: TagChoice | { type: 'create' }) {
-		UPClient.Actions.setActivityActive(UP.Trans.editingRotation(Zus.getState(key).rotationId), true)
+		UPClient.Actions.setActivityActive(UP.Trans.editingList(Zus.getState(key).listHost), true)
 		let resolved: TagChoice
 		if (choice.type === 'create') {
 			const created = await RotationClient.Actions.createLayerTags([label])
@@ -410,7 +458,8 @@ export namespace Actions {
 		const url = URL.createObjectURL(new Blob([text], { type: format === 'yaml' ? 'application/yaml' : 'text/plain' }))
 		const a = document.createElement('a')
 		a.href = url
-		a.download = `${Zus.getState(key).rotationId}.${format === 'yaml' ? 'yaml' : 'cfg'}`
+		const state = Zus.getState(key)
+		a.download = `${state.rotationId ?? (state.newDetails?.id || 'rotation')}.${format === 'yaml' ? 'yaml' : 'cfg'}`
 		a.click()
 		URL.revokeObjectURL(url)
 	}

@@ -1,354 +1,89 @@
-import * as Form from '@tanstack/react-form'
 import { useNavigate } from '@tanstack/react-router'
+import * as Icons from 'lucide-react'
 import React from 'react'
 
+import { EditDetailsButton, EditDetailsDialog } from '@/components/edit-details-dialog'
+import EmojiDisplay from '@/components/emoji-display'
+import { FilterDetailsForm } from '@/components/filter-details-form'
+import { MarkdownDescription } from '@/components/markdown-description'
 import { PermissionDeniedTooltip } from '@/components/permission-denied-tooltip'
-import { Input } from '@/components/ui/input'
-import type * as EditFrame from '@/frames/filter-editor.frame.ts'
-import { toast } from '@/lib/toast'
-import { assertNever } from '@/lib/type-guards'
-import * as ValidationErrors from '@/lib/validation-errors'
-import { z } from '@/lib/zod'
+import * as Typo from '@/components/typography'
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
-import * as F from '@/models/filter.models'
-import { useFilterCreate } from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
-import { invalidateLoggedInUser } from '@/systems/users.client'
 
-import { EmojiPickerPopover } from './emoji-picker-popover'
 import FilterCard from './filter-card'
 import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import LayerTable from './layer-table'
-import { MissExemptionEditor } from './miss-exemption-editor'
-import { Alert, AlertDescription, AlertTitle } from './ui/alert'
-import { Button } from './ui/button'
-import { Label } from './ui/label'
-import { Textarea } from './ui/textarea'
 
-type FormData = {
-	id: string
-	name: string
-	description: string
-	alertMessage: string
-	emoji: string | null
-	invertedAlertMessage: string
-	invertedEmoji: string | null
-	// unknown: the recursive node type sends the form's field path types into infinite instantiation
-	missExemption: unknown
-}
-
+// The page of a filter that has not been created yet. Its details dialog opens with the page, and can be closed to
+// edit the filter first. Create opens it again while the name or the ID is missing.
 export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
+	const { stores } = props
 	const navigate = useNavigate()
-	const createFilterMutation = useFilterCreate()
-
-	const form = Form.useForm({
-		defaultValues: {
-			id: '',
-			name: '',
-			description: '',
-			alertMessage: '',
-			emoji: null as string | null,
-			invertedAlertMessage: '',
-			invertedEmoji: null as string | null,
-			missExemption: F.DEFAULT_MISS_EXEMPTION as unknown,
-		} satisfies FormData,
-		onSubmit: async ({ value }) => {
-			const state = Zus.getState(props.stores.filterEditor)
-
-			if (!state.validatedFilter) {
-				toast.warning(...tr.toast(F_Msgs.invalid()))
-				return
-			}
-
-			const res = await createFilterMutation.mutateAsync({
-				id: value.id,
-				name: value.name,
-				description: value.description?.trim() || null,
-				emoji: value.emoji ?? null,
-				alertMessage: value.alertMessage?.trim() || null,
-				invertedEmoji: value.invertedEmoji ?? null,
-				invertedAlertMessage: value.invertedAlertMessage?.trim() || null,
-				// the field's validator holds the form back until the exemption is complete
-				missExemption: value.missExemption as F.FilterNode | null,
-				filter: state.validatedFilter,
-			})
-
-			switch (res.code) {
-				case 'ok':
-					invalidateLoggedInUser()
-					toast(...tr.toast(F_Msgs.created()))
-					void navigate({ to: `/filters/$filterId`, params: { filterId: value.id } })
-					break
-
-				case 'err:permission-denied':
-					RbacClient.handlePermissionDenied(res)
-					break
-
-				case 'err:cyclical-reference':
-					toast.error(...tr.toast(F_Msgs.cyclicalReference(res.cycle)))
-					break
-
-				case 'err:already-exists':
-					toast.error(...tr.toast(F_Msgs.idTaken(value.id)))
-					break
-
-				default:
-					assertNever(res)
-			}
-		},
-	})
-
-	const isValidFilter = Zus.useStore(props.stores.filterEditor, (s) => s.valid)
-	const colConfig = Zus.useStore(props.stores.filterEditor, (s) => s.layerTable.colConfig)
+	const [detailsOpen, setDetailsOpen] = React.useState(true)
+	const [creating, setCreating] = React.useState(false)
+	const meta = Zus.useStore(stores.filterEditor, (s) => s.meta)
+	const isValidFilter = Zus.useStore(stores.filterEditor, (s) => s.valid)
 	const createDenied = RbacClient.useAccess('filters.createFilter')
 
-	const submitBtn = (
-		<form.Subscribe>
-			{(f) => (
-				<PermissionDeniedTooltip denied={createDenied}>
-					<Button variant="primary" onClick={form.handleSubmit} disabled={!f.canSubmit || !isValidFilter || !!createDenied}>
-						{tr.text(F_Msgs.create())}
-					</Button>
-				</PermissionDeniedTooltip>
-			)}
-		</form.Subscribe>
-	)
-
-	const filterCard = <FilterCard stores={props.stores}>{submitBtn}</FilterCard>
+	const create = async () => {
+		const state = Zus.getState(stores.filterEditor)
+		if (!EditFrame.Actions.detailsComplete(state)) {
+			setDetailsOpen(true)
+			return
+		}
+		setCreating(true)
+		try {
+			if (await EditFrame.Actions.create(stores)) {
+				void navigate({ to: `/filters/$filterId`, params: { filterId: state.createId } })
+			}
+		} finally {
+			setCreating(false)
+		}
+	}
 
 	return (
 		<div className="container mx-auto flex flex-col gap-2">
-			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-				{/* Left Column - Form Fields */}
-				<div className="space-y-6">
-					{/* Name and ID Section */}
-					<div className="space-y-2">
-						<form.Field name="name" validators={{ onChange: F.NewFilterEntitySchema.shape.name }}>
-							{(field) => {
-								const label = tr.text(F_Msgs.nameLabel())
-								function handleNameChange(name: string) {
-									field.handleChange(name)
-									if (!!form.getFieldValue('id').trim() && form.getFieldMeta('id')!.isDirty) return
-									form.setFieldValue('id', name.toLowerCase().replace(/\s+/g, '-'), { dontUpdateMeta: true })
-									form.setFieldMeta('id', (m) => ({ ...m, errors: [], errorMap: {} }))
-								}
-
-								return (
-									<div className="flex flex-col space-y-2">
-										<Label htmlFor={field.name}>{label}</Label>
-										<Input
-											id={field.name}
-											placeholder={label}
-											defaultValue={field.state.value}
-											onBlur={field.handleBlur}
-											onChange={(e) => handleNameChange(e.target.value)}
-										/>
-										{field.state.meta.errors.length > 0 && (
-											<Alert variant="destructive">
-												<AlertTitle>{label}:</AlertTitle>
-												<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-											</Alert>
-										)}
-									</div>
-								)
-							}}
-						</form.Field>
-
-						<form.Field name="id" validators={{ onChange: F.NewFilterEntitySchema.shape.id }}>
-							{(field) => {
-								const label = 'ID'
-								return (
-									<div className="flex flex-col space-y-2">
-										<Label htmlFor={field.name}>{label}</Label>
-										<Input
-											id={field.name}
-											placeholder={label}
-											defaultValue={field.state.value}
-											onBlur={field.handleBlur}
-											onChange={(e) => field.handleChange(e.target.value.trim() ?? null)}
-										/>
-										{field.state.meta.errors.length > 0 && (
-											<Alert variant="destructive">
-												<AlertTitle>{label}:</AlertTitle>
-												<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-											</Alert>
-										)}
-									</div>
-								)
-							}}
-						</form.Field>
-					</div>
-
-					{/* Match Indicator Section */}
-					<div className="border rounded-lg p-4 space-y-4">
-						<h3 className="font-semibold text-sm">{tr.text(F_Msgs.matchIndicator())}</h3>
-						<div className="flex gap-4">
-							<form.Field name="emoji">
-								{(field) => {
-									const label = tr.text(F_Msgs.emojiLabel())
-									return (
-										<div className="flex flex-col space-y-2">
-											<Label htmlFor={field.name}>{label}</Label>
-											<EmojiPickerPopover
-												value={field.state.value ?? undefined}
-												onSelect={(emoji) => field.handleChange(emoji ?? null)}
-												disabled={false}
-											/>
-											{field.state.meta.errors.length > 0 && (
-												<Alert variant="destructive">
-													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-												</Alert>
-											)}
-										</div>
-									)
-								}}
-							</form.Field>
-
-							<form.Field
-								name="alertMessage"
-								validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
-							>
-								{(field) => {
-									const label = tr.text(F_Msgs.alertMessageLabel())
-									return (
-										<div className="flex flex-col space-y-2 grow">
-											<Label htmlFor={field.name}>{label}</Label>
-											<Textarea
-												id={field.name}
-												placeholder={label}
-												defaultValue={field.state.value ?? ''}
-												onBlur={field.handleBlur}
-												onChange={(e) => field.setValue(e.target.value)}
-												rows={3}
-											/>
-											{field.state.meta.errors.length > 0 && (
-												<Alert variant="destructive">
-													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-												</Alert>
-											)}
-										</div>
-									)
-								}}
-							</form.Field>
-						</div>
-					</div>
-
-					{/* Miss Indicator Section */}
-					<div className="border rounded-lg p-4 space-y-4">
-						<h3 className="font-semibold text-sm">{tr.text(F_Msgs.missIndicator())}</h3>
-						<div className="flex gap-4">
-							<form.Field name="invertedEmoji">
-								{(field) => {
-									const label = tr.text(F_Msgs.emojiLabel())
-									return (
-										<div className="flex flex-col space-y-2">
-											<Label htmlFor={field.name}>{label}</Label>
-											<EmojiPickerPopover
-												value={field.state.value ?? undefined}
-												onSelect={(emoji) => field.handleChange(emoji ?? null)}
-												disabled={false}
-											/>
-											{field.state.meta.errors.length > 0 && (
-												<Alert variant="destructive">
-													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-												</Alert>
-											)}
-										</div>
-									)
-								}}
-							</form.Field>
-
-							<form.Field
-								name="invertedAlertMessage"
-								validators={{ onChange: z.union([F.AlertMessageSchema, z.string().trim().length(0)]) }}
-							>
-								{(field) => {
-									const label = tr.text(F_Msgs.alertMessageLabel())
-									return (
-										<div className="flex flex-col space-y-2 grow">
-											<Label htmlFor={field.name}>{label}</Label>
-											<Textarea
-												id={field.name}
-												placeholder={label}
-												defaultValue={field.state.value ?? ''}
-												onBlur={field.handleBlur}
-												onChange={(e) => field.setValue(e.target.value)}
-												rows={3}
-											/>
-											{field.state.meta.errors.length > 0 && (
-												<Alert variant="destructive">
-													<AlertTitle>{label}:</AlertTitle>
-													<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-												</Alert>
-											)}
-										</div>
-									)
-								}}
-							</form.Field>
-						</div>
-						<form.Field
-							name="missExemption"
-							validators={{
-								onChange: ({ value }) =>
-									value && !F.isValidFilterNode(value as F.EditableFilterNode)
-										? tr.text(F_Msgs.missExemptionIncomplete())
-										: undefined,
-							}}
-						>
-							{(field) => (
-								<div className="flex flex-col gap-2">
-									<MissExemptionEditor
-										defaultValue={F.DEFAULT_MISS_EXEMPTION}
-										onChange={field.handleChange}
-										colConfig={colConfig}
-									/>
-									{field.state.meta.errors.length > 0 && (
-										<Alert variant="destructive">
-											<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-										</Alert>
-									)}
-								</div>
-							)}
-						</form.Field>
-					</div>
-				</div>
-
-				{/* Right Column - Description */}
-				<form.Field name="description" validators={{ onChange: F.DescriptionSchema }}>
-					{(field) => {
-						const label = tr.text(F_Msgs.descriptionLabel())
-						return (
-							<div className="flex flex-col space-y-2">
-								<Label htmlFor={field.name}>{label}</Label>
-								<Textarea
-									id={field.name}
-									placeholder={label}
-									defaultValue={field.state.value ?? ''}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value?.trim() ?? null)}
-									rows={20}
-									className="font-mono text-sm grow"
-								/>
-								{field.state.meta.errors.length > 0 && (
-									<Alert variant="destructive">
-										<AlertTitle>{label}:</AlertTitle>
-										<AlertDescription>{ValidationErrors.formatFieldErrors(field.state.meta.errors)}</AlertDescription>
-									</Alert>
-								)}
-							</div>
-						)
-					}}
-				</form.Field>
-			</div>
-
-			<FilterValidationErrorDisplay stores={props.stores} />
-			{filterCard}
-			<LayerTable stores={{ layerTable: props.stores.filterEditor }} />
+			<header className="flex flex-col gap-2">
+				<span className="flex items-center gap-x-4">
+					{meta.emoji && (
+						<>
+							<EmojiDisplay emoji={meta.emoji} className="text-3xl" />
+							<Icons.Dot />
+						</>
+					)}
+					<h3 className={cn(Typo.H3, !meta.name && 'text-muted-foreground')}>{meta.name || tr.text(F_Msgs.newFilter())}</h3>
+					<Icons.Dot />
+					<EditDetailsButton denied={createDenied} onClick={() => setDetailsOpen(true)} />
+				</span>
+				<Separator orientation="horizontal" />
+				<MarkdownDescription description={meta.description} />
+			</header>
+			<EditDetailsDialog
+				open={detailsOpen}
+				onOpenChange={setDetailsOpen}
+				title={tr.text(F_Msgs.newFilter())}
+				description={tr.text(F_Msgs.newDetailsDialogBlurb())}
+				className="max-w-5xl"
+			>
+				<FilterDetailsForm stores={stores} creating onClose={() => setDetailsOpen(false)} />
+			</EditDetailsDialog>
+			<FilterValidationErrorDisplay stores={stores} />
+			<FilterCard stores={stores}>
+				<PermissionDeniedTooltip denied={createDenied}>
+					<Button variant="primary" onClick={() => void create()} disabled={!isValidFilter || creating || !!createDenied}>
+						<Icons.Save />
+						{tr.text(F_Msgs.create())}
+					</Button>
+				</PermissionDeniedTooltip>
+			</FilterCard>
+			<LayerTable stores={{ layerTable: stores.filterEditor }} />
 		</div>
 	)
 }

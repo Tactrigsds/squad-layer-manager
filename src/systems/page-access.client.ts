@@ -41,6 +41,7 @@ export const PAGE_ACCESS = {
 	'/_app/filters/': Access.PUBLIC,
 	'/_app/rotations/': Access.PUBLIC,
 	'/_app/rotations/$rotationId': Access.PUBLIC,
+	'/_app/rotations/new': Access.req(Req.perm('rotations:create')),
 	'/_app/servers/': Access.PUBLIC,
 } satisfies { [K in RouteId]: RBAC.Access<any> }
 
