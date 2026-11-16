@@ -78,16 +78,29 @@ export async function createRollingFixture(opts?: { env?: Record<string, string>
 			app.emu.world.startNewGame()
 		},
 		withRconOffline: async (fn) => {
+			// A set-next still in flight from an earlier roll would hold updateLayerMtx through its retries against the
+			// downed RCON, and the roll `fn` starts waits on that mutex inside event processing, stalling log ingest.
+			await app.waitForNextLayerSync()
+			await app.waitFor(
+				async () => {
+					const status = await app.control('ingest-status', { serverId: app.serverId })
+					return (status.code === 'ok' && !status.rolling && status.nextLayerSyncState !== 'syncing') || undefined
+				},
+				{ label: 'the previous roll to finish writing the next layer' },
+			)
 			const port = app.emu.rconPort
 			await app.emu.rcon.goOffline()
-			await app.waitForRconConnected(false)
 			try {
-				return fn()
+				await app.waitForRconConnected(false)
+				try {
+					return fn()
+				} finally {
+					// Hold the window open until the app has read what `fn` logged. Bringing RCON back sooner lets the poll
+					// that completes the roll beat those lines into the pipeline, which is a different scenario: the app
+					// would then see the connect/disconnect against the settled new match rather than mid-roll.
+					await app.waitForLogIngested()
+				}
 			} finally {
-				// Hold the window open until the app has read what `fn` logged. Bringing RCON back sooner lets the poll
-				// that completes the roll beat those lines into the pipeline, which is a different scenario: the app
-				// would then see the connect/disconnect against the settled new match rather than mid-roll.
-				await app.waitForLogIngested()
 				await app.emu.rcon.goOnline(port)
 			}
 		},
