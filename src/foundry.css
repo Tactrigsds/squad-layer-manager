@@ -238,7 +238,7 @@
 	.fd-grp > :first-child:not(:last-child) {
 		--fd-grp-end-radius: 0;
 	}
-	.fd-grp > :last-child {
+	.fd-grp > :last-child:not(:first-child) {
 		--fd-grp-start-radius: 0;
 	}
 	.fd-grp > :not(.fd-btn) .fd-btn {
@@ -268,7 +268,7 @@
 			border-radius: 3px;
 		}
 		.fd-grp > :first-child:not(:last-child),
-		.fd-grp > :last-child {
+		.fd-grp > :last-child:not(:first-child) {
 			--fd-grp-start-radius: 3px;
 			--fd-grp-end-radius: 3px;
 		}
