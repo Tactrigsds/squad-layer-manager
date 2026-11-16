@@ -143,16 +143,19 @@ is not indented.</p>
 <span class="line"><span># VOTE: display map, factions; duration 3m</span></span>
 <span class="line"><span>  GooseBay_RAAS_v2 CRF+CombinedArms AFU+LightInfantry</span></span>
 <span class="line"><span>  Mutaha_TC_v1 TLF+Armored ADF+Mechanized</span></span></code></pre><button type="button" class="docs-copy" data-copy="" aria-label="Copy code" hidden="" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy docs-copy-idle size-4" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check docs-copy-done size-4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></button></div>
-<p>The text can be edited once <em>Start Editing</em> is pressed. A change applies to the rotation&#x27;s layers when typing pauses.
-SLM names every line it cannot read, and holds the change back until each one is fixed. A tag label that matches no tag
-also holds the change back, until the label is created as a new tag, dropped, or mapped onto an existing tag. While a
-change is held back, the view cannot be switched.</p>
+<p>Typing into the text starts editing, as <em>Start Editing</em> does. A change applies to the rotation&#x27;s layers when typing
+pauses. SLM lists every line it cannot read under <em>Problems</em>, underlines it in the text, and holds the change back until
+each one is fixed. Click a problem to move the cursor to its line. A tag label that matches no tag also holds the change
+back, until the label is created as a new tag, dropped, or mapped onto an existing tag. While a change is held back,
+the view cannot be switched and the rotation cannot be saved.</p>
+<p>The expand button beside <em>Reset</em> fills the screen with the text. Press Esc to return to the page.</p>
 <p>Use <em>Open File...</em>, or drop a <code>.yaml</code>, <code>.cfg</code> or <code>.txt</code> file onto a rotation&#x27;s layers, to add the file&#x27;s layers. Pick
 <em>Add to start</em> or <em>Add to end</em> to put them before or after the rotation&#x27;s layers, or <em>Replace</em> to replace the
 rotation&#x27;s layers with them. A rotation with no layers takes the file&#x27;s layers without asking. The result is shown as
 text in the file&#x27;s format, so any line SLM cannot read is listed there.</p>
-<p>Use <em>Copy</em> and <em>Download</em> to take a rotation&#x27;s layers out as text. In the <em>Builder</em>, each one asks for plain text or
-YAML. In <em>Text</em> and <em>YAML</em>, <em>Copy</em> and <em>Download</em> use the text on screen. Plain text downloads as a <code>.cfg</code> file.</p>
+<p>Use <em>Copy</em> and <em>Download</em> to take a rotation&#x27;s layers out as text. In the <em>Builder</em>, <em>Open File...</em>, <em>Copy</em> and
+<em>Download</em> are in the ⋯ menu, which offers each of <em>Copy</em> and <em>Download</em> as plain text or YAML. In <em>Text</em> and <em>YAML</em>,
+<em>Copy</em> and <em>Download</em> use the text on screen. Plain text downloads as a <code>.cfg</code> file.</p>
 <p><em>Add Rotation</em> on the queue reads the same formats on its <em>Paste</em> tab.</p>
 <h2 id="randomization" class="docs-heading">Randomization<a href="#randomization" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/layer_rotation.md#randomization" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p><em>Layer Generation Weights</em> controls how SLM picks layers at random. It covers layer generation, which runs when
