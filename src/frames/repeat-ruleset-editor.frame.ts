@@ -1,5 +1,6 @@
 import type * as ServerSettingsPrt from '@/frame-partials/server-settings.partial'
 import type * as FRM from '@/lib/frame'
+import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
@@ -33,7 +34,12 @@ export type Source =
 	// a rotation's saved repeatRulesetId
 	| { type: 'rotation'; rotationId: ROT.RotationId }
 
-export type Input = { source: Source }
+// each mount gets an instance of its own, bound to its own source
+export type Input = { instanceId: string; source: Source }
+
+export function createInput(source: Source): Input {
+	return { instanceId: createId(4), source }
+}
 
 export type Store = {
 	repeatRulesetId: RRS.RulesetId | null
@@ -51,7 +57,7 @@ export type Store = {
 
 export type Types = {
 	name: 'repeatRulesetEditor'
-	key: FRM.RawInstanceKey<object>
+	key: FRM.RawInstanceKey<{ instanceId: string }>
 	input: Input
 	state: Store
 }
@@ -135,7 +141,7 @@ function setup(args: FRM.SetupArgs<Input, Store>) {
 
 export const frame: Frame = frameManager.createFrame<Types>({
 	name: 'repeatRulesetEditor',
-	createKey: (frameId) => ({ frameId }),
+	createKey: (frameId, input) => ({ frameId, instanceId: input.instanceId }),
 	setup,
 })
 

@@ -61,9 +61,11 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 	const { rotation } = props
 	const navigate = useNavigate()
 	const listHost = useFrameLifecycle(RotationEditorFrame.frame, { input: RotationEditorFrame.createInput(rotation.id) })
-	const repeatRulesetEditor = useFrameLifecycle(RepeatRulesetEditorFrame.frame, {
-		input: { source: { type: 'rotation', rotationId: rotation.id } },
-	})
+	const repeatRulesetEditorInput = React.useMemo(
+		() => RepeatRulesetEditorFrame.createInput({ type: 'rotation', rotationId: rotation.id }),
+		[rotation.id],
+	)
+	const repeatRulesetEditor = useFrameLifecycle(RepeatRulesetEditorFrame.frame, { input: repeatRulesetEditorInput })
 	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(rotation.id))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.getManagePermReqForRotation(rotation.id))
 	const createDenied = RbacClient.usePermsCheck(RBAC.perm('rotations:create'))
