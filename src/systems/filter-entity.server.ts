@@ -13,6 +13,8 @@ import * as AppEvents from '@/models/app-events.models'
 import * as CS from '@/models/context-shared.models'
 import * as FR from '@/models/filter-references.models'
 import * as F from '@/models/filter.models'
+import * as LC from '@/models/layer-columns.models'
+import * as LE from '@/models/layer-engine.models'
 import * as ATTRS from '@/models/otel-attrs.models'
 import * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
@@ -23,6 +25,8 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as Sql from '@/server/sql'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
+import * as LayerEngine from '@/systems/layer-engine.server'
+import * as LayerQueriesShared from '@/systems/layer-queries.shared'
 import * as Rbac from '@/systems/rbac.server'
 import * as Settings from '@/systems/settings.server'
 import * as Users from '@/systems/users.server'
@@ -183,6 +187,20 @@ namespace Q {
 			.innerJoin(Schema.users, E.eq(Schema.users.discordId, UserContributors.userId))
 			.innerJoin(Schema.discordAccounts, E.eq(Schema.users.discordId, Schema.discordAccounts.discordId))
 			.where(E.eq(UserContributors.filterId, userContributorsP.filterId)),
+	)
+	const eventTypeP = SQL.params({ type: Schema.appEvents.type })
+	export const eventsOfType = SQL.def(
+		'eventsOfType',
+		eventTypeP,
+		SQL.select().from(Schema.appEvents).where(E.eq(Schema.appEvents.type, eventTypeP.type)).orderBy(E.desc(Schema.appEvents.time)),
+	)
+	const eventTypeSinceP = SQL.params({ type: Schema.appEvents.type, since: Schema.appEvents.time })
+	export const eventsOfTypeSince = SQL.def(
+		'eventsOfTypeSince',
+		eventTypeSinceP,
+		SQL.select()
+			.from(Schema.appEvents)
+			.where(E.and(E.eq(Schema.appEvents.type, eventTypeSinceP.type), E.gt(Schema.appEvents.time, eventTypeSinceP.since))),
 	)
 }
 
@@ -417,6 +435,106 @@ export function invalidateReferences() {
 // the live reference index every client watches. Assigned in setup, since it needs a db context.
 export let filterReferences$!: Rx.Observable<FR.Index>
 
+// Which stored filters, and which servers' installed mods, do not lower against the layer data this instance runs
+// on. Layer data only changes at boot, so the index is rebuilt when a filter or a server's settings change.
+export type FilterProblems = {
+	// errors from lowering each filter and its miss exemption, including those owned by filters it references. A
+	// filter that lowers has no entry.
+	filters: Record<F.FilterEntityId, F.NodeValidationError[]>
+	// per server id, the installed mods the layer data has no collection for. A server with none has no entry.
+	installedMods: Record<string, F.NodeValidationError[]>
+}
+
+export let filterProblems$!: Rx.Observable<FilterProblems>
+
+function computeFilterProblems(ctx: C.Db): FilterProblems {
+	const lower = LayerQueriesShared.lowerCtx({
+		...CS.init(),
+		engine: LayerEngine.requireEngine(),
+		filters: state.filters,
+		effectiveColsConfig: LC.getEffectiveColumnConfig(),
+	})
+	const filters: FilterProblems['filters'] = {}
+	for (const filterId of state.filters.keys()) {
+		const errors: F.NodeValidationError[] = []
+		const res = LE.lowerFilterEntity(lower, filterId)
+		if (res.code !== 'ok') errors.push(...res.errors)
+		const exemption = LE.lowerMissExemption(lower, filterId)
+		if (exemption?.code === 'err:invalid-node') errors.push(...exemption.errors)
+		if (errors.length > 0) filters[filterId] = errors
+	}
+	const installedMods: FilterProblems['installedMods'] = {}
+	for (const { serverId, installedMods: mods } of Settings.listServerInstalledMods(ctx)) {
+		const res = LayerQueriesShared.lowerInstalledMods(lower, mods)
+		if (res.code !== 'ok') installedMods[serverId] = res.errors
+	}
+	return { filters, installedMods }
+}
+
+// Logs every filter that is broken in `next` and was not in `prev`, and records a FILTER_BROKEN for it. With no
+// `prev`, at startup, a filter whose latest FILTER_BROKEN already records the same problems is only logged, unless the
+// filter was changed since.
+function recordNewlyBroken(ctx: C.Db, prev: FilterProblems | null, next: FilterProblems) {
+	const newlyBroken = Object.entries(next.filters).filter(([filterId]) => !prev?.filters[filterId])
+	if (newlyBroken.length === 0) return
+	const alreadyRecorded = prev ? new Set<F.FilterEntityId>() : recordedAtStartup(ctx, next)
+	for (const [filterId, errors] of newlyBroken) {
+		const lines = errors.map((error) => F.describeNodeValidationError(error))
+		log.warn({ [ATTRS.Filter.ID]: filterId }, 'filter %s can no longer be applied:\n%s', filterId, lines.join('\n'))
+		if (alreadyRecorded.has(filterId)) continue
+		AppEventsSys.persistAppEvent(
+			ctx,
+			AppEvents.create<AppEvents.FilterBroken>({
+				type: 'FILTER_BROKEN',
+				filterId,
+				filterName: state.filters.get(filterId)?.name,
+				errors: errors.map(AppEvents.toFilterNodeProblem),
+				actor: { type: 'system' },
+				serverId: null,
+				matchId: null,
+				causeId: null,
+			}),
+		)
+	}
+}
+
+// the broken filters whose latest FILTER_BROKEN records the problems they have now, with no FILTER_CHANGED for them
+// since
+function recordedAtStartup(ctx: C.Db, next: FilterProblems): Set<F.FilterEntityId> {
+	const latest = new Map<F.FilterEntityId, AppEvents.FilterBroken>()
+	const brokenRows = DB.all(ctx, Q.eventsOfType({ type: 'FILTER_BROKEN' }))
+	for (const event of AppEvents.fromRows({ ...ctx, log }, brokenRows, 'the filter problem index')) {
+		if (event.type !== 'FILTER_BROKEN' || latest.has(event.filterId)) continue
+		latest.set(event.filterId, event)
+	}
+	const unchanged = new Map<F.FilterEntityId, number>()
+	for (const [filterId, errors] of Object.entries(next.filters)) {
+		const event = latest.get(filterId)
+		if (event && problemsKey(event.errors) === problemsKey(errors.map(AppEvents.toFilterNodeProblem))) {
+			unchanged.set(filterId, event.time)
+		}
+	}
+	if (unchanged.size === 0) return new Set()
+	const since = new Date(Math.min(...unchanged.values()))
+	for (const event of AppEvents.fromRows(
+		{ ...ctx, log },
+		DB.all(ctx, Q.eventsOfTypeSince({ type: 'FILTER_CHANGED', since })),
+		'the filter problem index',
+	)) {
+		if (event.type !== 'FILTER_CHANGED') continue
+		const recordedAt = unchanged.get(event.filterId)
+		if (recordedAt !== undefined && event.time > recordedAt) unchanged.delete(event.filterId)
+	}
+	return new Set(unchanged.keys())
+}
+
+function problemsKey(problems: AppEvents.FilterNodeProblem[]) {
+	return problems
+		.map((p) => `${p.part}|${p.path.join('.')}|${p.type}|${p.ownerFilterId}|${p.msg.original}|${JSON.stringify(p.msg.args ?? null)}`)
+		.sort()
+		.join('\n')
+}
+
 // The write itself, without the permission check. The rpc handler, the shared-draft save path
 // (filter-edit.server.ts) and a plugin all go through here, so a filter is only ever written one way.
 export function updateFilter(ctx: C.Db, id: F.FilterEntityId, update: Partial<F.FilterEntityUpdate>, actor: AppEvents.Actor) {
@@ -569,6 +687,10 @@ export const filtersRouter = {
 		yield* Rx.Ext.toAsyncGenerator(filterReferences$.pipe(Rx.Ext.withAbortSignal(signal!)))
 	}),
 
+	watchFilterProblems: orpcBase.meta({ logLevel: 'trace' }).handler(async function* ({ signal }) {
+		yield* Rx.Ext.toAsyncGenerator(filterProblems$.pipe(Rx.Ext.withAbortSignal(signal!)))
+	}),
+
 	changeFilterOwner: orpcBase
 		.meta({ type: 'mutation' })
 		// a plugin takes ownership through the plugin API, never from here
@@ -684,6 +806,39 @@ export function setup() {
 				assertNever(mut.type)
 		}
 	})
+}
+
+// after Settings.setup, whose server settings the index reads
+export function setupProblemIndex() {
+	const ctx = DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal })
+	let last: FilterProblems | null = null
+	filterProblems$ = Rx.merge(
+		Rx.of(null),
+		filterMutation$,
+		Settings.settings$.pipe(Rx.filter((e) => e.scope === 'server' || e.scope === 'registry')),
+	).pipe(
+		Rx.debounceTime(0),
+		// a failed rebuild keeps the index it had, rather than ending the stream every client watches
+		Rx.concatMap(() => {
+			try {
+				return Rx.of(computeFilterProblems(ctx))
+			} catch (error) {
+				log.error(error, 'failed to rebuild the filter problem index')
+				return Rx.EMPTY
+			}
+		}),
+		Rx.distinctUntilChanged(Obj.deepEqual),
+		Rx.tap((next) => {
+			try {
+				recordNewlyBroken(ctx, last, next)
+			} catch (error) {
+				log.error(error, 'failed to record newly broken filters')
+			}
+			last = next
+		}),
+		Rx.shareReplay(1),
+	)
+	CleanupSys.register(filterProblems$.subscribe())
 }
 
 export type FilterEntityChange =

@@ -71,7 +71,9 @@ const triggerClass =
 const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ms-0 [&_svg]:size-3'
 // `builderOnly` drops the text mode and the toolbar, for a filter edited as one field of a larger form
 export default function FilterCard(props: FilterCardProps & ({ children: React.ReactNode; builderOnly?: false } | { builderOnly: true })) {
-	const [activeTab, setActiveTab] = React.useState('builder' as 'builder' | 'text')
+	const activeTab = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.view)
+	const setActiveTab = (view: EditFrame.View) => EditFrame.Actions.setView(props.stores, view)
+	const scopeId = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.scopeId)
 	const editorRef = React.useRef<FilterTextEditorHandle>(null)
 	const kbScope = KBClient.useScope('filter-editor', {})
 
@@ -152,7 +154,7 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 	if (props.builderOnly) {
 		return (
 			<>
-				<div className="w-full min-w-0 overflow-x-auto">
+				<div className="w-full min-w-0 overflow-x-auto" data-filter-tree={scopeId}>
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
 				</div>
 				{leafNodes}
@@ -163,7 +165,7 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 	const rendered = (
 		<div ref={kbScope.ref} defaultValue="builder" className="w-full space-x-2 flex">
 			<div className="flex-1 min-w-0 overflow-x-auto">
-				<div className={activeTab === 'builder' ? '' : 'hidden'}>
+				<div className={activeTab === 'builder' ? '' : 'hidden'} data-filter-tree={scopeId}>
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
 				</div>
 				<div className={activeTab === 'text' ? '' : 'hidden'}>
@@ -413,6 +415,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 				<NodeSummaryButton onClick={() => actions.common.setEditing(true)}>
 					<NodeSummary node={node} />
 				</NodeSummaryButton>
+				<NodeErrorMark nodeId={props.nodeId} stores={props.stores} />
 				<InlineAddButton compact actions={blockAddActions(actions.block)} />
 				<CompactOpCluster>{opCluster}</CompactOpCluster>
 			</div>
@@ -428,6 +431,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 				options={blockTypeOptions}
 				onSelect={(v) => setBlockType(v as F.BlockType)}
 			/>
+			<NodeErrorMark nodeId={props.nodeId} stores={props.stores} />
 			<InlineAddButton actions={blockAddActions(actions.block)} />
 			{opCluster}
 			<DoneButton onClick={() => actions.common.setEditing(false)} />
@@ -519,12 +523,19 @@ const NodeWrapper = ({
 }) => {
 	const dragItem: DND.DragItem = { type: 'filter-node', id: nodeId }
 	const dragProps = DndKit.useDraggable(dragItem, { feedback: 'default' })
+	const invalid = Zus.useStore(stores.filterEditor, EditFrame.Sel.nodeErrors(nodeId)).length > 0
 	const draggingPlaceholder = <span className="w-[20px] mx-auto">...</span>
 	return (
+		// data-filter-node-id is how EditFrame.Actions.revealNode finds the node
 		<div
 			ref={dragProps.ref}
-			className="bg-background flex space-x-1 min-h-[20px] min-w-[40px] data-[is-dragging=true]:outline-solid rounded-md"
+			className={cn(
+				'bg-background flex space-x-1 min-h-[20px] min-w-[40px] data-[is-dragging=true]:outline-solid rounded-md',
+				invalid && 'bg-destructive/10 ring-1 ring-inset ring-destructive/60',
+			)}
 			data-is-dragging={dragProps.isDragging}
+			data-filter-node-id={nodeId}
+			data-node-invalid={invalid || undefined}
 		>
 			{false ? (
 				draggingPlaceholder
@@ -680,16 +691,35 @@ function valueText(value: F.Value) {
 // Each part carries the space that follows it. A flex gap is not whitespace, so a row laid out with one
 // reads as "Gamemode=RAAS" when it is copied or read aloud; the trailing space at the end of a row
 // collapses in inline flow, so nothing shows for it.
-function ValueChip(props: { children: React.ReactNode }) {
-	return <span className="rounded-sm bg-muted px-1 py-px font-mono text-xs text-foreground">{props.children}</span>
+function ValueChip(props: { children: React.ReactNode; invalid?: boolean }) {
+	return (
+		<span
+			data-invalid={props.invalid || undefined}
+			className={cn('rounded-sm bg-muted px-1 py-px font-mono text-xs text-foreground', props.invalid && INVALID_PART_CLASS)}
+		>
+			{props.children}
+		</span>
+	)
 }
+
+// the red treatment of a column, value or filter that an error names, in the compact view and in the pickers
+const INVALID_PART_CLASS =
+	'bg-destructive/15 text-destructive outline-1 outline-destructive/60 underline decoration-wavy decoration-destructive underline-offset-3'
+const INVALID_PICKER_CLASS = 'border-destructive ring-1 ring-destructive/60'
 
 function OpWord(props: { children: React.ReactNode }) {
 	return <span className="text-muted-foreground">{props.children}</span>
 }
 
-function ColumnWord(props: { children: React.ReactNode }) {
-	return <span className="font-medium">{props.children}</span>
+function ColumnWord(props: { children: React.ReactNode; invalid?: boolean }) {
+	return (
+		<span
+			data-invalid={props.invalid || undefined}
+			className={cn('font-medium', props.invalid && cn('rounded-sm px-1', INVALID_PART_CLASS))}
+		>
+			{props.children}
+		</span>
+	)
 }
 
 function Incomplete() {
@@ -701,50 +731,80 @@ const trSummary = tr.withTags({
 	value: (chunks) => <ValueChip>{chunks}</ValueChip>,
 })
 
+type Marks = EditFrame.NodeMarks | undefined
+
+function valueMarked(value: F.Value, marks: Marks) {
+	return value !== null && !!marks?.values.has(String(value))
+}
+
+// a team column is stored without its side, and its errors name the sided column it lowered to
+function teamColumnMarked(column: F.TeamColumn, marks: Marks) {
+	return !!marks && (marks.columns.has(F.resolveTeamColumn(column, 1)) || marks.columns.has(F.resolveTeamColumn(column, 2)))
+}
+
 // the items of a summary's run of values, separated the way the locale separates a list read aloud as one unit
 function ValueRun(props: { items: React.ReactNode[] }) {
 	return I18n.nodeList(props.items, tr.locale, { type: 'unit', style: 'narrow' })
 }
 
-function SubjectSummary(props: { arg: F.EditableScalarArg | undefined; cfg: ColConfig }) {
+function SubjectSummary(props: { arg: F.EditableScalarArg | undefined; cfg: ColConfig; marks: Marks }) {
 	const arg = props.arg
 	if (arg?.type === 'team-column' && arg.column) {
 		const quantifier = tr.text(F_Msgs.teamQuantifierNames[arg.quantifier ?? 'either'])
-		return <ColumnWord>{tr.text(F_Msgs.teamColumnQuantified(tr.text(F_Msgs.teamColumnNames[arg.column]), quantifier))}</ColumnWord>
+		return (
+			<ColumnWord invalid={teamColumnMarked(arg.column, props.marks)}>
+				{tr.text(F_Msgs.teamColumnQuantified(tr.text(F_Msgs.teamColumnNames[arg.column]), quantifier))}
+			</ColumnWord>
+		)
 	}
 	const label = arg?.type === 'column' ? columnLabel(arg.column, props.cfg) : undefined
-	return label ? <ColumnWord>{label}</ColumnWord> : <Incomplete />
+	if (!label) return <Incomplete />
+	return <ColumnWord invalid={arg?.type === 'column' && !!arg.column && !!props.marks?.columns.has(arg.column)}>{label}</ColumnWord>
 }
 
-function ScalarSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig }) {
+function ScalarSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig; marks: Marks }) {
 	const arg = props.arg
 	if (arg?.type === 'column') {
 		const label = columnLabel(arg.column, props.cfg)
-		return label ? <ColumnWord>{label}</ColumnWord> : <Incomplete />
+		return label ? <ColumnWord invalid={!!arg.column && !!props.marks?.columns.has(arg.column)}>{label}</ColumnWord> : <Incomplete />
 	}
-	if (arg?.type === 'value' && arg.value !== undefined) return <ValueChip>{valueText(arg.value)}</ValueChip>
+	if (arg?.type === 'value' && arg.value !== undefined) {
+		return <ValueChip invalid={valueMarked(arg.value, props.marks)}>{valueText(arg.value)}</ValueChip>
+	}
 	return <Incomplete />
 }
 
-function ValuesSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig }) {
+function ValuesSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig; marks: Marks }) {
 	const items = (props.arg?.type === 'values' ? props.arg.values : undefined) ?? []
 	// keyed by what the item renders as, which also collapses the repeat a hand-written filter can carry
 	const parts = new Map<string, React.ReactNode>()
 	for (const item of items) {
 		if (F.isColumnListItem(item)) {
-			parts.set(`col:${item.column}`, <ColumnWord>{columnLabel(item.column, props.cfg) ?? item.column}</ColumnWord>)
+			parts.set(
+				`col:${item.column}`,
+				<ColumnWord invalid={!!props.marks?.columns.has(item.column)}>{columnLabel(item.column, props.cfg) ?? item.column}</ColumnWord>,
+			)
 		} else {
-			parts.set(`val:${valueText(item)}`, <ValueChip>{valueText(item)}</ValueChip>)
+			parts.set(`val:${valueText(item)}`, <ValueChip invalid={valueMarked(item, props.marks)}>{valueText(item)}</ValueChip>)
 		}
 	}
 	if (parts.size === 0) return <Incomplete />
 	const overflow = parts.size - SUMMARY_VALUE_LIMIT
-	const shown = Array.from(parts.values()).slice(0, SUMMARY_VALUE_LIMIT)
+	const entries = Array.from(parts.entries())
+	// the limit never cuts off a marked part
+	if (overflow > 0) entries.sort(([a], [b]) => Number(markedPart(b, props.marks)) - Number(markedPart(a, props.marks)))
+	const shown = entries.slice(0, SUMMARY_VALUE_LIMIT).map(([, part]) => part)
 	return <ValueRun items={overflow > 0 ? [...shown, <OpWord key="more">{tr.text(F_Msgs.moreValues(overflow))}</OpWord>] : shown} />
 }
 
-function CompSummary(props: { node: F.EditableCompNode; cfg: ColConfig }) {
+function markedPart(key: string, marks: Marks) {
+	if (!marks) return false
+	return key.startsWith('col:') ? marks.columns.has(key.slice(4)) : marks.values.has(key.slice(4))
+}
+
+function CompSummary(props: { node: F.EditableCompNode; cfg: ColConfig; marks: Marks }) {
 	const node = props.node
+	const marks = props.marks
 	const subject = node.args[0] as F.EditableScalarArg | undefined
 	// `id` is reachable only through the "select layers" node, whose list is a set of layer ids: a count
 	// says more about it than four truncated ids would
@@ -754,58 +814,67 @@ function CompSummary(props: { node: F.EditableCompNode; cfg: ColConfig }) {
 	}
 	const readable = F_Msgs.compTypeReadableNames[node.type]
 	const op = node.neg ? readable.negated : readable.plain
-	const subjectElt = <SubjectSummary arg={subject} cfg={props.cfg} />
+	const subjectElt = <SubjectSummary arg={subject} cfg={props.cfg} marks={marks} />
 	if (node.type === 'inrange') {
 		return trSummary.richText(
 			F_Msgs.rangeSummary(
 				subjectElt,
 				op,
-				<ScalarSummary arg={node.args[1]} cfg={props.cfg} />,
-				<ScalarSummary arg={node.args[2]} cfg={props.cfg} />,
+				<ScalarSummary arg={node.args[1]} cfg={props.cfg} marks={marks} />,
+				<ScalarSummary arg={node.args[2]} cfg={props.cfg} marks={marks} />,
 			),
 		)
 	}
 	const operand =
-		node.type === 'in' ? <ValuesSummary arg={node.args[1]} cfg={props.cfg} /> : <ScalarSummary arg={node.args[1]} cfg={props.cfg} />
+		node.type === 'in' ? (
+			<ValuesSummary arg={node.args[1]} cfg={props.cfg} marks={marks} />
+		) : (
+			<ScalarSummary arg={node.args[1]} cfg={props.cfg} marks={marks} />
+		)
 	return trSummary.richText(F_Msgs.compSummary(subjectElt, op, operand))
 }
 
 // the dimensions are flattened into one run of values: which column a faction or a unit came from is
 // already clear from the value, and keeping them apart is what makes the editor's version tall
-function TeamSpecSummary(props: { spec: F.MatchupTeamSpec }) {
+function TeamSpecSummary(props: { spec: F.MatchupTeamSpec; marks: Marks }) {
 	const values = F.TEAM_COLUMNS.flatMap((column) => (props.spec[column] ?? []).map((value) => ({ column, value })))
 	if (values.length === 0) return <OpWord>{tr.text(F_Msgs.anyTeam())}</OpWord>
 	return (
 		<ValueRun
 			items={values.map(({ column, value }) => (
-				<ValueChip key={`${column}:${valueText(value)}`}>{valueText(value)}</ValueChip>
+				<ValueChip key={`${column}:${valueText(value)}`} invalid={valueMarked(value, props.marks)}>
+					{valueText(value)}
+				</ValueChip>
 			))}
 		/>
 	)
 }
 
-function MatchupSummary(props: { node: F.EditableMatchupNode }) {
+function MatchupSummary(props: { node: F.EditableMatchupNode; marks: Marks }) {
 	const node = props.node
 	return trSummary.richText(
 		F_Msgs.matchupSummary(
 			node.type === 'disallow-matchups',
 			node.locked,
-			<TeamSpecSummary spec={node.teams[0]} />,
-			<TeamSpecSummary spec={node.teams[1]} />,
+			<TeamSpecSummary spec={node.teams[0]} marks={props.marks} />,
+			<TeamSpecSummary spec={node.teams[1]} marks={props.marks} />,
 		),
 	)
 }
 
-function ApplyFilterSummary(props: { node: F.EditableApplyFilterNode }) {
+function ApplyFilterSummary(props: { node: F.EditableApplyFilterNode; marks: Marks }) {
 	const filters = FilterEntityClient.useFilterEntities()
 	const entity = props.node.filterId ? filters.get(props.node.filterId) : undefined
+	const invalid = !!props.marks?.filter
 	return trSummary.richText(
 		F_Msgs.applyFilterSummary(
 			F_Msgs.applyFilterTypeNames[props.node.type],
 			entity ? (
-				<FilterEntityLabel filter={entity} />
+				<span data-invalid={invalid || undefined} className={cn('inline-flex', invalid && cn('rounded-sm px-1', INVALID_PART_CLASS))}>
+					<FilterEntityLabel filter={entity} className="inline-flex" hideProblems />
+				</span>
 			) : props.node.filterId ? (
-				<ValueChip>{props.node.filterId}</ValueChip>
+				<ValueChip invalid={invalid}>{props.node.filterId}</ValueChip>
 			) : (
 				<Incomplete />
 			),
@@ -813,12 +882,13 @@ function ApplyFilterSummary(props: { node: F.EditableApplyFilterNode }) {
 	)
 }
 
-function NodeSummary(props: { node: F.ShallowEditableFilterNode; cfg?: ColConfig }) {
+// A node as one line of text. `marks` gives the parts its errors name the red treatment.
+export function NodeSummary(props: { node: F.ShallowEditableFilterNode; cfg?: ColConfig; marks?: EditFrame.NodeMarks }) {
 	const node = props.node
 	if (F.isBlockType(node.type)) return <span className="font-semibold">{tr.text(F_Msgs.blockTypeShortNames[node.type])}</span>
-	if (F.isCompNode(node)) return <CompSummary node={node as F.EditableCompNode} cfg={props.cfg} />
-	if (F.isMatchupNode(node)) return <MatchupSummary node={node as F.EditableMatchupNode} />
-	if (F.isApplyFilterNode(node)) return <ApplyFilterSummary node={node as F.EditableApplyFilterNode} />
+	if (F.isCompNode(node)) return <CompSummary node={node as F.EditableCompNode} cfg={props.cfg} marks={props.marks} />
+	if (F.isMatchupNode(node)) return <MatchupSummary node={node as F.EditableMatchupNode} marks={props.marks} />
+	if (F.isApplyFilterNode(node)) return <ApplyFilterSummary node={node as F.EditableApplyFilterNode} marks={props.marks} />
 	return null
 }
 
@@ -850,6 +920,36 @@ function CompactOpCluster(props: { children: React.ReactNode }) {
 	)
 }
 
+// why a node cannot be applied, behind an icon so the row keeps its height
+function NodeErrorMark(props: NodeProps) {
+	const errors = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.nodeErrors(props.nodeId))
+	const filters = FilterEntityClient.useFilterEntities()
+	if (errors.length === 0) return null
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<button
+					type="button"
+					data-node-error-mark=""
+					aria-label={tr.text(F_Msgs.problemCount(errors.length))}
+					className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-destructive hover:bg-destructive/15"
+				>
+					<Icons.CircleAlert className="size-4" />
+				</button>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-sm">
+				<ul className="flex flex-col gap-1">
+					{/* a value listed twice fails twice, with the same message */}
+					{Array.from(new Map(errors.map((error) => [F.describeNodeValidationError(error), error])), ([key, error]) => {
+						const owner = error.via.length > 0 && error.ownerFilterId ? filters.get(error.ownerFilterId) : undefined
+						return <li key={key}>{owner ? tr.richText(F_Msgs.problemLine(owner.name, error.msg)) : tr.text(error.msg)}</li>
+					})}
+				</ul>
+			</TooltipContent>
+		</Tooltip>
+	)
+}
+
 function DoneButton(props: { onClick: () => void }) {
 	return (
 		<Button size="sm" variant="outline" onClick={props.onClick}>
@@ -863,9 +963,11 @@ export function LeafFilterNode(props: NodeProps) {
 	const node = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.node(props.nodeId))
 	const depth = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.depth(props.nodeId))!
 	const editing = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.nodeEditing(props.nodeId))
+	const marks = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.nodeMarks(props.nodeId))
 	const cfg = ConfigClient.useEffectiveColConfig()
 	if (F.isBlockType(node.type)) return null
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
+	const errorMark = <NodeErrorMark nodeId={props.nodeId} stores={props.stores} />
 
 	const opCluster = depth > 0 && (
 		<>
@@ -894,8 +996,9 @@ export function LeafFilterNode(props: NodeProps) {
 				stores={props.stores}
 			>
 				<NodeSummaryButton onClick={() => actions.common.setEditing(true)}>
-					<NodeSummary node={node} cfg={cfg} />
+					<NodeSummary node={node} cfg={cfg} marks={marks} />
 				</NodeSummaryButton>
+				{errorMark}
 				{/* the link is an anchor, so it cannot live inside the summary button */}
 				{F.isApplyFilterNode(node) && <ApplyFilterLink filterId={(node as F.EditableApplyFilterNode).filterId} />}
 				<CompactOpCluster>{opCluster}</CompactOpCluster>
@@ -913,8 +1016,9 @@ export function LeafFilterNode(props: NodeProps) {
 				{isSelectLayers ? (
 					<SelectLayersNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
 				) : (
-					<CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
+					<CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} marks={marks} />
 				)}
+				{errorMark}
 				{opCluster}
 				{doneButton}
 			</NodeWrapper>
@@ -923,7 +1027,8 @@ export function LeafFilterNode(props: NodeProps) {
 	if (F.isMatchupNode(node)) {
 		return (
 			<NodeWrapper depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
-				<MatchupNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
+				<MatchupNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} marks={marks} />
+				{errorMark}
 				{opCluster}
 				{doneButton}
 			</NodeWrapper>
@@ -947,8 +1052,10 @@ export function LeafFilterNode(props: NodeProps) {
 					filterId={node.filterId}
 					editedFilterId={editedFilterId}
 					setFilterId={(id) => actions.applyFilter.setFilterId(id)}
+					invalid={marks.filter}
 				/>
 				<ApplyFilterLink filterId={node.filterId} />
+				{errorMark}
 				{opCluster}
 				{doneButton}
 			</NodeWrapper>
@@ -971,7 +1078,7 @@ function ApplyFilterLink(props: { filterId: string | undefined }) {
 	)
 }
 
-function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode }) {
+function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode; marks: EditFrame.NodeMarks }) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const cfg = ConfigClient.useEffectiveColConfig()
 	const hint = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
@@ -986,10 +1093,24 @@ function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node
 				: undefined
 	const group = (subjectColumn ? F.subjectColumnGroup(subjectColumn, cfg ?? undefined) : undefined) ?? hint?.group
 	const allowedColumns = group ? F.columnsInGroup(group, cfg ?? undefined) : undefined
+	const marks = props.marks
+	const subjectColumns =
+		subject?.type === 'team-column' && subject.column
+			? [F.resolveTeamColumn(subject.column, 1), F.resolveTeamColumn(subject.column, 2)]
+			: subject?.type === 'column' && subject.column
+				? [subject.column]
+				: []
+	const invalid = {
+		column: subjectColumns.some((column) => marks.columns.has(column)),
+		// a column operand is picked among the value editors
+		values: marks.values.size > 0 || [...marks.columns].some((column) => !subjectColumns.includes(column)),
+		marks,
+	}
 	return (
 		<Comparison
 			node={props.node}
 			setNode={(update) => actions.comp.setNode(update)}
+			invalid={invalid}
 			teamColumnsAvailable={group === 'team' || group === undefined}
 			allowedColumns={allowedColumns}
 			defaultFocus={hint?.focus}
@@ -1060,6 +1181,8 @@ export function Comparison(props: {
 	// editor on mount instead of the subject picker
 	defaultFocus?: 'operator' | 'values'
 	highlight?: boolean
+	// pickers whose selection an error names. `marks` narrows an `in` list's marking to the parts named
+	invalid?: { column: boolean; values: boolean; marks?: EditFrame.NodeMarks }
 	columnLabel?: string
 	// overrides the numeric value input's width wrapper (default w-[100px]); used to keep the compact
 	// filter menu's range inputs from stretching the whole value column
@@ -1209,11 +1332,12 @@ export function Comparison(props: {
 
 	const columnDef = optionsColumn ? LC.getColumnDef(optionsColumn, cfg) : undefined
 	const componentStyles = props.highlight ? 'text-pri-hi' : undefined
+	const valueStyles = cn(componentStyles, props.invalid?.values && INVALID_PICKER_CLASS)
 
 	const columnBox = columnEditable ? (
 		<ComboBox
 			title={props.columnLabel ?? (columnDef && tr.text(LC_Msgs.columnName(columnDef))) ?? tr.text(F_Msgs.columnPicker())}
-			className={componentStyles}
+			className={cn(componentStyles, props.invalid?.column && INVALID_PICKER_CLASS)}
 			allowEmpty
 			value={currentColumnValue}
 			options={columnOptions}
@@ -1402,7 +1526,7 @@ export function Comparison(props: {
 					{operandKindSelector(index, true)}
 					<ComboBox
 						allowEmpty
-						className={componentStyles}
+						className={valueStyles}
 						title={tr.text(F_Msgs.columnPicker())}
 						value={arg.column}
 						options={comparableColumnOptions()}
@@ -1422,7 +1546,7 @@ export function Comparison(props: {
 		if (F.isFloatEqNullOnly(domain, node.type)) {
 			return (
 				<div className="flex items-center space-x-1">
-					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>
+					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', valueStyles)}>
 						{tr.text(F_Msgs.nullValue())}
 					</span>
 					<Tooltip>
@@ -1447,7 +1571,7 @@ export function Comparison(props: {
 			return (
 				<div className="flex items-center space-x-1">
 					{operandKindSelector(index, false)}
-					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', componentStyles)}>
+					<span className={cn(buttonVariants({ variant: 'outline' }), 'pointer-events-none', valueStyles)}>
 						{tr.text(F_Msgs.nullValue())}
 					</span>
 					{nullToggle(index, true)}
@@ -1467,7 +1591,7 @@ export function Comparison(props: {
 				<StringEqConfig
 					ref={ref as React.ForwardedRef<ComboBoxHandle>}
 					lockOnSingleOption={lockOnSingleOption}
-					className={componentStyles}
+					className={valueStyles}
 					allowedValues={props.allowedEnumValues}
 					onSetAllValuesAllowed={props.onSetAllValuesAllowed}
 					onSetAllValuesAllowedLabel={props.onSetAllValuesAllowedLabel}
@@ -1483,7 +1607,7 @@ export function Comparison(props: {
 			return withToggle(
 				<ComboBox
 					allowEmpty
-					className={componentStyles}
+					className={valueStyles}
 					title={tr.text(F_Msgs.valuePicker())}
 					value={value === undefined || value === null ? undefined : String(value)}
 					options={[
@@ -1499,7 +1623,7 @@ export function Comparison(props: {
 			<div className={cn('w-[100px]', props.numericValueClassName)}>
 				<NumericValueConfig
 					ref={ref as React.ForwardedRef<Focusable & Clearable>}
-					className={componentStyles}
+					className={valueStyles}
 					value={value as number | undefined}
 					setValue={(v) => setSlotValue(index, v)}
 				/>
@@ -1532,13 +1656,14 @@ export function Comparison(props: {
 					<LayersInConfig
 						values={items.filter((i) => !F.isColumnListItem(i)) as (string | null)[]}
 						setValues={setValues}
-						className={componentStyles}
+						className={valueStyles}
 					/>
 				)
 			} else {
 				valueBox = (
 					<InListConfig
 						className={componentStyles}
+						marks={props.invalid?.marks}
 						ref={valueBoxRef as React.ForwardedRef<ComboBoxHandle>}
 						column={optionsColumn}
 						allowedEnumValues={props.allowedEnumValues}
@@ -1581,6 +1706,7 @@ type ApplyFilterProps = {
 	setFilterId: (filterId: string) => void
 	// the id of the filter entity currently being edited
 	editedFilterId?: string
+	invalid?: boolean
 }
 
 function ApplyFilter(props: ApplyFilterProps) {
@@ -1606,6 +1732,7 @@ function ApplyFilter(props: ApplyFilterProps) {
 	return (
 		<ComboBox
 			ref={boxRef}
+			className={cn(props.invalid && INVALID_PICKER_CLASS)}
 			title={tr.text(F_Msgs.filterPicker())}
 			options={options}
 			allowEmpty
@@ -1762,7 +1889,10 @@ function TeamSpecConfig(props: {
 	allowedValues?: (column: F.TeamColumn) => string[] | undefined
 	// the dimensions to offer; hosts whose queries only understand physical team columns pass a subset
 	columns?: readonly F.TeamColumn[]
+	// values an error names, as String() renders them
+	invalidValues?: ReadonlySet<string>
 }) {
+	const invalidValues = props.invalidValues
 	return (
 		<div className="flex flex-col space-y-1 rounded border border-dashed px-2 py-1.5">
 			<span className="text-xs font-semibold text-muted-foreground">{props.label}</span>
@@ -1774,7 +1904,10 @@ function TeamSpecConfig(props: {
 					// a floor, not a fixed width: the three dimensions line up when empty, but a filled one
 					// grows to its selection (all four alliances need ~270px) instead of truncating at 180.
 					// restrictValueSize still caps it at 400px, so a big faction selection can't run away
-					className="min-w-[180px]"
+					className={cn(
+						'min-w-[180px]',
+						invalidValues?.size && props.spec[teamColumn]?.some((value) => invalidValues.has(String(value))) && INVALID_PICKER_CLASS,
+					)}
 					restrictValueSize
 					allowedValues={props.allowedValues?.(teamColumn)}
 					// both teams' columns share an enum mapping, so team 1's value list serves either side
@@ -1809,6 +1942,8 @@ export function MatchupConfig(props: {
 	showTypeSelect?: boolean
 	// the dimensions each side offers; defaults to all of them, including the vehicle columns
 	columns?: readonly F.TeamColumn[]
+	// values an error names, as String() renders them
+	invalidValues?: ReadonlySet<string>
 }) {
 	const { node, actions } = props
 	// unlocked, the specs are not pinned to the _1/_2 columns, so naming them "Team 1"/"Team 2" would
@@ -1835,6 +1970,7 @@ export function MatchupConfig(props: {
 				label={firstLabel}
 				spec={node.teams[0]}
 				columns={props.columns}
+				invalidValues={props.invalidValues}
 				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(0, column))}
 				setValues={(col, values) => actions.setTeamValues(0, col, values)}
 			/>
@@ -1866,6 +2002,7 @@ export function MatchupConfig(props: {
 				label={secondLabel}
 				spec={node.teams[1]}
 				columns={props.columns}
+				invalidValues={props.invalidValues}
 				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(1, column))}
 				setValues={(col, values) => actions.setTeamValues(1, col, values)}
 			/>
@@ -1873,9 +2010,9 @@ export function MatchupConfig(props: {
 	)
 }
 
-function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableMatchupNode }) {
+function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableMatchupNode; marks: EditFrame.NodeMarks }) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId).matchup
-	return <MatchupConfig node={props.node} actions={actions} />
+	return <MatchupConfig node={props.node} actions={actions} invalidValues={props.marks.values} />
 }
 
 // value list for an `in` operator: a constant multi-select plus (in the editor) removable column references
@@ -1891,11 +2028,13 @@ function InListConfig(props: {
 	ariaLabel?: string
 	emptyLabel?: string
 	className?: string
+	marks?: EditFrame.NodeMarks
 	ref?: React.ForwardedRef<ComboBoxHandle>
 }) {
 	const cfg = ConfigClient.useEffectiveColConfig()
 	const primitives = props.items.filter((i) => !F.isColumnListItem(i)) as (string | null)[]
 	const columns = props.items.filter(F.isColumnListItem)
+	const marks = props.marks
 
 	const setPrimitives: React.Dispatch<React.SetStateAction<(string | null)[]>> = (update) =>
 		props.setItems((prev) => {
@@ -1922,11 +2061,18 @@ function InListConfig(props: {
 				title={props.title}
 				ariaLabel={props.ariaLabel}
 				emptyLabel={props.emptyLabel}
+				className={cn(marks && primitives.some((value) => valueMarked(value, marks)) && INVALID_PICKER_CLASS)}
 				values={primitives}
 				setValues={setPrimitives}
 			/>
 			{columns.map((c) => (
-				<span key={c.column} className="flex items-center px-2 py-1 bg-secondary rounded-md text-sm">
+				<span
+					key={c.column}
+					className={cn(
+						'flex items-center px-2 py-1 bg-secondary rounded-md text-sm',
+						marks?.columns.has(c.column) && INVALID_PART_CLASS,
+					)}
+				>
 					{columnLabel(c.column, cfg) ?? c.column}
 					<button type="button" onClick={() => removeColumn(c.column)} className="ms-1">
 						<Icons.X className="h-3 w-3" />

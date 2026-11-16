@@ -3,6 +3,7 @@ import * as CD from '@/lib/ctx-def'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import { assertNever } from '@/lib/type-guards'
+import type { DistributiveOmit } from '@/lib/types'
 import { z } from '@/lib/zod'
 // Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
 // (and/or/nor/nand) take child nodes, comparison operators take argument terms (columns,
@@ -828,8 +829,21 @@ export function toRow({ owner, ...rest }: FilterEntity): SchemaModels.NewFilter 
 
 export type InvalidFilterNodeResult = { code: 'err:invalid-node'; errors: NodeValidationError[] }
 
+export type FilterPart = 'filter' | 'missExemption'
+
 type ErrorBase = {
+	// the stored filter whose tree holds the failing node. null for a tree that is not a stored filter, such as an
+	// editor draft or an anonymous constraint
+	ownerFilterId: FilterEntityId | null
+	part: FilterPart
+	// relative to the root of the owner's tree
 	path: string[]
+	// filters entered through apply-filter nodes on the way to the node, outermost first. When non-empty its last
+	// element is ownerFilterId
+	via: FilterEntityId[]
+	// within the root tree, the path of the apply-filter node the error was reached through. Equals `path` when `via`
+	// is empty
+	rootPath: string[]
 	// deferred: validation runs on both sides, and only the side displaying an error knows who is reading it
 	msg: Msgs.TString
 }
@@ -848,6 +862,33 @@ export type NodeValidationError =
 	// semantic problems: incompatible arg domains, a comparison whose subject isn't a column, null on an
 	// ordered comparison, ...
 	| (ErrorBase & { type: 'invalid-node' })
+
+export type ErrorAttribution = Pick<ErrorBase, 'ownerFilterId' | 'part' | 'via' | 'rootPath'>
+export type UnattributedNodeValidationError = DistributiveOmit<NodeValidationError, keyof ErrorAttribution>
+
+// one line for logs: where the error is and which message it carries
+export function describeNodeValidationError(error: NodeValidationError): string {
+	const owner = error.ownerFilterId ?? '(unsaved)'
+	const via = error.via.length > 0 ? ` via ${error.via.join(' > ')} at ${error.rootPath.join('.') || '(root)'}` : ''
+	const args = error.msg.args ? ` ${JSON.stringify(error.msg.args)}` : ''
+	return `${error.type} in ${owner} ${error.part} at ${error.path.join('.') || '(root)'}${via}: ${error.msg.original}${args}`
+}
+
+// The id of the node a lowering error path points at, read off the tree's links by child index, so it holds after
+// edits have left the ids unrelated to positions. A trailing 'filterId' points at its apply-filter node.
+export function resolveErrorNode(tree: FilterNodeTree, path: readonly string[]): string | null {
+	let id = tree.rootId
+	for (let i = 0; i < path.length; i++) {
+		const segment = path[i]
+		if (segment === 'filterId' && i === path.length - 1) return id
+		if (segment !== 'children') return null
+		const children = tree.children.get(id)
+		const index = Number(path[++i])
+		if (!children || !Number.isInteger(index) || index < 0 || index >= children.length) return null
+		id = children[index]
+	}
+	return id
+}
 
 export type NodeValidationErrorStore = {
 	errors?: NodeValidationError[]

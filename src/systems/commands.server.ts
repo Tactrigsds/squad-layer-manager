@@ -1439,11 +1439,14 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				return await h.error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(res)))
 			case 'err:no-solutions':
 				return await h.error('no-solutions', h.ctx.tr.text(BB_Msgs.noSolutions(args.request.trim())))
+			case 'err:invalid-filter':
+				return await h.error('invalid-filter', res.msg)
 			case 'err:backburner-full':
 				return await h.error('backburner-full', h.ctx.tr.text(BB_Msgs.backburnerFull(res.max)))
 			case 'ok': {
 				const ownCount = BB.ownedItems(LayerQueue.getSavedBackburner(h.ctx), source).length
 				await h.reply(BB_Msgs.added(resolveRes.value.parts, ownCount, res.evicted.length))
+				if (res.skippedRequestFilters.length > 0) await h.reply(BB_Msgs.requestFiltersSkipped(res.skippedRequestFilters))
 				return { code: 'ok' }
 			}
 			default:

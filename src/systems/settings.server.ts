@@ -593,6 +593,16 @@ export function listServerPoolConfigs(ctx: C.Db): { serverId: SS.ServerId; mainP
 	return configs
 }
 
+// the installed mods of every server in the registry whose stored settings parse
+export function listServerInstalledMods(ctx: C.Db): { serverId: SS.ServerId; installedMods: string[] }[] {
+	const list: { serverId: SS.ServerId; installedMods: string[] }[] = []
+	for (const row of DB.all(ctx, Q.serverSettingsRows({}))) {
+		const res = SETTINGS.ServerSettingsSchema.safeParse(row.settings)
+		if (res.success) list.push({ serverId: row.id, installedMods: res.data.installedMods })
+	}
+	return list
+}
+
 // the one place that writes the settings column and broadcasts the change; everything else (mutations, repairs) routes through this
 export function updateServerSettings(
 	ctx: C.Db & C.Tx & CS.ServerId,

@@ -15,6 +15,7 @@ import * as F_Msgs from '@/messages/filter.messages'
 import type * as EP from '@/models/editor-problems.models'
 import * as F from '@/models/filter.models'
 import * as EditorProblemsClient from '@/systems/editor-problems.client'
+import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 
 import { problemAtPath, schemaProblems, yamlErrorProblem } from './editor-problems.helpers'
@@ -40,6 +41,20 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 
 	const getState = () => Zus.getState(props.stores.filterEditor)
 
+	// the buffer's own problems. Lowering problems are listed only while there are none, since only then does the
+	// buffer hold the tree that was lowered.
+	const textProblemsRef = React.useRef<EP.Problem[]>([])
+	function showProblems(view: CM.EditorView | null) {
+		const state = getState()
+		const lowering =
+			view && textProblemsRef.current.length === 0 && EditFrame.Sel.loweringCurrent(state)
+				? loweringProblems(view.state.doc.toString(), EditFrame.Sel.errors(state))
+				: []
+		const next = lowering.length > 0 ? [...textProblemsRef.current, ...lowering] : textProblemsRef.current
+		setProblems(next)
+		if (view) CM.showProblems(view, next)
+	}
+
 	function syncFromStore(view: CM.EditorView) {
 		const node = F.treeToFilterNode(getState().tree)
 		// an edit here round-trips through the frame and comes back as a new tree. Re-serializing on that would
@@ -54,8 +69,8 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			// a setDoc since this edit has replaced it
 			if (viewRef.current && value !== viewRef.current.state.doc.toString()) return
 			const report = (next: EP.Problem[]) => {
-				setProblems(next)
-				if (viewRef.current) CM.showProblems(viewRef.current, next)
+				textProblemsRef.current = next
+				showProblems(viewRef.current)
 			}
 			let obj: any
 			try {
@@ -117,8 +132,9 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 
 		// a hidden editor is brought up to date when its tab is shown instead
 		const unsub = Zus.resolveReadStore(props.stores.filterEditor).subscribe((frameState, prevFrameState) => {
-			if (!activeRef.current || frameState.tree === prevFrameState.tree) return
-			syncFromStore(view)
+			if (!activeRef.current) return
+			if (frameState.tree !== prevFrameState.tree) syncFromStore(view)
+			if (frameState.lowered !== prevFrameState.lowered) showProblems(view)
 		})
 
 		return () => {
@@ -132,7 +148,10 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 
 	React.useEffect(() => {
 		activeRef.current = props.active
-		if (props.active && viewRef.current) syncFromStore(viewRef.current)
+		if (props.active && viewRef.current) {
+			syncFromStore(viewRef.current)
+			showProblems(viewRef.current)
+		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [props.active])
 
@@ -179,4 +198,15 @@ export default function FilterTextEditor(props: FilterTextEditorProps) {
 			/>
 		</FullscreenSurface>
 	)
+}
+
+// an error inside a referenced filter is placed on the apply-filter node it was reached through
+function loweringProblems(text: string, errors: F.NodeValidationError[]) {
+	return errors.flatMap((error) => {
+		if (error.part !== 'filter') return []
+		const owner = error.via.length > 0 && error.ownerFilterId ? FilterEntityClient.filterEntities.get(error.ownerFilterId) : undefined
+		const message = owner ? tr.text(F_Msgs.referencedProblemText(owner.name, error.msg)) : tr.text(error.msg)
+		const path = error.rootPath.map((segment) => (/^\d+$/.test(segment) ? Number(segment) : segment))
+		return [problemAtPath(text, path, message)]
+	})
 }

@@ -12,6 +12,7 @@ import * as Rx from '@/lib/rxjs'
 import * as SetUtils from '@/lib/set-utils'
 import * as Zus from '@/lib/zustand'
 import * as CS from '@/models/context-shared.models'
+import * as FPM from '@/models/filter-problems.models'
 import type * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns.models'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -126,6 +127,8 @@ export type LayerTable = {
 	requestedQuery: number
 	answeredQuery: number
 	pageData: LayerQueriesClient.QueryLayersPageData | null
+	// constraints the current results could not be filtered by, because their filters do not lower
+	problems: LQY.ConstraintProblem[]
 	// what the query's results hold, across every page. Arrives in parts after the page.
 	summary: LQY.LayersSummary | null
 	// the summary is of an earlier query, and stays up until the current one's value counts arrive
@@ -181,6 +184,7 @@ export function initLayerTable(args: Args) {
 		availableWidth: null,
 
 		pageData: null,
+		problems: [],
 		summary: null,
 		summaryStale: false,
 		view: 'results',
@@ -229,6 +233,9 @@ export function initLayerTable(args: Args) {
 							complete: () => {
 								set({ isFetching: false, answeredQuery: requestedQuery })
 							},
+							error: () => {
+								set({ isFetching: false })
+							},
 							unsubscribe: () => {
 								set({ isFetching: false })
 							},
@@ -244,7 +251,8 @@ export function initLayerTable(args: Args) {
 			)
 			.subscribe((packet) => {
 				if (packet.code === 'layers-page' && get().pageData !== packet) {
-					set({ pageData: packet })
+					const problems = Obj.deepEqual(get().problems, packet.problems) ? get().problems : packet.problems
+					set({ pageData: packet, problems })
 					return
 				}
 
@@ -519,7 +527,10 @@ export namespace Sel {
 	export type FilterSummaryRow = {
 		filterId: F.FilterEntityId
 		appliedAs: 'regular' | 'inverted' | 'indicator' | 'off'
-		count: LQY.ConstraintCount
+		// null for a filter that cannot be applied, which is not counted
+		count: LQY.ConstraintCount | null
+		problems: LQY.ConstraintProblem[]
+		problemLines: FPM.ProblemLine[]
 	}
 
 	// One row per filter the summary counted, in the order the query first lists it. A filter can arrive as several
@@ -528,28 +539,39 @@ export namespace Sel {
 		[
 			(store: Store & Predicates) => store.baseQueryInput?.constraints,
 			(store: Store & Predicates) => store.layerTable.summary?.constraintCounts,
+			(store: Store & Predicates) => store.layerTable.summary?.problems,
 		],
-		(constraints, counts): FilterSummaryRow[] => {
+		(constraints, counts, problems): FilterSummaryRow[] => {
 			if (!constraints || !counts) return []
-			const rows = new Map<F.FilterEntityId, FilterSummaryRow>()
+			const rows = new Map<F.FilterEntityId, Omit<FilterSummaryRow, 'problemLines'>>()
 			for (const constraint of constraints) {
 				if (constraint.type !== 'filter-entity') continue
-				const count = counts[constraint.id]
-				if (!count) continue
+				const constraintProblems = problems?.filter((problem) => problem.constraintId === constraint.id) ?? []
+				const count = counts[constraint.id] ?? null
+				if (!count && constraintProblems.length === 0) continue
 				let appliedAs: FilterSummaryRow['appliedAs']
 				if (constraint.filterApplState !== 'disabled') appliedAs = constraint.filterApplState
 				else appliedAs = constraint.showIndicator === 'disabled' ? 'off' : 'indicator'
 				const row = rows.get(constraint.filterId)
 				if (!row) {
-					rows.set(constraint.filterId, { filterId: constraint.filterId, appliedAs, count })
+					rows.set(constraint.filterId, { filterId: constraint.filterId, appliedAs, count, problems: constraintProblems })
 					continue
 				}
 				if (APPLIED_AS_RANK[appliedAs] > APPLIED_AS_RANK[row.appliedAs]) row.appliedAs = appliedAs
-				if (row.count.removed === null && count.removed !== null) row.count = count
+				if (count && (row.count === null || (row.count.removed === null && count.removed !== null))) row.count = count
+				if (constraintProblems.length > 0) row.problems = [...row.problems, ...constraintProblems]
 			}
-			return [...rows.values()]
+			return Array.from(rows.values(), (row) => ({ ...row, problemLines: FPM.problemLines(row.problems) }))
 		},
 	)
+
+	// the filters the current results were computed without, because they cannot be applied
+	export function problems(store: Store) {
+		return store.layerTable.problems
+	}
+	const skipped = RSel.createSelector([problems], (problems) => FPM.skippedProblems(problems))
+	export const problemLines = RSel.createSelector([skipped], (problems) => FPM.problemLines(problems))
+	export const skippedCount = RSel.createSelector([skipped], (problems) => FPM.skippedCount(problems))
 
 	const APPLIED_AS_RANK: Record<FilterSummaryRow['appliedAs'], number> = { off: 0, indicator: 1, inverted: 2, regular: 2 }
 

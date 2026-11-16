@@ -4,15 +4,20 @@
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
 import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
+import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
+import * as MsgFmt from '@/messages/format'
 import * as LL_Msgs from '@/messages/layer-list.messages'
+import * as FPM from '@/models/filter-problems.models'
 import * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as RRS from '@/models/repeat-rulesets.models'
 import * as SETTINGS from '@/models/settings.models'
+import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
@@ -127,6 +132,13 @@ export namespace Sel {
 	export function serverId(state: Store): string | undefined {
 		return state.listHost.type === 'server' ? state.listHost.serverId : undefined
 	}
+
+	const NO_PROBLEMS: LQY.ConstraintProblem[] = []
+	// the constraints the item statuses were computed without, because their filters cannot be applied
+	function statusProblems(state: Store | undefined) {
+		return state?.layerItemStatuses?.problems ?? NO_PROBLEMS
+	}
+	export const statusProblemLines = RSel.createSelector([statusProblems], (problems) => FPM.problemLines(FPM.skippedProblems(problems)))
 }
 
 export function statusesAreCurrent(state: Store) {
@@ -204,6 +216,10 @@ export namespace Actions {
 			if (res?.code !== 'ok') {
 				toast.error(...tr.toast(LL_Msgs.fixRepeatsFailed()))
 				return
+			}
+			const skippedNames = FilterEntityClient.skippedFilterNames(res.problems)
+			if (skippedNames.length > 0) {
+				toast.warning(...tr.toast(F_Msgs.fixRepeatsWithout(MsgFmt.formatList(skippedNames))))
 			}
 			if (res.baselineViolations === 0) {
 				toast(...tr.toast(LL_Msgs.noRepeatsToFix()))

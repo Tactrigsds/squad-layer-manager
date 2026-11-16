@@ -14,7 +14,7 @@ import { tr } from '@/systems/messages.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
 import BackburnerPanel from './backburner-panel.tsx'
-import { IngameVoteAlert, QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
+import { ConfigProblemsAlert, IngameVoteAlert, QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import { PluginSlot } from './plugin-slot.tsx'
 import StatsPanel from './stats-panel.tsx'
@@ -75,6 +75,7 @@ function QueueBody(props: { stores: SquadServerFrame.KeyProp }) {
 		<>
 			<IngameVoteAlert stores={props.stores} />
 			<SlmUpdatesDisabledAlert stores={props.stores} />
+			<ConfigProblemsAlert stores={props.stores} />
 			<PluginSlot anchor="server-dashboard:queue-alerts" anchorProps={{ serverId: props.stores.squadServer.serverId }} />
 			{/* the tour's queue anchor stops here: layer requests (the backburner) are not part of the queue */}
 			<div data-tour="queue-panel">

@@ -13,7 +13,7 @@ import { tr } from '@/systems/messages.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
 import BackburnerPanel from './backburner-panel.tsx'
-import { IngameVoteAlert, QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
+import { ConfigProblemsAlert, IngameVoteAlert, QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import PhoneTabBar from './phone-tab-bar.tsx'
 import { PluginSlot } from './plugin-slot.tsx'
@@ -79,6 +79,7 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 						<ScrollArea orientation="vertical" className="flex-1 min-h-0">
 							<IngameVoteAlert stores={props.stores} />
 							<SlmUpdatesDisabledAlert stores={props.stores} />
+							<ConfigProblemsAlert stores={props.stores} />
 							<PluginSlot anchor="server-dashboard:queue-alerts" anchorProps={{ serverId }} />
 							<QueuePanelContent stores={props.stores} />
 							<BackburnerPanel stores={props.stores} />

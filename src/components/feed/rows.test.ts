@@ -48,6 +48,14 @@ const CTX: RC.RenderCtx = {
 }
 
 // the payload each type needs beyond the envelope, kept to the fields its template actually reads
+const FILTER_NODE_PROBLEM = {
+	type: 'unmapped-column',
+	ownerFilterId: 'f1',
+	part: 'filter',
+	path: [],
+	msg: { $msg: 'string', original: 'The column {column} is not in the layer data', args: { column: 'Biome' } },
+}
+
 const PAYLOADS: Record<string, Record<string, unknown>> = {
 	PLAYER_WARNED: { message: 'stop that', targets: ['eos1'] },
 	SQUAD_DISBANDED: { teamId: 1, squadId: 1, squadName: 'Squad 1', members: ['eos1'] },
@@ -73,6 +81,7 @@ const PAYLOADS: Record<string, Record<string, unknown>> = {
 	SETTINGS_UPDATED: { changes: [] },
 	SERVER_REGISTRY_CHANGED: { action: 'added', serverId: 's1' },
 	FILTER_CHANGED: { action: 'created', filterId: 'f1', filterName: 'f' },
+	FILTER_BROKEN: { filterId: 'f1', filterName: 'f', errors: [FILTER_NODE_PROBLEM] },
 	FILTER_CONTRIBUTOR_CHANGED: { action: 'added', filterId: 'f1', filterName: 'f' },
 	USER_ACCOUNT_CHANGED: { action: 'created', targetUserId: 1n },
 	PLAYER_FLAGS_UPDATED: { playerId: 'eos1', added: [], removed: [] },
@@ -103,6 +112,12 @@ const PAYLOADS: Record<string, Record<string, unknown>> = {
 	LAYER_REQUEST_ADDED: { itemId: 'i', description: 'd' },
 	LAYER_REQUEST_REMOVED: { itemIds: ['i'], descriptions: ['d'] },
 	LAYER_REQUEST_CONSUMED: { itemIds: ['i'], descriptions: ['d'], layerId: 'GD-RAAS-V1:USA-CA:RGF-CA' },
+	LAYER_GENERATED_WITHOUT_FILTERS: {
+		layerIds: ['GD-RAAS-V1:USA-CA:RGF-CA'],
+		vote: false,
+		queueItemId: 'q',
+		skipped: [{ constraintId: 'pool', constraintType: 'filter-entity', filterId: 'f1', filterName: 'f', errors: [FILTER_NODE_PROBLEM] }],
+	},
 }
 
 function entry(type: string): CHAT.EventEnriched {

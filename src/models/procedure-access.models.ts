@@ -146,6 +146,7 @@ export const PROCEDURE_ACCESS = {
 	'filters.deleteFilter': Access.req((id: string) => RBAC.getWritePermReqForFilterEntity(id)),
 	'filters.watchFilters': Access.PUBLIC,
 	'filters.watchFilterReferences': Access.PUBLIC,
+	'filters.watchFilterProblems': Access.PUBLIC,
 	'filters.changeFilterOwner': Access.req((i: { filterId: string }) => RBAC.getManagePermReqForFilterEntity(i.filterId)),
 
 	'rotations.watchChanges': Access.PUBLIC,

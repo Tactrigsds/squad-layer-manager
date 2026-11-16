@@ -13,6 +13,7 @@ import * as RPC_Msgs from '@/messages/rpc.messages'
 import * as CB from '@/models/constraint-builders.models'
 import * as CS from '@/models/context-shared.models'
 import * as FB from '@/models/filter-builders.models'
+import * as FPM from '@/models/filter-problems.models'
 import type * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -63,26 +64,30 @@ export namespace Actions {
 	}
 }
 
-// constraint values are raw matches (pre-inversion), index-aligned to constraints
-function getIsLayerOutOfPool(constraintValues: boolean[], constraints: LQY.Constraint[]) {
+// constraint values are raw matches (pre-inversion), index-aligned to constraints. null is a constraint the query did
+// not evaluate, such as one skipped because its filter cannot be applied, and says nothing about the layer.
+function getIsLayerOutOfPool(constraintValues: (boolean | null)[], constraints: LQY.Constraint[]) {
 	const index = constraints.findIndex((c) => c.type === 'filter-entity' && c.poolFilterMode)
 	if (index === -1) return false
 	const poolConstraint = constraints[index] as Extract<LQY.Constraint, { type: 'filter-entity' }>
-	const matched = constraintValues[index] ?? false
+	const matched = constraintValues[index] ?? null
+	if (matched === null) return false
 	return poolConstraint.poolFilterMode === 'include' ? !matched : matched
 }
 
 // the installed-mods constraint matches the layers the server can load, so a false is the unsupported one. Absent
 // constraint means nothing scoped the query to a server, which supports everything.
-function getIsLayerUnsupported(constraintValues: boolean[], constraints: LQY.Constraint[]) {
+function getIsLayerUnsupported(constraintValues: (boolean | null)[], constraints: LQY.Constraint[]) {
 	const index = constraints.findIndex((c) => c.type === 'installed-mods')
 	if (index === -1) return false
-	return !(constraintValues[index] ?? true)
+	return constraintValues[index] === false
 }
 
 export type ConstraintRowDetails = {
-	values: boolean[]
+	values: (boolean | null)[]
 	matchDescriptors: LQY.MatchDescriptor[]
+	// leaves out the constraints skipped because they cannot be applied, so no indicator reads their missing match as
+	// a miss
 	queriedConstraints: LQY.Constraint[]
 	matchedConstraintDescriptors: LQY.MatchDescriptor[]
 }
@@ -96,7 +101,7 @@ export type RowData = L.KnownLayer &
 		// the server has no mod for this layer's collection. Unlike isOutOfPool there is no permission that lifts it
 		isUnsupported: boolean
 	}
-function layerToRowData(layer: any, queriedConstraints: LQY.Constraint[]): RowData {
+function layerToRowData(layer: any, constraints: LQY.Constraint[], evaluated: LQY.Constraint[]): RowData {
 	// TODO  this is madness
 	const constraintValues = Array.isArray(layer.constraints) ? layer.constraints : (layer.constraints?.values ?? [])
 
@@ -104,18 +109,18 @@ function layerToRowData(layer: any, queriedConstraints: LQY.Constraint[]): RowDa
 
 	const matchedConstraintDescriptors = matchDescriptors
 
-	const constraints: ConstraintRowDetails = {
+	const details: ConstraintRowDetails = {
 		values: constraintValues,
 		matchDescriptors,
-		queriedConstraints,
+		queriedConstraints: evaluated,
 		matchedConstraintDescriptors,
 	}
 
 	return {
 		...layer,
-		constraints,
-		isOutOfPool: getIsLayerOutOfPool(constraintValues, queriedConstraints),
-		isUnsupported: getIsLayerUnsupported(constraintValues, queriedConstraints),
+		constraints: details,
+		isOutOfPool: getIsLayerOutOfPool(constraintValues, constraints),
+		isUnsupported: getIsLayerUnsupported(constraintValues, constraints),
 	} as RowData
 }
 
@@ -124,6 +129,7 @@ export type QueryLayersPageData = {
 	totalCount: number
 	pageCount: number
 	input: LQY.LayersQueryInput
+	problems: LQY.ConstraintProblem[]
 }
 
 export type QueryLayersInputOpts = {
@@ -142,14 +148,13 @@ function toQueryLayersPacket(
 	res: Exclude<WorkerTypes.QueryLayersResponse['payload'], { code: 'end' }>,
 	input: LQY.LayersQueryInput,
 ): QueryLayersPacket {
-	if (res.code === 'err:invalid-node') {
-		console.error('queryLayers: Invalid node error:', res.errors)
-		throw new Error('Invalid node')
-	} else if (res.code === 'err:missing-item-states') {
+	if (res.code === 'err:missing-item-states') {
 		throw new Error('err:missing-item-states')
 	}
 	if (res.code === 'menu-item-possible-values') return res
 
+	const constraints = input.constraints ?? []
+	const evaluated = FPM.withoutSkipped(constraints, res.problems)
 	let page = {
 		...res,
 		input,
@@ -162,14 +167,14 @@ function toQueryLayersPacket(
 		const selectedLayers: RowData[] = layerIdsForPage.map((id) => {
 			const layer = page!.layers.find((l) => l.id === id)
 			if (layer) {
-				return layerToRowData(layer, input.constraints ?? [])
+				return layerToRowData(layer, constraints, evaluated)
 			}
 			const newLayer: any = {
 				...L.toLayer(id),
-				constraints: Array(input.constraints?.length ?? 0).fill(false),
+				constraints: Array(constraints.length).fill(false),
 				matchDescriptors: [],
 			}
-			return layerToRowData(newLayer, input.constraints ?? [])
+			return layerToRowData(newLayer, constraints, evaluated)
 		})
 		if (input.sort) {
 			;(selectedLayers as Record<string, any>[]).sort((a: any, b: any) => {
@@ -195,7 +200,7 @@ function toQueryLayersPacket(
 	}
 	return {
 		...page,
-		layers: page.layers?.map((layer: any) => layerToRowData(layer, input.constraints ?? [])),
+		layers: page.layers?.map((layer: any) => layerToRowData(layer, constraints, evaluated)),
 	}
 }
 
@@ -236,11 +241,12 @@ export function prefetchLayersQuery(input: LQY.LayersQueryInput) {
 	queryLayers$(input).subscribe({ error: () => {} })
 }
 
-const summaryPartCache = new Map<string, Rx.Observable<LQY.LayersSummaryPartResult>>()
+type SummaryPartData = { result: LQY.LayersSummaryPartResult; problems: LQY.ConstraintProblem[] }
+const summaryPartCache = new Map<string, Rx.Observable<SummaryPartData>>()
 const SUMMARY_PART_CACHE_MAX_ENTRIES = 200
 
 // one cached request per part, so a column shown later costs only its own part
-function summaryPart$(input: LQY.LayersSummaryPartInput): Rx.Observable<LQY.LayersSummaryPartResult> {
+function summaryPart$(input: LQY.LayersSummaryPartInput): Rx.Observable<SummaryPartData> {
 	const key = JSON.stringify(getDepKey(input, Store.getState().backgroundStateEpoch))
 	const cached = summaryPartCache.get(key)
 	if (cached) {
@@ -248,10 +254,10 @@ function summaryPart$(input: LQY.LayersSummaryPartInput): Rx.Observable<LQY.Laye
 		summaryPartCache.set(key, cached)
 		return cached
 	}
-	const part$: Rx.Observable<LQY.LayersSummaryPartResult> = workerRequest$('queryLayersSummaryPart', input).pipe(
+	const part$: Rx.Observable<SummaryPartData> = workerRequest$('queryLayersSummaryPart', input).pipe(
 		Rx.map((res) => {
 			if (res.code !== 'ok') throw new Error(`layers summary part ${input.part.type} failed: ${res.code}`)
-			return res.result
+			return { result: res.result, problems: res.problems }
 		}),
 		Rx.tap({
 			error: () => {
@@ -279,11 +285,11 @@ export function queryLayersSummary$(
 		{ type: 'constraint-counts' },
 		...columns.rangeColumns.map((column): LQY.LayersSummaryPart => ({ type: 'ranges', columns: [column] })),
 	]
-	const initial: LQY.LayersSummary = { valueCounts: null, ranges: {}, constraintCounts: null, complete: false }
+	const initial: LQY.LayersSummary = { valueCounts: null, ranges: {}, constraintCounts: null, complete: false, problems: [] }
 	const isComplete = (summary: LQY.LayersSummary) =>
 		summary.valueCounts !== null && summary.constraintCounts !== null && columns.rangeColumns.every((c) => c in summary.ranges)
 	return Rx.concat(...parts.map((part) => summaryPart$({ ...base, part }))).pipe(
-		Rx.scan((summary, result): LQY.LayersSummary => {
+		Rx.scan((summary, { result, problems }): LQY.LayersSummary => {
 			let next: LQY.LayersSummary
 			switch (result.type) {
 				case 'value-counts':
@@ -298,10 +304,16 @@ export function queryLayersSummary$(
 				default:
 					assertNever(result)
 			}
-			return { ...next, complete: isComplete(next) }
+			return { ...next, complete: isComplete(next), problems: mergeProblems(summary.problems, problems) }
 		}, initial),
 		Rx.startWith(initial),
 	)
+}
+
+// every part reports the constraints it skipped, so the same problem arrives once per part
+function mergeProblems(existing: LQY.ConstraintProblem[], incoming: LQY.ConstraintProblem[]): LQY.ConstraintProblem[] {
+	const added = incoming.filter((p) => !existing.some((e) => e.constraintId === p.constraintId && e.part === p.part))
+	return added.length === 0 ? existing : [...existing, ...added]
 }
 
 export function getQueryLayersInput(baseInput: LQY.BaseQueryInput, _opts?: QueryLayersInputOpts): LQY.LayersQueryInput {
@@ -353,31 +365,28 @@ export async function solveRepeatViolations(input: LQY.SolveRepeatViolationsInpu
 export async function generateVote(input: LQY.GenVote.Input) {
 	const res = await sendWorkerRequest('genVote', input)
 	if (res.code !== 'ok') return res
-	const choiceRowData = res.chosenLayers.map((l) => (l ? layerToRowData(l, input.constraints ?? []) : undefined))
+	const constraints = input.constraints ?? []
+	const evaluated = FPM.withoutSkipped(constraints, res.problems)
+	const choiceRowData = res.chosenLayers.map((l) => (l ? layerToRowData(l, constraints, evaluated) : undefined))
 	return {
 		...res,
 		chosenLayers: choiceRowData,
 	}
 }
 
-export function useLayerComponents(
-	input: LQY.LayerComponentInput,
-	options: { enabled?: boolean; errorStore?: Zus.StoreApi<F.NodeValidationErrorStore> } = {},
-) {
+export async function validateFilter(input: { node: F.FilterNode; missExemption?: F.FilterNode | null }, signal?: AbortSignal) {
+	const res = await sendWorkerRequest('validateFilter', input, signal)
+	if (res.code !== 'ok') throw new Error(res.code)
+	return res.errors
+}
+
+export function useLayerComponents(input: LQY.LayerComponentInput, options: { enabled?: boolean } = {}) {
 	return useQuery({
-		...options,
 		queryKey: ['layers', 'queryLayerComponents', useDepKey(input)],
-		enabled: options?.enabled,
+		enabled: options.enabled,
 		queryFn: async ({ signal }: { signal: AbortSignal }) => {
 			const res = await sendWorkerRequest('queryLayerComponent', input, signal)
-			if (Array.isArray(res)) return res
-			if (res?.code === 'err:invalid-node') {
-				console.error('queryLayerComponents: Invalid node error:', res.errors)
-				options?.errorStore?.setState({ errors: res.errors })
-				throw new Error(res.code + ': ' + JSON.stringify(res.errors))
-			} else if (options.errorStore) {
-				options.errorStore.setState({ errors: undefined })
-			}
+			if (res.code === 'err:missing-item-states') throw new Error(res.code)
 			return res
 		},
 		staleTime: Infinity,
@@ -469,35 +478,23 @@ export function useLayerItemStatusData(layerItem: LQY.LayerItem | LQY.ItemId, li
 
 		return {
 			present: presentLayers,
-			queriedConstraints,
+			queriedConstraints: FPM.withoutSkipped(queriedConstraints, statuses!.problems),
 			matchingConstraintIds,
 			matchingDescriptors,
 			highlightedMatchDescriptors,
 		}
-	}, [highlightedMatchDescriptors, allMatchDescriptors, itemId, presentLayers, queriedConstraints, covered])
+	}, [highlightedMatchDescriptors, allMatchDescriptors, itemId, presentLayers, queriedConstraints, covered, statuses])
 }
 
-export async function fetchLayersOutOfPool(
-	input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] },
-	signal?: AbortSignal,
-): Promise<L.LayerId[] | null> {
-	const res = await sendWorkerRequest('getLayersOutOfPool', input, signal)
-	if (res.code !== 'ok') {
-		console.error('getLayersOutOfPool:', res)
-		return null
-	}
-	return res.outOfPool
+export async function fetchLayersOutOfPool(input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] }, signal?: AbortSignal) {
+	return await sendWorkerRequest('getLayersOutOfPool', input, signal)
 }
 
 // resolved reactively into the squad-server frame's layerItemStatuses state; not a query. Unsubscribing before the
-// result arrives cancels the request in the worker.
+// result arrives cancels the request in the worker. Constraints that could not be checked are in `problems`.
 export function layerItemStatuses$(input: LQY.LayerItemStatusesInput): Rx.Observable<LQY.LayerItemStatuses | null> {
 	return workerRequest$('getLayerItemStatuses', input).pipe(
 		Rx.map((res) => {
-			if (res.code === 'err:invalid-node') {
-				console.error('getLayerItemStatuses: Invalid node error:', res.errors)
-				return null
-			}
 			if (res.code === 'err:missing-item-states') {
 				console.error('getLayerItemStatuses: missing item states')
 				return null
@@ -580,6 +577,7 @@ const QUERY_PRIORITIES: Record<RequestType, number> = {
 	solveRepeatViolations: 3,
 	queryLayersSummaryPart: 4,
 	checkBackburnerTemplates: 4,
+	validateFilter: 2,
 }
 
 const seqIdCounter = Gen.counter()

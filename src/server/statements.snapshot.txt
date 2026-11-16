@@ -112,6 +112,12 @@ filter-entity:deleteRoleContributor
 filter-entity:deleteUserContributor
   delete from "filterUserContributors" where ("filterUserContributors"."filterId" = ? and "filterUserContributors"."userId" = ?)
 
+filter-entity:eventsOfType
+  select "id", "type", "time", "actorType", "actorUserId", "actorPlayerId", "actorPluginId", "serverId", "matchId", "causeId", "instanceId", "feedVisible", "version", "data" from "appEvents" where "appEvents"."type" = ? order by "appEvents"."time" desc
+
+filter-entity:eventsOfTypeSince
+  select "id", "type", "time", "actorType", "actorUserId", "actorPlayerId", "actorPluginId", "serverId", "matchId", "causeId", "instanceId", "feedVisible", "version", "data" from "appEvents" where ("appEvents"."type" = ? and "appEvents"."time" > ?)
+
 filter-entity:filterById
   select "id", "name", "description", "filter", "ownerUserId", "ownerPluginId", "alertMessage", "emoji", "invertedAlertMessage", "invertedEmoji", "missExemption" from "filters" where "filters"."id" = ?
 

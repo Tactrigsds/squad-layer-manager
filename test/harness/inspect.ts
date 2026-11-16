@@ -236,6 +236,20 @@ export function appEventTypes(app: AppFixture, matchId?: number): string[] {
 	}
 }
 
+// the deserialized payload of every app event of `type`, oldest first
+export function appEventData<T>(app: AppFixture, type: string): T[] {
+	const db = app.readDb()
+	try {
+		const rows = db.prepare(`SELECT data FROM appEvents WHERE type = ? ORDER BY time`).all(type) as { data: string }[]
+		return rows.map((row) => {
+			const parsed = JSON.parse(row.data)
+			return (parsed.json ?? parsed) as T
+		})
+	} finally {
+		db.close()
+	}
+}
+
 // the tickets a match's latest TICKETS_CHANGED recorded, team 1 first
 export function latestTickets(app: AppFixture, matchId: number): [number, number] | undefined {
 	const db = app.readDb()

@@ -114,7 +114,7 @@ export function initAppliedFiltersStore(args: Args) {
 		if (membershipConstraints.length === 0) return
 		// only apply the pool filter once we know the edited layer is in the pool; otherwise the layer being edited
 		// would be filtered out of its own dialog
-		const outOfPool = await LayerQueriesClient.fetchLayersOutOfPool(
+		const res = await LayerQueriesClient.fetchLayersOutOfPool(
 			{
 				layerIds: [args.input.editedLayerId],
 				constraints: membershipConstraints,
@@ -122,7 +122,12 @@ export function initAppliedFiltersStore(args: Args) {
 			args.signal,
 		)
 		if (args.signal.aborted) return
-		set({ poolApplyAs: outOfPool !== null && outOfPool.length === 0 ? 'regular' : 'disabled' })
+		if (res.code !== 'ok') {
+			console.error('pool membership of the edited layer could not be checked:', res.code)
+			return
+		}
+		// a pool filter that cannot be applied says nothing about membership, so it is left off
+		set({ poolApplyAs: res.outOfPool.length === 0 && res.problems.length === 0 ? 'regular' : 'disabled' })
 	})().catch(Prom.rethrowUnlessAborted)
 
 	if (!localScope) {

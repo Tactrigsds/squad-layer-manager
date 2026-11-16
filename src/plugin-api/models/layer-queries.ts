@@ -18,6 +18,7 @@ export {
 export type {
 	BaseQueryInput,
 	Constraint,
+	ConstraintProblem,
 	FilterApplicationState,
 	FilterMenuItem,
 	IndicatorState,

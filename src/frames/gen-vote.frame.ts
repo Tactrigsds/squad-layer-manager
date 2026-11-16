@@ -9,8 +9,13 @@ import * as PoolCheckboxesPrt from '@/frame-partials/pool-checkboxes.partial'
 import type * as FRM from '@/lib/frame'
 import * as Gen from '@/lib/generator-utils'
 import { createId } from '@/lib/id'
+import * as RSel from '@/lib/reselect'
+import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import type * as DH from '@/models/display-helpers.models'
+import * as FPM from '@/models/filter-problems.models'
+import type * as F from '@/models/filter.models'
 import type * as LC from '@/models/layer-columns.models'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -18,7 +23,9 @@ import type * as L from '@/models/layer.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as V from '@/models/vote.models'
 import * as ConfigClient from '@/systems/config.client'
+import * as FilterEntityClient from '@/systems/filter-entity.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
+import { tr } from '@/systems/messages.client'
 
 import { frameManager } from './frame-manager'
 export type SelectType = 'generic' | 'indexed'
@@ -58,6 +65,10 @@ type Primary = {
 	choices: V.GenVote.Choice[]
 	chosenLayers: Record<string, LayerQueriesClient.RowData | undefined>
 	choiceErrors: (string | undefined)[]
+	// per choice whose own conditions cannot be applied
+	choiceInvalid: (F.NodeValidationError[] | undefined)[]
+	// the applied filters the last generation ran without, because they cannot be applied
+	problems: LQY.ConstraintProblem[]
 	generating: boolean
 	includedConstraints: V.GenVote.ChoiceConstraintKey[]
 	uniqueConstraints: V.GenVote.ChoiceConstraintKey[]
@@ -102,6 +113,8 @@ const setup: Frame['setup'] = (args) => {
 
 		chosenLayers: {},
 		choiceErrors: [],
+		choiceInvalid: [],
+		problems: [],
 		choices: Array.from(Gen.map(Gen.range(V.DEFAULT_NUM_CHOICES), () => V.GenVote.initChoice())),
 		voteConfig: {
 			displayProps: constraintsToDisplayProps(V.GenVote.DEFAULT_CHOICE_COMPARISONS),
@@ -138,6 +151,13 @@ export const frame: Frame = frameManager.createFrame<Types>({
 
 export namespace Sel {
 	const EMPTY_LAYER_ITEMS = LQY.initLayerItemsState()
+	export function problems(state: Store) {
+		return state.problems
+	}
+	export const problemLines = RSel.createSelector([problems], (problems) => FPM.problemLines(problems))
+	// named as the filters were when the problems were reported
+	export const skippedFilterNames = RSel.createSelector([problems], (problems) => FilterEntityClient.skippedFilterNames(problems))
+
 	export function baseQueryInput(state: Store, listHost?: ListHostPrt.Store) {
 		const appliedConstraints = AppliedFiltersPrt.Sel.constraints(state)
 		const settings = ListHostPrt.Sel.settingsOrDefault(listHost)
@@ -168,6 +188,12 @@ export namespace Sel {
 			uniqueConstraints: state.uniqueConstraints,
 		}
 	}
+}
+
+function choiceInvalid(count: number, invalid: { index: number; errors: F.NodeValidationError[] }[]) {
+	const res: (F.NodeValidationError[] | undefined)[] = Array.from({ length: count }, () => undefined)
+	for (const choice of invalid) res[choice.index] = choice.errors
+	return res
 }
 
 export namespace Actions {
@@ -206,6 +232,9 @@ export namespace Actions {
 		const choiceErrors = Im.produce(state.choiceErrors, (draft) => {
 			draft[index] = undefined
 		})
+		const choiceInvalid = Im.produce(state.choiceInvalid, (draft) => {
+			draft[index] = undefined
+		})
 		let result: Store['result'] = null
 		if (choices.every((c) => c.layerId)) {
 			result = {
@@ -213,7 +242,7 @@ export namespace Actions {
 				voteConfig: state.voteConfig,
 			}
 		}
-		s.setState({ choices, choiceErrors, result })
+		s.setState({ choices, choiceErrors, choiceInvalid, result })
 	}
 
 	export function addChoice(stores: KeyProp) {
@@ -244,8 +273,15 @@ export namespace Actions {
 				uniqueConstraints: state.uniqueConstraints,
 				onlyIndex,
 			})
-			if (res.code === 'err:invalid-node') throw new Error(JSON.stringify(res.errors))
-			if (res.code === 'err:missing-item-states') throw new Error(res.code)
+			if (res.code === 'err:invalid-choices') {
+				s.setState({ choiceInvalid: choiceInvalid(startingChoices.length, res.choices), choiceErrors: [], problems: [] })
+				return
+			}
+			if (res.code === 'err:missing-item-states') {
+				console.error('vote generation failed:', res.code)
+				toast.error(tr.text(APP_Msgs.somethingWentWrong()))
+				return
+			}
 			const chosenLayersMap: Record<string, LayerQueriesClient.RowData | undefined> = { ...state.chosenLayers }
 			for (const layer of res.chosenLayers) {
 				if (!layer) continue
@@ -263,10 +299,15 @@ export namespace Actions {
 			s.setState({
 				chosenLayers: chosenLayersMap,
 				choiceErrors: res.choiceErrors ?? [],
+				choiceInvalid: [],
+				problems: FPM.appliedProblems(res.problems, base.constraints),
 				choices,
 				result,
 				generating: false,
 			})
+		} catch (error) {
+			console.error('vote generation failed:', error)
+			toast.error(tr.text(APP_Msgs.somethingWentWrong()))
 		} finally {
 			s.setState({ generating: false })
 		}

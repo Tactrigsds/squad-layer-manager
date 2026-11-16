@@ -45,18 +45,18 @@ export const matchupTypeNames: Record<F.MatchupType, TString> = {
 // state, and only one surface ever renders it. A message would carry a `Dyn` on every surface, which is a union of
 // an object and a function that immer's draft types cannot map.
 
-export const recursiveFilter = (filterId: string) => t('Filter is mutually recursive via filter: {filterId}', { filterId })
+export const recursiveFilter = (filterId: string) => t('Applying the filter {filterId} here makes this filter apply itself', { filterId })
 
-export const unknownFilter = (filterId: string) => t("Filter {filterId} doesn't exist", { filterId })
+export const unknownFilter = (filterId: string) => t('The filter {filterId} does not exist', { filterId })
 
 export const unhandledNodeType = () => t('Unhandled filter node type')
 
-export const firstOperandMustBeColumn = () => t("A comparison's first operand must be a column")
+export const firstOperandMustBeColumn = () => t('The first operand of a comparison must be a column')
 
-export const needsColumnOperand = () => t('Comparison requires at least one column operand')
+export const needsColumnOperand = () => t('A comparison needs at least one column operand')
 
 export const columnsNotComparable = (left: string, right: string) =>
-	t('Columns {left} and {right} are not comparable (different data types)', { left, right })
+	t('The columns {left} and {right} cannot be compared: their data types differ', { left, right })
 
 export const orderedComparisonNull = () => t('Ordered comparison cannot use null')
 
@@ -64,10 +64,11 @@ export const rangeComparisonNull = () => t('Range comparison cannot use null')
 
 export const unresolvedTeamColumn = (column: string) => t('Team column "{column}" could not be resolved to a team', { column })
 
-export const unmappedColumn = (column: string) => t('Column {column} is not mapped', { column })
+export const unmappedColumn = (column: string) => t('The column {column} is not in the layer data', { column })
 
+// `column` is the column's display name
 export const unmappedValue = (column: string, value: NonNullable<F.Value>) =>
-	t('Value {value} is not mapped for column {column}', { value, column })
+	t('{value} is not a {column} value in the layer data', { value, column })
 
 export const vehicleDataUnavailable = () => t('The loaded layer data predates vehicle filtering; rebuild the layer artifacts')
 
@@ -626,4 +627,102 @@ export const undoTooltip = def(
 
 export const editsDiscarded = def(() => ({
 	toast: [t('Filter edits discarded')],
+}))
+
+// -------- filters that cannot be applied: the filter editor --------
+
+export const editorProblemsTitle = def('This filter cannot be applied')
+
+export const editorProblemsBlurb = def('SLM skips this filter wherever it is used until the problems below are fixed.')
+
+export const exemptionProblemsTitle = def('These exemptions cannot be applied')
+
+export const exemptionProblemsBlurb = def('SLM ignores the exemptions until the problems below are fixed.')
+
+// labels a problem in the miss exemption, whose conditions the filter's own tree does not show
+export const exemptionProblemLabel = def('Exempt layers')
+
+// one line of the problem summary: the node as it reads in the tree, then what is wrong with it
+export const nodeProblemLine = def((node: React.ReactNode, reason: React.ReactNode) => rt('{node}: {reason}', { node, reason }))
+
+// a problem in a filter this one applies, listed in the text editor at the line that applies it
+export const referencedProblemText = def('{name}: {reason}', (name: string, reason: TString) => ({ name, reason }))
+
+// the problems of a filter this one applies. `name` links to the first of them in that filter's editor
+export const referencedFilterProblems = def((name: React.ReactNode, count: number) =>
+	rt('{name} cannot be applied ({count, plural, one {# problem} other {# problems}})', { name, count }),
+)
+
+export const savedWithProblems = def((count: number) => ({
+	toast: [
+		t('Filter saved with {count, plural, one {# problem} other {# problems}}', { count }),
+		{ description: t('SLM skips this filter wherever it is used until the problems are fixed.') },
+	],
+}))
+
+// -------- filters that cannot be applied: surfaces outside the filter editor --------
+
+// one failing node, named by the filter that holds it
+export const problemLine = def((filter: React.ReactNode, reason: TString) => rt('{filter}: {reason}', { filter, reason }))
+
+// a failing node in `owner`, reached from `filter` through apply-filter nodes
+export const problemSubjectVia = def((filter: React.ReactNode, owner: React.ReactNode) => rt('{filter} › {owner}', { filter, owner }))
+
+export const exemptionPartLabel = def('{name} (exempt layers)', (name: string) => ({ name }))
+
+// names a failing tree that is not a stored filter
+export const unsavedConditions = def('Unsaved conditions')
+
+export const searchConditions = def('Search conditions')
+
+export const installedModsLabel = def('Installed mods')
+
+export const deletedFilterLabel = def('Deleted filter {filterId}', (filterId: string) => ({ filterId }))
+
+export const cannotBeApplied = def('Cannot be applied')
+
+export const problemCount = def('{count, plural, one {# problem} other {# problems}}', (count: number) => ({ count }))
+
+export const filterCannotBeAppliedHint = def(
+	'This filter cannot be applied. Layer queries that use this filter skip it until the filter is fixed.',
+)
+
+export const exemptionCannotBeAppliedHint = def(
+	'The exempt layers of this filter cannot be applied. The filter still applies, and exempts no layers until the problem is fixed.',
+)
+
+export const filtersCannotBeApplied = def(
+	'{count, plural, one {# filter cannot be applied} other {# filters cannot be applied}}',
+	(count: number) => ({ count }),
+)
+
+export const notFilteredByHint = def('The layers shown are not filtered or marked by these filters.')
+
+export const configProblemsTitle = def(
+	'{count, plural, one {# filter in this server’s configuration cannot be applied} other {# filters in this server’s configuration cannot be applied}}',
+	(count: number) => ({ count }),
+)
+
+export const installedModsProblemsTitle = def('Installed mods in this server’s configuration are not in the layer data')
+
+export const configProblemsBlurb = def(
+	'Checks that use the filters and mods listed here are skipped until each one is fixed. Layers can still be queued and set.',
+)
+
+export const notChecked = def('Not checked')
+
+export const notCheckedHint = def('These filters cannot be applied, so this layer was not checked against these filters.')
+
+export const generatedWithout = def('Generated without {filters}', (filters: string) => ({ filters }))
+
+export const generatedWithoutHint = def('These filters cannot be applied, so they do not limit the choices.')
+
+export const choiceCannotBeApplied = def('The conditions of this choice cannot be applied.')
+
+export const choiceConditionsLabel = def('Choice conditions')
+
+export const optionsNotLimitedHint = def('These options are not limited by the filters below, which cannot be applied.')
+
+export const fixRepeatsWithout = def((filters: string) => ({
+	toast: [t('Fix Repeats ran without {filters}', { filters }), { description: t('These filters cannot be applied.') }],
 }))

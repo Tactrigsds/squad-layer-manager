@@ -45,6 +45,12 @@ export async function getEngine(): Promise<LayerEngine> {
 	return engine!
 }
 
+// for synchronous code that runs after boot, by which time setup has loaded the engine
+export function requireEngine(): LayerEngine {
+	if (!engine) throw new Error('the layer engine is not loaded yet')
+	return engine
+}
+
 // Called once, from setup. A load holds the artifact more than once over on the way into wasm memory, costing
 // 110-125MB of RSS while it runs, so the engine is held rather than dropped and reloaded. See "The layer engine" in
 // docs/developers/architecture.md.

@@ -8,6 +8,7 @@ import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards.ts'
 import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
+import * as BB_Msgs from '@/messages/backburner.messages'
 import * as I18n from '@/messages/i18n'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
@@ -15,7 +16,10 @@ import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
 import * as CS from '@/models/context-shared.models'
 import * as DH from '@/models/display-helpers.models'
-import type * as F from '@/models/filter.models'
+import * as FPM from '@/models/filter-problems.models'
+import * as F from '@/models/filter.models'
+import * as LC from '@/models/layer-columns.models'
+import * as LE from '@/models/layer-engine.models'
 import * as LL from '@/models/layer-list.models'
 import * as LNote from '@/models/layer-notes.models'
 import * as LQY from '@/models/layer-queries.models.ts'
@@ -42,6 +46,7 @@ import { getOrpcBase } from '@/server/orpc-base'
 import * as AppEventsSys from '@/systems/app-events.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as FilterEntity from '@/systems/filter-entity.server'
+import * as LayerEngine from '@/systems/layer-engine.server'
 import * as LayerQueries from '@/systems/layer-queries.server'
 import * as LayerQueriesShared from '@/systems/layer-queries.shared.ts'
 import * as MatchHistory from '@/systems/match-history.server'
@@ -717,14 +722,16 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 		// a layer request outranks a vote: the requested layer is queued on its own
 		let generated = templates.length > 0 || !generateVotes.enabled ? await generateLayer(layerCtx, constraints, templates, list) : null
 		let nextQueueItem: LL.Item | null = null
+		let problems: LQY.ConstraintProblem[] = []
 		if (generateVotes.enabled && !generated?.consumedItemIds.length) {
-			const choices = await generateVoteChoices(layerCtx, constraints, list)
-			if (choices.length >= 2) {
+			const vote = await generateVoteChoices(layerCtx, constraints, list)
+			if (vote.layerIds.length >= 2) {
 				// the map is the one thing the choices are certain to differ by, so it is always shown
 				const displayProps = Array.from(new Set<DH.LayerDisplayProp>(['map', ...generateVotes.displayProps]))
-				nextQueueItem = LL.createVoteItem(choices, { type: 'generated' }, { displayProps })
+				nextQueueItem = LL.createVoteItem(vote.layerIds, { type: 'generated' }, { displayProps })
+				problems = vote.problems
 			} else {
-				log.warn('only %d map(s) available for a generated vote, generating a single layer instead', choices.length)
+				log.warn('only %d map(s) available for a generated vote, generating a single layer instead', vote.layerIds.length)
 			}
 		}
 
@@ -740,6 +747,7 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 			const source: LL.Source = requesters.length > 0 ? { type: 'layer-request', requesters } : { type: 'generated' }
 			nextQueueItem = LL.createItem({ type: 'single-list-item', layerId: generated.layerId }, source)
 			if (generated.consumedItemIds.length > 0) consumedBackburnerItemIds = generated.consumedItemIds
+			problems = generated.problems
 		}
 		await dispatchOp(ctx, {
 			op: 'queue-item-generated',
@@ -747,31 +755,101 @@ const generateAndDispatchQueueItem = Instr.spanOp(
 			consumedBackburnerItemIds,
 			opId: SLL.createOpId(),
 		})
+		// a constraint that only marks layers, or a miss exemption that exempts nothing, left the draw as it was
+		const skipped = FPM.appliedProblems(problems, constraints)
+		if (skipped.length > 0) await reportGeneratedWithoutFilters(ctx, nextQueueItem, skipped)
 	},
 )
 
-// Draws a single layer, folding in whatever backburner templates fit. Falls back to dropping the repeat rules, and
-// then to L.defaultLayerId(), rather than leave the queue empty.
+// Records a generation that left out configured filters because they cannot be applied: a log line, an entry in the
+// server's activity feed, and one warn to the admins in game.
+async function reportGeneratedWithoutFilters(ctx: SideEffectCtx, item: LL.Item, problems: LQY.ConstraintProblem[]) {
+	const vote = LL.isVoteItem(item)
+	const layerIds = vote ? item.choices.map((choice) => choice.layerId) : [item.layerId]
+	const skipped = skippedFilters(problems)
+	log.warn(
+		{ [ATTRS.SquadServer.ID]: ctx.serverId },
+		'generated %s without filters that cannot be applied:\n%s',
+		layerIds.join(', '),
+		describeProblems(problems),
+	)
+	await SquadServerActions.emitAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.LayerGeneratedWithoutFilters>({
+			type: 'LAYER_GENERATED_WITHOUT_FILTERS',
+			actor: { type: 'system' },
+			serverId: ctx.serverId,
+			matchId: (await MatchHistory.getCurrentMatch(ctx))?.historyEntryId ?? null,
+			causeId: null,
+			layerIds,
+			vote,
+			queueItemId: item.itemId,
+			skipped,
+		}),
+	)
+	// detached: a roll can generate while it holds the queue's locks, and the warn is a round trip per admin. The
+	// generation may have been started by a request, so the warn lives as long as the server rather than the request.
+	SquadRcon.warnAllAdmins(
+		{ ...ctx, signal: SquadServer.require(ctx.serverId).signal },
+		LL_Msgs.generatedWithoutFilters(vote, skippedFilterNames(problems)),
+	).catch((err: unknown) => {
+		if (!Prom.isAbortError(err)) log.error(err)
+	})
+}
+
+// the configured filters a query left out, one entry per constraint
+function skippedFilters(problems: LQY.ConstraintProblem[]): AppEvents.LayerGeneratedWithoutFilters['skipped'] {
+	const byConstraint = new Map<string, AppEvents.LayerGeneratedWithoutFilters['skipped'][number]>()
+	for (const problem of problems) {
+		let entry = byConstraint.get(problem.constraintId)
+		if (!entry) {
+			entry = {
+				constraintId: problem.constraintId,
+				constraintType: problem.constraintType,
+				filterId: problem.filterId,
+				filterName: problem.filterId ? backburnerFilterName(problem.filterId) : undefined,
+				errors: [],
+			}
+			byConstraint.set(problem.constraintId, entry)
+		}
+		entry.errors.push(...problem.errors.map(AppEvents.toFilterNodeProblem))
+	}
+	return [...byConstraint.values()]
+}
+
+function skippedFilterNames(problems: LQY.ConstraintProblem[]): string[] {
+	return [...new Set(skippedFilters(problems).map((s) => s.filterName ?? s.filterId ?? s.constraintId))]
+}
+
+function describeProblems(problems: LQY.ConstraintProblem[]): string {
+	return problems
+		.flatMap((problem) => problem.errors.map((error) => `${problem.constraintId}: ${F.describeNodeValidationError(error)}`))
+		.join('\n')
+}
+
+// Draws a single layer, folding in whatever backburner templates fit. A configured filter that cannot be applied is
+// left out of the draw and reported in `problems`. Falls back to dropping the repeat rules, and then to
+// L.defaultLayerId(), rather than leave the queue empty.
 async function generateLayer(
 	layerCtx: LQY.Ctx,
 	constraints: LQY.Constraint[],
 	templates: LayerQueriesShared.BackburnerTemplate[],
 	list: LQY.LayerItemsState,
-): Promise<{ layerId: L.LayerId; consumedItemIds: string[] }> {
-	const fallback = { layerId: L.defaultLayerId(), consumedItemIds: [] as string[] }
+): Promise<{ layerId: L.LayerId; consumedItemIds: string[]; problems: LQY.ConstraintProblem[] }> {
+	const fallback = { layerId: L.defaultLayerId(), consumedItemIds: [] as string[], problems: [] }
 	try {
 		const res = await LayerQueriesShared.generateWithBackburner({
 			ctx: layerCtx,
 			input: { constraints, templates, list, cursor: { type: 'start' }, action: 'add', seed: LQY.getSeed() },
 		})
-		if (res.code !== 'ok') {
-			log.error(`Invalid node error when generating layer: %o`, { cause: res.errors })
-			return fallback
+		for (const [itemId, errors] of Object.entries(res.templateErrors)) {
+			log.warn(
+				'layer request %s cannot be applied and was skipped:\n%s',
+				itemId,
+				errors.map((error) => F.describeNodeValidationError(error)).join('\n'),
+			)
 		}
-		if (res.invalidItemIds.length > 0) {
-			log.warn('backburner templates failed to lower and were skipped: %o', res.invalidItemIds)
-		}
-		if (res.layer) return { layerId: res.layer.id, consumedItemIds: res.consumedItemIds }
+		if (res.layer) return { layerId: res.layer.id, consumedItemIds: res.consumedItemIds, problems: res.problems }
 		const noDnrConstraints = constraints.filter((c) => c.type !== 'do-not-repeat')
 		if (noDnrConstraints.length < constraints.length) {
 			log.info('no layers found with do-not-repeat constraints applied, retrying without')
@@ -787,7 +865,11 @@ async function generateLayer(
 
 // Draws up to V.DEFAULT_NUM_CHOICES layers, each on a different map. Unlike generateLayer it never drops the repeat
 // rules, so it can return fewer choices than asked for.
-async function generateVoteChoices(layerCtx: LQY.Ctx, constraints: LQY.Constraint[], list: LQY.LayerItemsState): Promise<L.LayerId[]> {
+async function generateVoteChoices(
+	layerCtx: LQY.Ctx,
+	constraints: LQY.Constraint[],
+	list: LQY.LayerItemsState,
+): Promise<{ layerIds: L.LayerId[]; problems: LQY.ConstraintProblem[] }> {
 	try {
 		const res = await LayerQueriesShared.genVote({
 			ctx: layerCtx,
@@ -802,19 +884,20 @@ async function generateVoteChoices(layerCtx: LQY.Ctx, constraints: LQY.Constrain
 			},
 		})
 		if (res.code !== 'ok') {
-			log.error(`Invalid node error when generating vote: %o`, { cause: res.errors })
-			return []
+			log.error(`Invalid choices when generating vote: %o`, { cause: res.choices })
+			return { layerIds: [], problems: [] }
 		}
-		return res.chosenLayers.flatMap((layer) => (layer ? [layer.id] : []))
+		return { layerIds: res.chosenLayers.flatMap((layer) => (layer ? [layer.id] : [])), problems: res.problems }
 	} catch (e) {
 		log.error(e, 'Error generating vote')
-		return []
+		return { layerIds: [], problems: [] }
 	}
 }
 
 // What the queue head breaks, as the layer table's own warning indicators would show it: the repeat rules it
-// violates and the pool filters it misses. Undefined when there is nothing to report, so a caller can drop the
-// whole section rather than render an empty one.
+// violates, the pool filters it misses, and the configured filters it could not be checked against because they
+// cannot be applied. Undefined when there is nothing to report, so a caller can drop the whole section rather than
+// render an empty one.
 async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTINGS.Ctx & CS.AbortSignal) {
 	const head = getSavedQueue(ctx)[0]
 	if (!head) return undefined
@@ -832,11 +915,17 @@ async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTI
 			list: await LayerQueries.resolveLayerItemsState(ctx),
 		},
 	})
-	if (statusRes.code !== 'ok') return undefined
 	// a vote warns through its choices, so report the choice the vote currently resolves to
 	const headItemId = LL.isVoteItem(head) ? head.choices.find((c) => c.layerId === head.layerId)?.itemId : head.itemId
 	const warns = statusRes.statuses.warns.filter((w) => w.itemId === headItemId)
-	if (warns.length === 0) return undefined
+	// the filters whose warnings could not be raised. One that only marks layers raises none to miss.
+	const unchecked = statusRes.statuses.problems.filter((problem) => {
+		if (problem.part !== 'filter') return false
+		const constraint = allConstraints.find((c) => c.id === problem.constraintId)
+		return constraint?.type === 'filter-entity' && constraint.warn !== 'disabled'
+	})
+	const uncheckedFilters = skippedFilterNames(unchecked)
+	if (warns.length === 0 && uncheckedFilters.length === 0) return undefined
 	const repeatViolations = warns.filter((w) => w.type === 'repeat-rule-violation-warning').flatMap((w) => w.descriptors)
 	const poolViolations = warns
 		.filter((w) => w.type === 'filter-entity-warning')
@@ -850,7 +939,7 @@ async function nextLayerViolations(ctx: C.Db & SQS.Ctx & LQ.Ctx & MH.Ctx & SETTI
 			)
 		})
 	const unsupportedMods = [...new Set(warns.filter((w) => w.type === 'unsupported-mod-warning').map((w) => w.collection))]
-	return { repeatViolations, poolViolations, unsupportedMods }
+	return { repeatViolations, poolViolations, unsupportedMods, uncheckedFilters }
 }
 
 export async function warnShowNext(
@@ -1176,9 +1265,15 @@ export const router = {
 
 				if (!SLL.isClientOp(op)) return { code: 'err:invalid-op' as const, msg: `${op.op} is server-only` }
 
+				let skippedRequestFilters: string[] = []
+				// the client applied the op as it sent it, so a corrected op is echoed back for it to replay instead
+				let opCorrected = false
 				if (SLL.isBackburnerOp(op)) {
-					const backburnerRes = await tryDenyBackburnerDraftOp(ctx, op)
-					if (backburnerRes) return backburnerRes
+					const backburnerRes = await checkBackburnerDraftOp(ctx, op)
+					if (backburnerRes.code !== 'ok') return backburnerRes
+					opCorrected = backburnerRes.op !== op
+					op = backburnerRes.op
+					skippedRequestFilters = backburnerRes.skippedRequestFilters
 				} else {
 					const authRes = await Rbac.tryDenyPermissionsForUser(ctx, RBAC.perm('queue:write', { serverId: ctx.serverId }))
 					if (authRes) return authRes
@@ -1217,12 +1312,15 @@ export const router = {
 							ctx: layerCtx,
 							input: { layerIds: forceWriteCandidates, constraints: poolConstraints },
 						})
-						if (poolRes.code !== 'ok') {
-							// a broken pool filter shouldn't block all queue edits, so fail open and surface the misconfiguration
-							log.error('force-write pool check failed to build pool constraints: %o', poolRes)
-						} else if (poolRes.outOfPool.length > 0) {
-							return forceWriteDenied
+						// a pool filter that cannot be applied admits every layer, so it never blocks a queue edit
+						if (poolRes.problems.length > 0) {
+							log.warn(
+								{ [ATTRS.SquadServer.ID]: ctx.serverId },
+								'force-write pool check skipped filters that cannot be applied:\n%s',
+								describeProblems(poolRes.problems),
+							)
 						}
+						if (poolRes.outOfPool.length > 0) return forceWriteDenied
 					}
 				}
 
@@ -1230,22 +1328,26 @@ export const router = {
 				// this request. A save that its client left mid-way would otherwise never send save-completed, and the queue
 				// would stay saving for every admin.
 				const serverCtx = SquadServer.resolveCtx({ ...ctx, signal: CleanupSys.shutdownSignal }, serverId)
-				await dispatchOp(serverCtx, op, { sourceWsClientId: _ctx.wsClientId })
+				await dispatchOp(serverCtx, op, { sourceWsClientId: _ctx.wsClientId, echoToSource: opCorrected })
 
-				return { code: 'ok' as const }
+				if (skippedRequestFilters.length === 0) return { code: 'ok' as const }
+				return {
+					code: 'ok' as const,
+					skippedRequestFilters,
+					msg: ctx.tr.text(BB_Msgs.requestFiltersSkipped(skippedRequestFilters)),
+				}
 			}),
 		),
 }
 
 const clientOpLanes = OrderedLanes.create()
 
-// whether a template has any solutions. Filters ride in the template itself (see BB.withFilters),
-// and do-not-repeat constraints are deliberately excluded: they are transient, and a request that is only
-// blocked until the next match shouldn't be rejected outright.
-export async function isTemplateSatisfiable(
-	ctx: C.Db & MH.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal,
-	filter: F.FilterNode,
-): Promise<boolean> {
+type TemplateCheck = { code: 'ok' } | { code: 'err:no-solutions' } | { code: 'err:invalid-filter'; errors: F.NodeValidationError[] }
+
+// Whether a layer request template has any solutions, or cannot be applied at all. Filters ride in the template
+// itself (see BB.withFilters), and do-not-repeat constraints are deliberately excluded: they are transient, and a
+// request that is only blocked until the next match shouldn't be rejected outright.
+async function checkTemplate(ctx: C.Db & MH.Ctx & LQ.Ctx & SETTINGS.Ctx & CS.AbortSignal, filter: F.FilterNode): Promise<TemplateCheck> {
 	const layerCtx = await LayerQueries.resolveLayerQueryCtx(ctx)
 	const res = await LayerQueriesShared.checkBackburnerTemplates({
 		ctx: layerCtx,
@@ -1255,11 +1357,61 @@ export async function isTemplateSatisfiable(
 			templates: [{ itemId: 'probe', filter }],
 		},
 	})
-	if (res.code !== 'ok') {
-		log.error('backburner satisfiability probe failed to build constraints, failing open: %o', res)
-		return true
+	if (res.problems.length > 0) {
+		log.warn(
+			{ [ATTRS.SquadServer.ID]: ctx.serverId },
+			'layer request check skipped constraints that cannot be applied:\n%s',
+			describeProblems(res.problems),
+		)
 	}
-	return res.satisfiable['probe']
+	const errors = res.invalid['probe']
+	if (errors) return { code: 'err:invalid-filter', errors }
+	return res.satisfiable['probe'] ? { code: 'ok' } : { code: 'err:no-solutions' }
+}
+
+// The template without the server's layer request filters that cannot be applied, so a broken setting does not
+// block requests. `skipped` names the filters taken out.
+function dropUnappliableRequestFilters(ctx: C.Db & C.ManagedServer, filter: F.FilterNode): { filter: F.FilterNode; skipped: string[] } {
+	const requestFilterIds = SquadServer.getServerState(ctx).settings.queue.mainPool.layerRequestFilters.map((f) => f.filterId)
+	if (requestFilterIds.length === 0) return { filter, skipped: [] }
+	const parts = BB.parseTemplateParts(filter)
+	const applied = requestFilterIds.filter((id) => parts.filterIds.includes(id) || parts.excludedFilterIds.includes(id))
+	if (applied.length === 0) return { filter, skipped: [] }
+	const lower = LayerQueriesShared.lowerCtx({
+		...CS.init(),
+		engine: LayerEngine.requireEngine(),
+		filters: FilterEntity.state.filters,
+		effectiveColsConfig: LC.getEffectiveColumnConfig(),
+	})
+	const broken = applied.filter((id) => LE.lowerFilterEntity(lower, id).code !== 'ok')
+	if (broken.length === 0) return { filter, skipped: [] }
+	log.warn(
+		{ [ATTRS.SquadServer.ID]: ctx.serverId },
+		'layer request filters %s cannot be applied and were left out of a request',
+		broken.join(', '),
+	)
+	parts.filterIds = parts.filterIds.filter((id) => !broken.includes(id))
+	parts.excludedFilterIds = parts.excludedFilterIds.filter((id) => !broken.includes(id))
+	return { filter: BB.buildTemplateFilter(parts), skipped: broken.map((id) => backburnerFilterName(id) ?? id) }
+}
+
+// the stored filters that make a template impossible to apply, named. Empty when the problem is in the template's own
+// conditions
+function unappliableFilterNames(errors: F.NodeValidationError[]): string[] {
+	const ids = new Set<string>()
+	for (const error of errors) {
+		const id = error.via[0] ?? error.ownerFilterId ?? (error.type === 'unknown-filter' ? error.filterId : null)
+		if (id) ids.add(id)
+	}
+	return [...ids].map((id) => backburnerFilterName(id) ?? id)
+}
+
+function invalidRequestResult(ctx: Msgs.Ctx, errors: F.NodeValidationError[]) {
+	return {
+		code: 'err:invalid-filter' as const,
+		msg: ctx.tr.text(BB_Msgs.requestCannotBeApplied(unappliableFilterNames(errors))),
+		errors,
+	}
 }
 
 // writing a note only needs queue:write, which the caller has already established. Rewording or dropping someone
@@ -1286,8 +1438,9 @@ type BackburnerDraftOp = Exclude<Extract<SLL.Operation, { op: `backburner-${stri
 
 // per-op authorization + validation for backburner draft ops arriving over the RPC. Own items need any
 // queue:request-layers grant; touching someone else's item needs queue:write. Adds/updates/combines are
-// probed for satisfiability so an impossible template can't enter the backburner.
-async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id & CS.AbortSignal, op: BackburnerDraftOp) {
+// probed for satisfiability so an impossible template can't enter the backburner. An add or update loses the layer
+// request filters that cannot be applied, so `op` is the op to dispatch, which may differ from the one sent.
+async function checkBackburnerDraftOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id & CS.AbortSignal & Msgs.Ctx, op: BackburnerDraftOp) {
 	const state = ctx.layerQueue.session.state
 	const owner: USR.GuiOrChatUserId = { discordId: ctx.user.discordId }
 	const targets: BB.BackburnerItem[] = []
@@ -1322,6 +1475,7 @@ async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id
 	const authRes = await Rbac.tryDenyPermissionsForUser(ctx, authReq)
 	if (authRes) return authRes
 
+	const noSolutions = { code: 'err:no-solutions' as const, msg: 'No layers in the current pool match this request' }
 	switch (op.op) {
 		case 'backburner-add': {
 			if (!BB.sameOwner(op.item.source, owner)) {
@@ -1329,16 +1483,20 @@ async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id
 			}
 			const capRes = await checkBackburnerCaps(ctx, owner)
 			if (capRes) return capRes
-			if (!(await isTemplateSatisfiable(ctx, op.item.filter))) {
-				return { code: 'err:no-solutions' as const, msg: 'No layers in the current pool match this request' }
-			}
-			break
+			const dropped = dropUnappliableRequestFilters(ctx, op.item.filter)
+			const check = await checkTemplate(ctx, dropped.filter)
+			if (check.code === 'err:invalid-filter') return invalidRequestResult(ctx, check.errors)
+			if (check.code === 'err:no-solutions') return noSolutions
+			if (dropped.skipped.length === 0) break
+			return { code: 'ok' as const, op: { ...op, item: { ...op.item, filter: dropped.filter } }, skippedRequestFilters: dropped.skipped }
 		}
 		case 'backburner-update': {
-			if (!(await isTemplateSatisfiable(ctx, op.filter))) {
-				return { code: 'err:no-solutions' as const, msg: 'No layers in the current pool match this request' }
-			}
-			break
+			const dropped = dropUnappliableRequestFilters(ctx, op.filter)
+			const check = await checkTemplate(ctx, dropped.filter)
+			if (check.code === 'err:invalid-filter') return invalidRequestResult(ctx, check.errors)
+			if (check.code === 'err:no-solutions') return noSolutions
+			if (dropped.skipped.length === 0) break
+			return { code: 'ok' as const, op: { ...op, filter: dropped.filter }, skippedRequestFilters: dropped.skipped }
 		}
 		case 'backburner-combine': {
 			const target = state.backburner.find((item) => item.itemId === op.targetItemId)
@@ -1352,9 +1510,10 @@ async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id
 					msg: `Cannot combine: ${names.join(', ')} is applied normally on one request and inverted on the other`,
 				}
 			}
-			if (!(await isTemplateSatisfiable(ctx, merged.filter))) {
-				return { code: 'err:not-combinable' as const, msg: 'No layers match the combined request' }
-			}
+			// the reducer merges the stored templates as they are, so a filter that cannot be applied stays in the result
+			const check = await checkTemplate(ctx, merged.filter)
+			if (check.code === 'err:invalid-filter') return invalidRequestResult(ctx, check.errors)
+			if (check.code === 'err:no-solutions') return { code: 'err:not-combinable' as const, msg: 'No layers match the combined request' }
 			break
 		}
 		case 'backburner-remove':
@@ -1365,7 +1524,7 @@ async function tryDenyBackburnerDraftOp(ctx: C.Db & C.ManagedServer & USR.Ctx.Id
 		default:
 			assertNever(op)
 	}
-	return null
+	return { code: 'ok' as const, op, skippedRequestFilters: [] as string[] }
 }
 
 // the GUI add path rejects at the caps rather than evicting (the panel offers an explicit "evict my oldest"
@@ -1390,8 +1549,10 @@ export async function checkBackburnerCaps(
 }
 
 export type AddRequestResult =
-	| { code: 'ok'; item: BB.BackburnerItem; evicted: BB.BackburnerItem[] }
+	// skippedRequestFilters names the layer request filters left out because they cannot be applied
+	| { code: 'ok'; item: BB.BackburnerItem; evicted: BB.BackburnerItem[]; skippedRequestFilters: string[] }
 	| { code: 'err:no-solutions'; msg: string }
+	| { code: 'err:invalid-filter'; msg: string; errors: F.NodeValidationError[] }
 	| { code: 'err:backburner-full'; max: number }
 	| RBAC.PermissionDeniedResponse
 
@@ -1407,10 +1568,13 @@ export async function addBackburnerRequestFromChat(
 	if (denied) return denied
 	const serverState = SquadServer.getServerState(ctx)
 	// in-game requests always carry the layer request filters; only the GUI can deliberately drop them
-	const filter = BB.withFilters(args.filter, serverState.settings.queue.mainPool.layerRequestFilters)
-	if (!(await isTemplateSatisfiable(ctx, filter))) {
-		return { code: 'err:no-solutions', msg: 'No layers in the current pool match this request' }
-	}
+	const { filter, skipped } = dropUnappliableRequestFilters(
+		ctx,
+		BB.withFilters(args.filter, serverState.settings.queue.mainPool.layerRequestFilters),
+	)
+	const check = await checkTemplate(ctx, filter)
+	if (check.code === 'err:invalid-filter') return invalidRequestResult(ctx, check.errors)
+	if (check.code === 'err:no-solutions') return { code: 'err:no-solutions', msg: 'No layers in the current pool match this request' }
 	const saved = ctx.layerQueue.session.state.savedBackburner
 	const maxTotal = serverState.settings.queue.layerRequests.maxTotal
 	const max = await Rbac.getMaxLayerRequestsForPlayer(ctx)
@@ -1432,7 +1596,7 @@ export async function addBackburnerRequestFromChat(
 		write: { kind: 'add', item, evictItemIds: evicted.map((i) => i.itemId) },
 		source: args.source,
 	})
-	return { code: 'ok', item, evicted }
+	return { code: 'ok', item, evicted, skippedRequestFilters: skipped }
 }
 
 export async function removeBackburnerRequestsFromChat(
@@ -1494,8 +1658,9 @@ export const dispatchOp = Instr.spanOp(
 	async (
 		ctx: SideEffectCtx,
 		op: SLL.Operation,
-		// set for ops arriving via the dispatchOp rpc; the originating client gets an ack instead of the full op
-		opts?: { sourceWsClientId?: string },
+		// set for ops arriving via the dispatchOp rpc; the originating client gets an ack instead of the full op, unless
+		// echoToSource says the server corrected it
+		opts?: { sourceWsClientId?: string; echoToSource?: boolean },
 	) => {
 		if ((ctx as Partial<C.Tx>).tx) throw new Error('dispatchOp awaits rcon, so it cannot run inside a transaction')
 		const applied = ODSM.Server.applyOps(ctx.layerQueue.session, [op], SLL.reducer)
@@ -1507,7 +1672,7 @@ export const dispatchOp = Instr.spanOp(
 			else log.error(new Error('layer queue op produced invalid state', { cause: applied.error }))
 			return
 		}
-		ctx.layerQueue.op$.next({ ops: [op], sourceWsClientId: opts?.sourceWsClientId })
+		ctx.layerQueue.op$.next({ ops: [op], sourceWsClientId: opts?.sourceWsClientId, echoToSource: opts?.echoToSource })
 		// all side effect processing happens here in an uninterrupted async context
 		for (const se of applied.sideEffects) {
 			await handleSideEffect(ctx, op, se)

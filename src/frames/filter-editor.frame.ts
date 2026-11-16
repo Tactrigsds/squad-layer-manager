@@ -8,6 +8,7 @@ import * as NodeMap from '@/lib/node-map'
 import * as Obj from '@/lib/object-utils'
 import * as ODSM from '@/lib/odsm'
 import * as Prom from '@/lib/promise-utils'
+import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
@@ -24,6 +25,7 @@ import type * as UP from '@/models/user-presence.models'
 import * as RPC from '@/orpc.client'
 import * as FilterEditClient from '@/systems/filter-edit.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
+import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as UPClient from '@/systems/user-presence.client'
@@ -78,18 +80,31 @@ type FilterEditorBase = {
 	// opening one closes whichever was open, and a node that goes away takes its editor with it.
 	editingNodeId: string | null
 
+	// matches the `data-filter-tree` attribute on this editor's tree, so DOM lookups for a node stay inside it. A tree
+	// built from a stored filter derives its node ids from paths, so two editors on one page can share them.
+	scopeId: string
+	view: View
+
 	validatedFilter: F.FilterNode | null
 	// the tree the fields below were derived from; it is `tree` once validation has caught up with the last edit
 	validatedTree: F.FilterNodeTree | null
+	// what `errors` were lowered from. Errors are resolved to nodes against this tree, never a newer one
+	lowered: LoweringInput | null
 	// the apply-filter loop this edit would create, if any. A loop has no fixed point once the referenced
 	// filters are inlined, so the server refuses to store one and saving is blocked here first.
 	referenceCycle: F.FilterEntityId[] | null
 	modified: boolean
 	valid: boolean
+	// a save went through, and the problem count is reported once validation has caught up with the draft
+	reportProblemsWhenValidated: boolean
 
 	nodeMapStore: Zus.StoreApi<NodeMap.NodeMapStore>
 } & F.NodeValidationErrorStore &
 	LayerTablePrt.Predicates
+
+export type View = 'builder' | 'text'
+
+type LoweringInput = { tree: F.FilterNodeTree; missExemption: F.FilterNode | null }
 
 export type FilterEditor = {
 	frameKey: Key
@@ -153,12 +168,16 @@ const setup: Frame['setup'] = (args) => {
 		editedComments: new Set(),
 		undo: UNDO.empty(),
 		editingNodeId: null,
+		scopeId: args.input.instanceId,
+		view: 'builder',
 
 		validatedFilter: null,
 		validatedTree: null,
+		lowered: null,
 		referenceCycle: null,
 		modified: false,
 		valid: false,
+		reportProblemsWhenValidated: false,
 
 		baseQueryInput: undefined,
 
@@ -193,6 +212,36 @@ const setup: Frame['setup'] = (args) => {
 		.subscribe(validate)
 	args.cleanup.push(validateSub)
 
+	// lowering reads the layer data, so it runs in the layer queries worker once structural validation has settled.
+	// The draft is lowered again whenever the worker's copy of the filters changes, since it may apply one of them.
+	const lowerSub = Rx.combineLatest([
+		args.update$.pipe(
+			Rx.map(([state]) => state),
+			Rx.filter((state) => state.validatedTree === state.tree),
+			Rx.map((state) => ({ input: loweringInput(state), filter: state.validatedFilter })),
+			Rx.distinctUntilChanged((a, b) => a.input.tree === b.input.tree && a.input.missExemption === b.input.missExemption),
+		),
+		Zus.toObservable(LayerQueriesClient.Store, true).pipe(
+			Rx.map(([state]) => state.backgroundStateEpoch),
+			Rx.distinctUntilChanged(),
+		),
+	])
+		.pipe(Rx.switchMap(([{ input, filter }]) => lowerDraft(input, filter)))
+		.subscribe(({ input, errors }) => set({ errors, lowered: input }))
+	args.cleanup.push(lowerSub)
+
+	const savedProblemsSub = args.update$
+		.pipe(
+			Rx.map(([state]) => state),
+			Rx.filter((state) => state.reportProblemsWhenValidated && Sel.validationCurrent(state)),
+		)
+		.subscribe((state) => {
+			set({ reportProblemsWhenValidated: false })
+			const count = Sel.problemCount(state)
+			if (count > 0) toast.warning(...tr.toast(F_Msgs.savedWithProblems(count)))
+		})
+	args.cleanup.push(savedProblemsSub)
+
 	if (filterId) {
 		args.cleanup.push(
 			FilterEditClient.watchUpdates$(filterId, (update) => {
@@ -218,6 +267,28 @@ const setup: Frame['setup'] = (args) => {
 	}
 
 	LayerTablePrt.initLayerTable(args)
+}
+
+// A stored filter's miss exemption is part of its meta. A filter that has not been created yet, and the miss
+// exemption's own editor, hold theirs elsewhere.
+function loweringInput(state: FilterEditor): LoweringInput {
+	return { tree: state.tree, missExemption: state.shared ? state.meta.missExemption : null }
+}
+
+function lowerDraft(input: LoweringInput, filter: F.FilterNode | null) {
+	if (!filter) return Rx.of({ input, errors: NO_ERRORS })
+	return new Rx.Observable<{ input: LoweringInput; errors: F.NodeValidationError[] }>((subscriber) => {
+		const controller = new AbortController()
+		LayerQueriesClient.validateFilter({ node: filter, missExemption: input.missExemption }, controller.signal).then(
+			(errors) => subscriber.next({ input, errors }),
+			(error: unknown) => {
+				if (controller.signal.aborted) return
+				console.error('validating the filter draft failed:', error)
+				subscriber.next({ input, errors: NO_ERRORS })
+			},
+		)
+		return () => controller.abort()
+	})
 }
 
 // the draft and everything read straight off it, written together so no render sees a tree from one op and a
@@ -255,11 +326,121 @@ export const frame = frameManager.createFrame<Types>({
 })
 
 const NO_CHILDREN: readonly string[] = []
+const NO_ERRORS: F.NodeValidationError[] = []
+// well above the node count of any filter shown at once
+const NODE_SELECTORS_MAX = 2000
+
+// the parts of a node that its errors name, marked in both its compact and its expanded view
+export type NodeMarks = {
+	columns: ReadonlySet<string>
+	// as String() renders them
+	values: ReadonlySet<string>
+	// the filter an apply-filter node references
+	filter: boolean
+}
+
+const NO_MARKS: NodeMarks = { columns: new Set(), values: new Set(), filter: false }
+
+// One line of the problem summary. The errors a referenced filter owns share one line per apply-filter node.
+export type ProblemRow =
+	| { type: 'node'; key: string; nodeId: string | null; error: F.NodeValidationError }
+	| { type: 'referenced'; key: string; nodeId: string | null; ownerFilterId: F.FilterEntityId; errors: F.NodeValidationError[] }
 
 export namespace Sel {
 	export const rootId = (state: FilterEditor) => state.tree.rootId
 
-	export const validationCurrent = (state: FilterEditor) => state.validatedTree === state.tree
+	export const loweringCurrent = (state: FilterEditor) => {
+		const input = loweringInput(state)
+		return state.lowered?.tree === input.tree && state.lowered.missExemption === input.missExemption
+	}
+
+	export const validationCurrent = (state: FilterEditor) => state.validatedTree === state.tree && loweringCurrent(state)
+
+	export const view = (state: FilterEditor) => state.view
+
+	export const scopeId = (state: FilterEditor) => state.scopeId
+
+	export const errors = (state: FilterEditor) => state.errors ?? NO_ERRORS
+
+	export const problemCount = (state: FilterEditor) => state.errors?.length ?? 0
+
+	// per error, the node it marks: null for one that is not in this tree, or whose path no longer resolves
+	const errorNodes = RSel.createSelector([errors, (state: FilterEditor) => state.lowered?.tree], (errors, tree) =>
+		errors.map((error) => (tree && error.part === 'filter' ? F.resolveErrorNode(tree, error.rootPath) : null)),
+	)
+
+	const errorsByNode = RSel.createSelector([errors, errorNodes], (errors, nodeIds) => {
+		const byNode = new Map<string, F.NodeValidationError[]>()
+		errors.forEach((error, i) => {
+			const nodeId = nodeIds[i]
+			if (nodeId === null) return
+			const list = byNode.get(nodeId)
+			if (list) list.push(error)
+			else byNode.set(nodeId, [error])
+		})
+		return byNode
+	})
+
+	export const nodeErrors = RSel.memoizeFactoryLru(
+		(id: string) => RSel.createSelector([errorsByNode], (byNode) => byNode.get(id) ?? NO_ERRORS),
+		NODE_SELECTORS_MAX,
+	)
+
+	export const nodeMarks = RSel.memoizeFactoryLru(
+		(id: string) =>
+			RSel.createSelector([nodeErrors(id)], (errors): NodeMarks => {
+				if (errors.length === 0) return NO_MARKS
+				const columns = new Set<string>()
+				const values = new Set<string>()
+				let filter = false
+				for (const error of errors) {
+					if (error.via.length > 0) {
+						filter = true
+						continue
+					}
+					switch (error.type) {
+						case 'unmapped-column':
+							columns.add(error.column)
+							break
+						case 'unmapped-value':
+							values.add(String(error.value))
+							break
+						case 'unknown-filter':
+						case 'recursive-filter':
+							filter = true
+							break
+						case 'invalid-node':
+							break
+						default:
+							assertNever(error)
+					}
+				}
+				return { columns, values, filter }
+			}),
+		NODE_SELECTORS_MAX,
+	)
+
+	export const problemRows = RSel.createSelector([errors, errorNodes], (errors, nodeIds) => {
+		const rows: ProblemRow[] = []
+		const referenced = new Map<string, Extract<ProblemRow, { type: 'referenced' }>>()
+		errors.forEach((error, i) => {
+			const nodeId = nodeIds[i]
+			if (error.via.length === 0 || !error.ownerFilterId) {
+				rows.push({ type: 'node', key: `${error.part}:${error.path.join('.')}:${i}`, nodeId, error })
+				return
+			}
+			const key = `${error.part}:${error.rootPath.join('.')}:${error.ownerFilterId}`
+			const row = referenced.get(key)
+			if (row) {
+				row.errors.push(error)
+				return
+			}
+			const created = { type: 'referenced' as const, key, nodeId, ownerFilterId: error.ownerFilterId, errors: [error] }
+			referenced.set(key, created)
+			rows.push(created)
+		})
+		return rows
+	})
 
 	export const depth = (id: string | undefined) => (state: FilterEditor) => (id ? F.nodeDepth(state.tree, id) : undefined)
 
@@ -273,6 +454,13 @@ export namespace Sel {
 		(id: string) =>
 		(state: FilterEditor): F.ShallowEditableFilterNode =>
 			state.tree.nodes.get(id)!
+
+	export const nodeIfPresent = RSel.memoizeFactoryLru(
+		(id: string) =>
+			(state: FilterEditor): F.ShallowEditableFilterNode | undefined =>
+				state.tree.nodes.get(id),
+		NODE_SELECTORS_MAX,
+	)
 
 	export const createHint =
 		(id: string) =>
@@ -357,10 +545,13 @@ export namespace Actions {
 		}
 		const res = await RPC.orpc.filters.createFilter.call({ id: state.createId, ...state.meta, filter: state.validatedFilter })
 		switch (res.code) {
-			case 'ok':
+			case 'ok': {
 				UsersClient.invalidateLoggedInUser()
-				toast(...tr.toast(F_Msgs.created()))
+				const problemCount = Sel.problemCount(store(stores).getState())
+				if (problemCount > 0) toast.warning(...tr.toast(F_Msgs.savedWithProblems(problemCount)))
+				else toast(...tr.toast(F_Msgs.created()))
 				return true
+			}
 			case 'err:permission-denied':
 				RbacClient.handlePermissionDenied(res)
 				return false
@@ -428,7 +619,11 @@ export namespace Actions {
 			return { code: 'err:dispatch-failed' as const }
 		})
 		void sent.then((res) => {
-			if (res.code === 'ok') return
+			if (res.code === 'ok') {
+				// a filter that cannot be applied still saves, and the problem count is reported
+				if (ops.some((op) => op.code === 'save')) s.setState({ reportProblemsWhenValidated: true })
+				return
+			}
 			// the server never applied these, and a pending op that is never acked doesn't just lose its own
 			// edit: until pendingOps drains, no later server update reaches localState at all
 			const dropped = ODSM.Client.dropPendingOps(s.getState().session, opIds, FE.reducer)
@@ -484,6 +679,58 @@ export namespace Actions {
 	export function updateRoot(stores: KeyProp, filter: F.EditableFilterNode) {
 		dispatchKeyed(stores, 'replace-tree', { code: 'replace-tree', tree: FE.toTree(filter) })
 		store(stores).setState({ createHints: new Map(), editedComments: new Set(), editingNodeId: null })
+	}
+
+	export function setView(stores: KeyProp, view: View) {
+		store(stores).setState({ view })
+	}
+
+	// Scrolls to a node, marks it with the exclusive anchor highlight (index.css) and focuses its compact row. The node
+	// is found through the DOM because the tree is rendered through portals.
+	export function revealNode(stores: KeyProp, nodeId: string) {
+		const s = store(stores)
+		s.setState({ view: 'builder' })
+		requestAnimationFrame(() => {
+			const el = nodeElement(s.getState().scopeId, nodeId)
+			if (el) reveal(el)
+		})
+	}
+
+	// Reveals the node at a lowering error path once the tree has rendered. Gives up once the tree is on the page and
+	// the path does not resolve against it, which happens when the filter has changed since the link was made.
+	export function revealPath(stores: KeyProp, path: string[], signal: AbortSignal) {
+		const s = store(stores)
+		const attempt = () => {
+			const state = s.getState()
+			if (!nodeElement(state.scopeId, state.tree.rootId)) return false
+			const nodeId = F.resolveErrorNode(state.tree, path)
+			if (nodeId === null) return true
+			const el = nodeElement(state.scopeId, nodeId)
+			if (!el) return false
+			reveal(el)
+			return true
+		}
+		if (attempt()) return
+		const observer = new MutationObserver(() => {
+			if (attempt()) observer.disconnect()
+		})
+		observer.observe(document.body, { childList: true, subtree: true })
+		signal.addEventListener('abort', () => observer.disconnect(), { once: true })
+	}
+
+	function nodeElement(scopeId: string, nodeId: string) {
+		return document.querySelector<HTMLElement>(
+			`[data-filter-tree="${CSS.escape(scopeId)}"] [data-filter-node-id="${CSS.escape(nodeId)}"]`,
+		)
+	}
+
+	function reveal(el: HTMLElement) {
+		for (const other of document.querySelectorAll('[data-anchor-highlight]')) {
+			if (other !== el) other.removeAttribute('data-anchor-highlight')
+		}
+		el.setAttribute('data-anchor-highlight', 'true')
+		el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+		el.querySelector<HTMLElement>('[data-node-summary]')?.focus({ preventScroll: true })
 	}
 
 	export function setNodeEditing(stores: KeyProp, id: string | null) {

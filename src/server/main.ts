@@ -150,6 +150,7 @@ await Instr.spanOp('main', { module }, async () => {
 	Settings.setup(DB.withDb({ ...CS.init(), signal: CleanupSys.shutdownSignal }))
 	// after Settings.setup so GLOBAL_SETTINGS.layerTable exists; also subscribes to settings changes to re-push
 	Config.setup()
+	FilterEntity.setupProblemIndex()
 	await ServerAgent.setup()
 	// detect (before this instance's APP_STARTED is persisted) whether we came up via a restart-slm command, so the
 	// per-server "SLM started/restarted" admin warn (sent during SquadServerLifecycle.setup) can name who restarted it

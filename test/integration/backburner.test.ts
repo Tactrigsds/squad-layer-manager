@@ -7,13 +7,16 @@ import * as L from '@/models/layer.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
 import { cmd, filter, LAYERS, queue, role } from '../harness/arrange'
-import { appEventTypes, latestMatch, matchSetBy, savedBackburner, savedFilter, savedQueue, warnsTo } from '../harness/inspect'
+import { appEventData, appEventTypes, latestMatch, matchSetBy, savedBackburner, savedFilter, savedQueue, warnsTo } from '../harness/inspect'
+import { rearrange } from '../harness/rearrange'
 
 // The layer backburner's in-game surface, and the generation it feeds: /reqlayer requests are validated
 // against the pool, queued, listed, evicted at the per-user cap, and consumed by autogeneration when the
 // map rolls -- which is also where the pool's repeat rules bind, so a second roll proves the just-played
 // maps stay out of what generation draws. The pool generates votes, which neither roll may produce: a request
-// outranks a vote, and the second roll leaves a single map, too few for a vote.
+// outranks a vote, and the second roll leaves a single map, too few for a vote. Last, a filter that cannot be
+// applied: a request leaves it out when it is a layer request filter and is refused when it applies it itself, and
+// generation draws without it and warns the admins.
 
 const ADMIN_STEAM_ID = '76561198000000001'
 const REQUESTER_STEAM_ID = '76561198000000002'
@@ -47,6 +50,8 @@ beforeAll(async () => {
 			),
 			// saved before layer ids were canonical text. Nothing references it.
 			filter('legacy-ids', 'Legacy ids', legacyIdsFilter(LEGACY_GORODOK, LEGACY_NARVA)),
+			// a map the layer data does not have, so the filter cannot be applied
+			filter('broken', 'Broken', FB.eq('Map', 'NoSuchMap')),
 		],
 		globalSettings: (s) => {
 			s.rbac.roles['requesters'] = role([], { users: [REQUESTER] }, { maxLayerRequests: 1 })
@@ -221,5 +226,83 @@ describe('generation on roll', () => {
 		// someone who requested nothing that got played
 		expect(await matchRows(`setByPlayers=${encodeURIComponent(JSON.stringify([REQUESTER_STEAM_ID]))}`)).toHaveLength(0)
 		expect(await matchRows(`setByUsers=${encodeURIComponent(JSON.stringify([REQUESTER.discordId.toString()]))}`)).toHaveLength(0)
+	})
+})
+
+describe('filters that cannot be applied', () => {
+	const GEN_POOL = { filterId: 'gen-pool', applyAs: 'regular' } as const
+	const BROKEN = { filterId: 'broken', applyAs: 'regular' } as const
+
+	it('leaves a layer request filter that cannot be applied out of a request, and says so', async () => {
+		await rearrange(app, {
+			pool: (p) => {
+				p.constrainGeneration = [GEN_POOL]
+				p.layerRequestFilters = [GEN_POOL, BROKEN]
+			},
+		})
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer skorpo'))
+		await app.waitFor(() => savedBackburner(app).length === 1 || null, { label: 'the request persisting', timeoutMs: 20_000 })
+		expect(BB.parseTemplateParts(savedBackburner(app)[0].filter).filterIds).toEqual(['gen-pool'])
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('"Broken" cannot be applied')) || null, {
+			label: 'the reply naming the left-out filter',
+			timeoutMs: 20_000,
+		})
+
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('unreqlayer'))
+		await app.waitFor(() => savedBackburner(app).length === 0 || null, { label: 'cleanup', timeoutMs: 20_000 })
+	})
+
+	it('refuses a request that applies a filter that cannot be applied', async () => {
+		await rearrange(app, {
+			pool: (p) => {
+				p.constrainGeneration = [GEN_POOL]
+				p.layerRequestFilters = [GEN_POOL]
+			},
+		})
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer broken'))
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('"Broken", which cannot be applied')) || null, {
+			label: 'the refusal',
+			timeoutMs: 20_000,
+		})
+		expect(savedBackburner(app)).toHaveLength(0)
+	})
+
+	it('generates without a generation filter that cannot be applied, and warns the admins', async () => {
+		await rearrange(app, {
+			pool: (p) => {
+				p.constrainGeneration = [GEN_POOL, BROKEN]
+				p.warnFor = [BROKEN]
+			},
+		})
+		type GeneratedWithout = { queueItemId: string; layerIds: string[]; skipped: { filterId?: string }[] }
+		const recordedBefore = appEventData<GeneratedWithout>(app, 'LAYER_GENERATED_WITHOUT_FILTERS').length
+		await app.waitForNextLayerSync()
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.endMatch()
+		app.emu.world.startNewGame()
+
+		const recorded = await app.waitFor(
+			() => appEventData<GeneratedWithout>(app, 'LAYER_GENERATED_WITHOUT_FILTERS')[recordedBefore] ?? null,
+			{ label: 'the generation recorded without the filter', timeoutMs: 30_000 },
+		)
+		expect(recorded.skipped.map((s) => s.filterId)).toEqual([BROKEN.filterId])
+		const generated = await app.waitFor(() => savedQueue(app).find((item) => item.itemId === recorded.queueItemId) ?? null, {
+			label: 'the generated layer in the saved queue',
+		})
+		// drawn from the generation filter that can be applied, not the default layer
+		expect(['Gorodok', 'Skorpo', 'Fallujah']).toContain(L.toLayer(L.readStoredLayerId(generated.layerId!)).Map)
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('without the filter "Broken"')) || null, {
+			label: 'the warn naming the left-out filter',
+			timeoutMs: 20_000,
+		})
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('shownext'))
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('not checked against the filter "Broken"')) || null, {
+			label: 'the next-layer warn naming the unchecked filter',
+			timeoutMs: 20_000,
+		})
 	})
 })

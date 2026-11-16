@@ -127,6 +127,7 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 		'TeamColumnSchema',
 		'UpdateFilterEntitySchema',
 		'ValueSchema',
+		'describeNodeValidationError',
 	],
 	'slm/models/gen-vote': ['CHOICE_CONSTRAINT_KEYS', 'DEFAULT_UNIQUE_CONSTRAINTS', 'choiceConstraintAllowedValues', 'initChoice'],
 	'slm/models/layer-queries': [

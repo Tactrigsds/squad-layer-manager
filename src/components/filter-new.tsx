@@ -18,7 +18,7 @@ import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 
 import FilterCard from './filter-card'
-import { FilterValidationErrorDisplay } from './filter-extra-errors'
+import { FilterProblemCountBadge, FilterValidationErrorDisplay } from './filter-extra-errors'
 import LayerTable from './layer-table'
 
 // The page of a filter that has not been created yet. Its details dialog opens with the page, and can be closed to
@@ -76,6 +76,7 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			</EditDetailsDialog>
 			<FilterValidationErrorDisplay stores={stores} />
 			<FilterCard stores={stores}>
+				<FilterProblemCountBadge stores={stores} />
 				<PermissionDeniedTooltip denied={createDenied}>
 					<Button variant="primary" onClick={() => void create()} disabled={!isValidFilter || creating || !!createDenied}>
 						<Icons.Save />

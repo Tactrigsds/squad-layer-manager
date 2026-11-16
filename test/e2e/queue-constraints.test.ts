@@ -2,15 +2,18 @@ import type { Page } from '@playwright/test'
 
 import * as FB from '@/models/filter-builders.models'
 import * as RRS from '@/models/repeat-rulesets.models'
+import * as SLL from '@/models/shared-layer-list.models'
 
-import { type AppFixture, createAppFixture } from '../harness/app-fixture'
-import { filter, LAYERS, layerTag, layerText, queue, queueItem, selectableFilter } from '../harness/arrange'
+import { type AppFixture, createAppFixture, type TestUser } from '../harness/app-fixture'
+import { filter, LAYERS, layerTag, layerText, queue, queueItem, role, selectableFilter } from '../harness/arrange'
 import { pickOption } from '../harness/combo-box'
 import * as Dash from '../harness/dashboard'
-import { savedPool, savedServerRepeatRuleset } from '../harness/inspect'
+import { appEventData, savedPool, savedQueue, savedServerRepeatRuleset } from '../harness/inspect'
+import { createOrpcClient, firstYield } from '../harness/orpc-client'
 import { gotoReady } from '../harness/ready'
 import { rearrange, type RearrangeOptions } from '../harness/rearrange'
 import { expect, test } from './fixtures'
+import { settledText } from './settle'
 
 // What a queued layer violates has to be visible on the item itself: the indicators are the only thing
 // standing between an admin and saving a queue that repeats a map or leaves the pool. They come from two
@@ -32,6 +35,10 @@ async function saveSettings(page: Page) {
 // need and the rest ignore is seeded once: the filters, the tag and the second ruleset.
 const planned = layerTag('planned', 'aaaaaa')
 const MAP_RULE: RRS.RepeatRuleConfig = { label: 'Map', field: 'Map', within: 4, warn: true, indicate: true }
+// a map the layer data does not have, so the filter cannot be applied
+const BROKEN_POOL = 'broken-pool'
+// may edit the queue but not queue a layer from outside the pool
+const WRITER: TestUser = { discordId: 900000000000000031n, username: 'test-writer' }
 
 let app: AppFixture
 
@@ -45,9 +52,12 @@ test.beforeAll(async () => {
 				invertedAlertMessage: 'Not a RAAS layer',
 			}),
 			filter('seed-layers', 'Seed Layers', FB.and([FB.eq('Gamemode', 'Seed')]), { emoji: '🌱', alertMessage: 'A seeding layer' }),
+			filter(BROKEN_POOL, 'Broken Pool', FB.and([FB.eq('Gamemode', 'RAAS'), FB.eq('Map', 'NoSuchMap')])),
 		],
+		users: [WRITER],
 		globalSettings: (settings) => {
 			settings.layerTags = [planned]
+			settings.rbac.roles['queue-writer'] = role(['site:authorized', 'queue:write'], { users: [WRITER] })
 			settings.repeatRulesets.push({
 				id: 'strict',
 				name: 'Strict',
@@ -334,6 +344,144 @@ test.describe('queue item constraints', () => {
 		)
 		await expect(page.getByRole('button', { name: 'Save Anyway' })).toHaveCount(0)
 		await expect(page.getByText('Repeats Detected')).toHaveCount(0)
+	})
+
+	// A stored filter stops applying when the layer data changes under it, while the pool configuration keeps naming it.
+	// Every check that reads the configuration carries on without the filter, and the dashboard names it.
+	test('names a pool filter that cannot be applied, and checks, saves and lists layers without it', async ({ page }) => {
+		await arrange({
+			layerQueue: queue(LAYERS.gorodokRaas),
+			repeatRules: [],
+			pool: (pool) => {
+				pool.poolFilter = { filterId: BROKEN_POOL, mode: 'include' }
+				selectableFilter(pool, 'raas-only', { indicate: 'both' })
+			},
+		})
+		await gotoReady(page, app.loginUrl())
+		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible()
+
+		const banner = page.getByRole('alert').filter({ hasText: 'configuration cannot be applied' })
+		await expect(banner).toContainText('1 filter in this server’s configuration cannot be applied')
+		await expect(banner).toContainText('Pool filter')
+		await expect(banner.getByRole('link', { name: 'Broken Pool' })).toHaveAttribute('href', `/filters/${BROKEN_POOL}`)
+		await expect(banner.getByRole('link', { name: 'NoSuchMap is not a Map value in the layer data' })).toHaveAttribute(
+			'href',
+			`/filters/${BROKEN_POOL}?node=children.1`,
+		)
+
+		// the valid filter still marks the item, beside the mark for the filter it could not be checked against
+		const items = Dash.queueSection(page).getByRole('listitem')
+		const gorodok = items.filter({ hasText: layerText('Gorodok_RAAS_v1') })
+		await expect(gorodok.getByRole('img', { name: 'Not checked' })).toBeVisible()
+		await gorodok.getByRole('button', { name: 'Layer indicators' }).hover()
+		await expect(page.getByRole('tooltip')).toContainText('In RAAS Only')
+		await page.keyboard.press('Escape')
+		await expect(page.getByRole('tooltip')).toHaveCount(0)
+
+		await page.getByRole('button', { name: 'Start Editing' }).click()
+		await page.getByRole('button', { name: 'Add Layers' }).click()
+		const dialog = page.getByRole('dialog', { name: 'Add Layers' })
+		await settledText(dialog)
+		await expect(dialog.getByText('1 filter cannot be applied')).toBeVisible()
+		await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
+		await pickOption(page, 'Narva_RAAS_v1')
+		await dialog
+			.getByRole('row')
+			.filter({ hasText: layerText('Narva_RAAS_v1') })
+			.first()
+			.click()
+		await dialog.getByRole('button', { name: 'Submit' }).click()
+		await expect(dialog).toBeHidden()
+
+		// an item's indicators show only once statuses computed for the edited queue land, and statuses that are
+		// current let the save go ahead at once
+		const narva = items.filter({ hasText: layerText('Narva_RAAS_v1') })
+		await expect(narva.getByRole('button', { name: 'Layer indicators' })).toBeVisible()
+		await expect(narva.getByRole('img', { name: 'Not checked' })).toBeVisible()
+
+		await page.getByRole('button', { name: /^(Save|Force Save)$/ }).click()
+		await app.waitFor(() => savedQueue(app).some((item) => item.layerId?.startsWith('Narva_RAAS_v1:')) || null, {
+			label: 'the queue saved past the filter that cannot be applied',
+		})
+	})
+
+	test('records the broken filter, and lets a writer without force-write add a layer past it', async () => {
+		await app.waitFor(
+			() => appEventData<{ filterId: string }>(app, 'FILTER_BROKEN').some((event) => event.filterId === BROKEN_POOL) || null,
+			{ label: 'the FILTER_BROKEN event for the seeded filter' },
+		)
+		await arrange({
+			layerQueue: queue(LAYERS.gorodokRaas),
+			repeatRules: [],
+			pool: (pool) => {
+				pool.poolFilter = { filterId: BROKEN_POOL, mode: 'include' }
+			},
+		})
+
+		const writer = await createOrpcClient(app, WRITER)
+		const init = await firstYield((signal) => writer.layerQueue.watchOps({ serverId: app.serverId }, { signal }), {
+			label: 'the queue session',
+		})
+		if (init.code !== 'init') throw new Error(`expected the queue session's init, got ${init.code}`)
+		const editWindowSeqId = init.state.editWindowSeqId
+		const userId = WRITER.discordId
+
+		// a filter that could be applied would leave Harju out of the pool, and the writer could not add it
+		const added = await writer.layerQueue.dispatchOp({
+			serverId: app.serverId,
+			op: {
+				op: 'add',
+				opId: SLL.createOpId(),
+				userId,
+				editWindowSeqId,
+				items: [queueItem(LAYERS.harjuRaas)],
+				index: { outerIndex: 0, innerIndex: null },
+			},
+		})
+		expect(added.code).toBe('ok')
+		const reset = await writer.layerQueue.dispatchOp({
+			serverId: app.serverId,
+			op: { op: 'reset-to-saved', opId: SLL.createOpId(), userId, editWindowSeqId },
+		})
+		expect(reset.code).toBe('ok')
+	})
+
+	// the pool filter gates rows for a user without force-write, so a broken one must not read as every layer missing it
+	test('lets a writer without force-write pick and queue a layer in the Add Layers dialog past the broken pool filter', async ({
+		page,
+	}) => {
+		await arrange({
+			layerQueue: queue(LAYERS.gorodokRaas),
+			repeatRules: [],
+			pool: (pool) => {
+				pool.poolFilter = { filterId: BROKEN_POOL, mode: 'include' }
+			},
+		})
+		await gotoReady(page, app.loginUrl(WRITER), { signals: ['layer-engine'] })
+		await expect(Dash.queueLabel(page, 'Queue (1)')).toBeVisible()
+
+		await page.getByRole('button', { name: 'Start Editing' }).click()
+		await page.getByRole('button', { name: 'Add Layers' }).click()
+		const dialog = page.getByRole('dialog', { name: 'Add Layers' })
+		await settledText(dialog)
+		await expect(dialog.getByText('1 filter cannot be applied')).toBeVisible()
+		await dialog.getByRole('combobox', { name: 'Layer', exact: true }).click()
+		await pickOption(page, 'Narva_RAAS_v1')
+		await dialog
+			.getByRole('row')
+			.filter({ hasText: layerText('Narva_RAAS_v1') })
+			.first()
+			.click()
+		await expect(dialog.getByRole('button', { name: 'Submit' })).toBeEnabled()
+		await dialog.getByRole('button', { name: 'Submit' }).click()
+		await expect(dialog).toBeHidden()
+
+		const items = Dash.queueSection(page).getByRole('listitem')
+		await expect(items.filter({ hasText: layerText('Narva_RAAS_v1') })).toBeVisible()
+		await page.getByRole('button', { name: 'Save', exact: true }).click()
+		await app.waitFor(() => savedQueue(app).some((item) => item.layerId?.startsWith('Narva_RAAS_v1:')) || null, {
+			label: 'the queue saved by the writer',
+		})
 	})
 
 	// The exemption is only useful if an admin can set it up without editing settings by hand, so the pool

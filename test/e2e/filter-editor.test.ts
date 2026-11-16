@@ -39,6 +39,9 @@ test.beforeAll(async () => {
 			// a block with a child of its own, so that cloning it has to carry a subtree rather than one node
 			filter('nested', 'Nested Block', FB.and([FB.eq('Gamemode', 'RAAS'), FB.or([FB.eq('Map', 'Harju')])])),
 			filter('contributors', 'Contributors', FB.and([FB.eq('Gamemode', 'RAAS')])),
+			// Not_A_Map is no map in the layer data, so this filter cannot be applied
+			filter('broken-map', 'Broken Map', FB.and([FB.eq('Gamemode', 'RAAS'), FB.inValues('Map', ['Gorodok', 'Not_A_Map'])])),
+			filter('applies-broken', 'Applies Broken Map', FB.and([FB.eq('Gamemode', 'RAAS'), FB.includedIn('broken-map')])),
 		],
 		users: CONTRIBUTORS,
 		serverSettings: (settings) => {
@@ -157,12 +160,12 @@ test.describe('filter references', () => {
 	})
 
 	test('navigating between filters via reference badges leaves the editor pristine', async ({ page }) => {
-		await page.goto(app.loginUrl(app.adminUser, '/filters/raas-only'))
+		await gotoReady(page, app.loginUrl(app.adminUser, '/filters/raas-only'), { signals: ['layer-engine'] })
 
 		const references = page.getByRole('region', { name: 'References' })
-		await references.getByRole('link').filter({ hasText: 'RAAS on Harju' }).click({ timeout: 20_000 })
+		await references.getByRole('link').filter({ hasText: 'RAAS on Harju' }).click()
 		await page.waitForURL('**/filters/raas-harju*')
-		await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled({ timeout: 20_000 })
+		await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled()
 
 		// returning serves the first filter from the router's cache, the other way this route re-enters
 		// without a remount. The editor must come back pristine: same tree, save gated, nothing to warn about
@@ -599,6 +602,59 @@ test.describe('contributors', { tag: '@firefox' }, () => {
 			await users.first().locator('svg').click()
 			await expect(users).toHaveCount(remaining)
 		}
+	})
+})
+
+// A stored filter that no longer lowers against the layer data still opens and saves. The editor names the node that
+// fails, down to the value, and a filter that applies it points back at that node.
+test.describe('a filter that cannot be applied', () => {
+	test('marks the failing node, lists it above the tree, and is reached from a filter that applies it', async ({ page }) => {
+		await gotoReady(page, app.loginUrl(app.adminUser, '/filters/broken-map'), { signals: ['layer-engine'] })
+		const origin = new URL(page.url()).origin
+		const summary = page.getByRole('alert', { name: 'This filter cannot be applied' })
+		await expect(summary).toContainText('Not_A_Map')
+		await expect(page.locator('[data-draft-validated]')).toHaveCount(1)
+		await expect(page.getByText('1 problem', { exact: true })).toBeVisible()
+
+		const failing = page.locator('[data-node-invalid]')
+		await expect(failing).toHaveCount(1)
+		await expect(failing.locator('[data-node-summary]')).toContainText('Gorodok')
+		await expect(failing.locator('[data-invalid]')).toHaveText('Not_A_Map')
+
+		await failing.getByRole('button', { name: '1 problem' }).hover()
+		await expect(page.getByRole('tooltip')).toContainText('Not_A_Map')
+
+		await summary.getByRole('button').click()
+		await expect(failing).toHaveAttribute('data-anchor-highlight', 'true')
+		await expect(failing.locator('[data-node-summary]')).toBeFocused()
+
+		await gotoReady(page, `${origin}/filters/broken-map?node=children.1`, { signals: ['layer-engine'] })
+		await expect(page.locator('[data-anchor-highlight]')).toHaveAttribute('data-node-invalid', 'true')
+
+		// a path the filter no longer has is ignored rather than failing the page
+		await gotoReady(page, `${origin}/filters/broken-map?node=children.7`, { signals: ['layer-engine'] })
+		await expect(page.locator('[data-draft-validated]')).toHaveCount(1)
+		await expect(page.locator('[data-anchor-highlight]')).toHaveCount(0)
+
+		// the referencing filter marks the node that applies the broken one, and links to the failing node in it
+		await gotoReady(page, `${origin}/filters/applies-broken`, { signals: ['layer-engine'] })
+		const referencing = page.getByRole('alert', { name: 'This filter cannot be applied' })
+		await expect(referencing).toContainText('Broken Map cannot be applied (1 problem)')
+		const applyNode = page.locator('[data-node-invalid]')
+		await expect(applyNode).toHaveCount(1)
+		await expect(applyNode.locator('[data-invalid]')).toContainText('Broken Map')
+
+		// saving is not blocked by the problem, and the toast reports it
+		await expect(page.locator('[data-draft-validated]')).toHaveCount(1)
+		await page.getByRole('button', { name: 'Edit Details' }).click()
+		await page.getByRole('textbox', { name: 'Name' }).fill('Applies Broken Map (renamed)')
+		await page.getByRole('button', { name: 'Apply' }).click()
+		await page.getByRole('button', { name: 'Save' }).click()
+		await expect(page.getByText('Filter saved with 1 problem')).toBeVisible()
+
+		await referencing.getByRole('link', { name: 'Broken Map' }).click()
+		await page.waitForURL(/\/filters\/broken-map\?node=children\.1$/)
+		await expect(page.locator('[data-anchor-highlight]')).toHaveAttribute('data-node-invalid', 'true')
 	})
 })
 

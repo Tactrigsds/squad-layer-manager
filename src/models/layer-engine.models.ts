@@ -92,6 +92,7 @@ export type ValueCountsResponse = [number | null, number][][]
 export type FilteredRangesResponse = ([number, number] | null)[]
 export type ConstraintCountsResponse = { matches: number[]; removed: number[] }
 
+// -1 for a column the layer data has no values for
 export type ColumnIndex = (name: string) => number
 
 // what the query layer needs of an engine instance. The wasm host (systems/layer-engine.shared.ts) implements it; the
@@ -99,6 +100,8 @@ export type ColumnIndex = (name: string) => number
 export type EngineHandle = {
 	readonly rowCount: number
 	columnIndex: (name: string) => number
+	// -1 when the artifact has no such column
+	findColumnIndex: (name: string) => number
 	query: <T>(request: Request) => T
 }
 
@@ -108,13 +111,65 @@ export type LowerResult = { code: 'ok'; ir: Ir } | F.InvalidFilterNodeResult
 
 export type LowerCtx = F.Ctx & LC.Ctx & { colIndex: ColumnIndex }
 
+export type LowerOpts = {
+	// the stored filter `node` is the tree of, if it is one
+	ownerFilterId?: F.FilterEntityId | null
+	part?: F.FilterPart
+}
+
 // Errors are collected against the node path rather than thrown, because the filter editor highlights the offending
-// node from them.
-export function lowerFilterNode(ctx: LowerCtx, node: F.FilterNode, path: string[] = [], appliedFilters: string[] = []): LowerResult {
+// node from them. A referenced filter is lowered in a scope of its own, so its errors are attributed to it.
+export function lowerFilterNode(ctx: LowerCtx, node: F.FilterNode, opts: LowerOpts = {}): LowerResult {
 	const errors: F.NodeValidationError[] = []
-	const ir = lowerNode(ctx, node, path, appliedFilters, errors)
+	const ownerFilterId = opts.ownerFilterId ?? null
+	const scope: Scope = {
+		attribution: { ownerFilterId, part: opts.part ?? 'filter', via: [], rootPath: [] },
+		appliedFilters: ownerFilterId ? [ownerFilterId] : [],
+		errors,
+	}
+	const ir = lowerNode(ctx, node, [], scope, sinkFor(scope))
 	if (errors.length > 0) return { code: 'err:invalid-node', errors }
 	return { code: 'ok', ir: ir! }
+}
+
+export function lowerFilterEntity(ctx: LowerCtx, filterId: F.FilterEntityId): LowerResult {
+	const entity = ctx.filters.get(filterId)
+	if (!entity) {
+		const attribution: F.ErrorAttribution = { ownerFilterId: null, part: 'filter', via: [], rootPath: [] }
+		const errors: F.NodeValidationError[] = [
+			{ type: 'unknown-filter', filterId, path: [], msg: F_Msgs.unknownFilter(filterId), ...attribution },
+		]
+		return { code: 'err:invalid-node', errors }
+	}
+	return lowerFilterNode(ctx, entity.filter as F.FilterNode, { ownerFilterId: filterId })
+}
+
+// null when the filter has no miss exemption, or does not exist
+export function lowerMissExemption(ctx: LowerCtx, filterId: F.FilterEntityId): LowerResult | null {
+	const exemption = ctx.filters.get(filterId)?.missExemption
+	if (!exemption) return null
+	return lowerFilterNode(ctx, exemption, { ownerFilterId: filterId, part: 'missExemption' })
+}
+
+type Scope = {
+	// rootPath is empty in the root scope, where it follows each error's path instead
+	attribution: F.ErrorAttribution
+	appliedFilters: F.FilterEntityId[]
+	errors: F.NodeValidationError[]
+}
+
+type ErrorSink = { push(error: F.UnattributedNodeValidationError): void }
+
+function sinkFor(scope: Scope): ErrorSink {
+	const { attribution } = scope
+	return {
+		push: (error) =>
+			scope.errors.push({
+				...error,
+				...attribution,
+				rootPath: attribution.via.length === 0 ? error.path : attribution.rootPath,
+			} as F.NodeValidationError),
+	}
 }
 
 // These fold the boolean constants rather than passing them through: callers build children
@@ -141,13 +196,7 @@ export function not(child: Ir): Ir {
 	return { op: 'not', child }
 }
 
-function lowerNode(
-	ctx: LowerCtx,
-	node: F.FilterNode,
-	path: string[],
-	appliedFilters: string[],
-	errors: F.NodeValidationError[],
-): Ir | undefined {
+function lowerNode(ctx: LowerCtx, node: F.FilterNode, path: string[], scope: Scope, errors: ErrorSink): Ir | undefined {
 	if (F.isCompNode(node)) {
 		const ir = lowerComp(ctx, node, path, errors)
 		// only comp nodes carry a `neg` flag; blocks and apply-filters fold negation into their type
@@ -157,7 +206,7 @@ function lowerNode(
 
 	if (F.isApplyFilterNode(node)) {
 		const filterPath = [...path, 'filterId']
-		if (appliedFilters.includes(node.filterId)) {
+		if (scope.appliedFilters.includes(node.filterId)) {
 			errors.push({
 				path: filterPath,
 				filterId: node.filterId,
@@ -177,9 +226,20 @@ function lowerNode(
 			return undefined
 		}
 		// referenced filters are inlined, so the engine only ever sees one self-contained tree
-		const inner = lowerNode(ctx, entity.filter as F.FilterNode, filterPath, [...appliedFilters, node.filterId], errors)
-		if (!inner) return undefined
-		return F.APPLY_FILTER_TYPE_NEGATED[node.type] ? not(inner) : inner
+		const { attribution } = scope
+		const inner: Scope = {
+			attribution: {
+				ownerFilterId: node.filterId,
+				part: 'filter',
+				via: [...attribution.via, node.filterId],
+				rootPath: attribution.via.length === 0 ? path : attribution.rootPath,
+			},
+			appliedFilters: [...scope.appliedFilters, node.filterId],
+			errors: scope.errors,
+		}
+		const ir = lowerNode(ctx, entity.filter as F.FilterNode, [], inner, sinkFor(inner))
+		if (!ir) return undefined
+		return F.APPLY_FILTER_TYPE_NEGATED[node.type] ? not(ir) : ir
 	}
 
 	if (F.isMatchupNode(node)) {
@@ -190,7 +250,7 @@ function lowerNode(
 		const childrenPath = [...path, 'children']
 		const children: Ir[] = []
 		for (let i = 0; i < node.children.length; i++) {
-			const child = lowerNode(ctx, node.children[i], [...childrenPath, i.toString()], appliedFilters, errors)
+			const child = lowerNode(ctx, node.children[i], [...childrenPath, i.toString()], scope, errors)
 			if (child) children.push(child)
 		}
 		const semantics = F.BLOCK_TYPE_SEMANTICS[node.type]
@@ -210,8 +270,8 @@ function lowerNode(
 // A matchup pairs the two team specs against the two teams. Unlocked, either orientation matches, so
 // it lowers to a disjunction over both -- this is the correlation a `team-column` quantifier cannot
 // express, since that expands one column over both teams independently.
-function lowerMatchup(ctx: LowerCtx, node: F.MatchupNode, path: string[], errors: F.NodeValidationError[]): Ir | undefined {
-	const orient = (teamOf0: 1 | 2, teamOf1: 1 | 2, errs: F.NodeValidationError[]): Ir =>
+function lowerMatchup(ctx: LowerCtx, node: F.MatchupNode, path: string[], errors: ErrorSink): Ir | undefined {
+	const orient = (teamOf0: 1 | 2, teamOf1: 1 | 2, errs: ErrorSink): Ir =>
 		and([teamSpecIr(ctx, node.teams[0], teamOf0, path, errs), teamSpecIr(ctx, node.teams[1], teamOf1, path, errs)])
 
 	// both orientations resolve the same specs against columns of the same enum mapping, so the mirror
@@ -222,7 +282,7 @@ function lowerMatchup(ctx: LowerCtx, node: F.MatchupNode, path: string[], errors
 
 // one side of a matchup against a concrete team. Only dimensions carrying values constrain anything;
 // an empty one is "any", and `and([])` is already `true`, so no special case is needed.
-function teamSpecIr(ctx: LowerCtx, spec: F.MatchupTeamSpec, team: 1 | 2, path: string[], errors: F.NodeValidationError[]): Ir {
+function teamSpecIr(ctx: LowerCtx, spec: F.MatchupTeamSpec, team: 1 | 2, path: string[], errors: ErrorSink): Ir {
 	const children: Ir[] = []
 	for (const teamColumn of F.TEAM_COLUMNS) {
 		const values = spec[teamColumn]
@@ -251,7 +311,7 @@ function vehicleValuesIr(
 	info: NonNullable<ReturnType<typeof LC.vehicleColumnInfo>>,
 	items: F.InListItem[],
 	path: string[],
-	errors: F.NodeValidationError[],
+	errors: ErrorSink,
 ): Ir | undefined {
 	const components = L.StaticLayerComponents
 	if (!VEH.hasVehicleData(components)) {
@@ -270,6 +330,10 @@ function vehicleValuesIr(
 	const vehicleIds = info.kind === 'vehicleTypes' ? VEH.vehicleIdsForTypes(ids, components) : ids
 	const unitRecordIds = VEH.unitRecordIdsForVehicles(vehicleIds, components)
 	const col = ctx.colIndex(LC.UNIT_RECORD_COLUMNS[info.team])
+	if (col === -1) {
+		errors.push({ type: 'invalid-node', path, msg: F_Msgs.vehicleDataUnavailable() })
+		return undefined
+	}
 	return or(unitRecordIds.length > 0 ? [{ op: 'in_vals', col, vals: unitRecordIds }] : [])
 }
 
@@ -279,7 +343,7 @@ function lowerVehicleComp(
 	column: string,
 	info: NonNullable<ReturnType<typeof LC.vehicleColumnInfo>>,
 	path: string[],
-	errors: F.NodeValidationError[],
+	errors: ErrorSink,
 ): Ir | undefined {
 	switch (node.type) {
 		case 'eq': {
@@ -302,7 +366,7 @@ function lowerVehicleComp(
 	}
 }
 
-function lowerComp(ctx: LowerCtx, node: F.CompNode, path: string[], errors: F.NodeValidationError[]): Ir | undefined {
+function lowerComp(ctx: LowerCtx, node: F.CompNode, path: string[], errors: ErrorSink): Ir | undefined {
 	const subject = node.args[0] as F.Arg | undefined
 	if (subject?.type !== 'column' && subject?.type !== 'team-column') {
 		errors.push({ type: 'invalid-node', path, msg: F_Msgs.firstOperandMustBeColumn() })
@@ -319,13 +383,7 @@ function lowerComp(ctx: LowerCtx, node: F.CompNode, path: string[], errors: F.No
 	return { op: teamArg.quantifier === 'both' ? 'and' : 'or', children: [team1, team2] }
 }
 
-function lowerCompForTeam(
-	ctx: LowerCtx,
-	node: F.CompNode,
-	path: string[],
-	team: 1 | 2 | undefined,
-	errors: F.NodeValidationError[],
-): Ir | undefined {
+function lowerCompForTeam(ctx: LowerCtx, node: F.CompNode, path: string[], team: 1 | 2 | undefined, errors: ErrorSink): Ir | undefined {
 	const subject = resolveColumn(ctx, node.args[0] as F.Arg, team, path, errors)
 	if (subject === undefined) return undefined
 	// vehicle columns are virtual: no artifact column exists, so they take their own lowering path
@@ -407,14 +465,7 @@ function lowerCompForTeam(
 // membership of `col` (the already-resolved index of `column`) in a list of items. Constants collapse
 // into one membership pass; column items and null stay separate disjuncts. Shared by the `in`
 // operator and the matchup operators, which differ only in that matchups never carry column items.
-function valueListIr(
-	ctx: LowerCtx,
-	column: string,
-	col: number,
-	items: F.InListItem[],
-	path: string[],
-	errors: F.NodeValidationError[],
-): Ir {
+function valueListIr(ctx: LowerCtx, column: string, col: number, items: F.InListItem[], path: string[], errors: ErrorSink): Ir {
 	const columnDomain = F.columnValueDomain(column, ctx.effectiveColsConfig)
 	const constants: number[] = []
 	const children: Ir[] = []
@@ -451,13 +502,7 @@ function valueListIr(
 	return or(children)
 }
 
-function resolveColumn(
-	ctx: LowerCtx,
-	arg: F.Arg,
-	team: 1 | 2 | undefined,
-	path: string[],
-	errors: F.NodeValidationError[],
-): string | undefined {
+function resolveColumn(ctx: LowerCtx, arg: F.Arg, team: 1 | 2 | undefined, path: string[], errors: ErrorSink): string | undefined {
 	if (arg.type === 'team-column') {
 		if (team === undefined) {
 			errors.push({ type: 'invalid-node', path, msg: F_Msgs.unresolvedTeamColumn(arg.column) })
@@ -470,12 +515,13 @@ function resolveColumn(
 	return undefined
 }
 
-function columnIndex(ctx: LowerCtx, column: string, path: string[], errors: F.NodeValidationError[]): number | undefined {
-	if (!LC.getColumnDef(column, ctx.effectiveColsConfig)) {
+function columnIndex(ctx: LowerCtx, column: string, path: string[], errors: ErrorSink): number | undefined {
+	const index = LC.getColumnDef(column, ctx.effectiveColsConfig) ? ctx.colIndex(column) : -1
+	if (index === -1) {
 		errors.push({ type: 'unmapped-column', column, path, msg: F_Msgs.unmappedColumn(column) })
 		return undefined
 	}
-	return ctx.colIndex(column)
+	return index
 }
 
 // null on an enum column that carries null as a mapped value (e.g. LayerVersion's "no version") is a real index, not
@@ -487,22 +533,17 @@ function enumNullIndex(ctx: LowerCtx, column: string): number | null {
 	return LC.isUnmappedDbValue(mapped) || mapped === null ? null : Number(mapped)
 }
 
-function scalarValue(ctx: LowerCtx, column: string, value: F.Value, path: string[], errors: F.NodeValidationError[]): number | null {
+function scalarValue(ctx: LowerCtx, column: string, value: F.Value, path: string[], errors: ErrorSink): number | null {
 	if (value === null) return enumNullIndex(ctx, column)
 	const encoded = encodeValue(ctx, column, value, path, errors)
 	return encoded ?? null
 }
 
-function encodeValue(
-	ctx: LowerCtx,
-	column: string,
-	value: NonNullable<F.Value>,
-	path: string[],
-	errors: F.NodeValidationError[],
-): number | undefined {
+function encodeValue(ctx: LowerCtx, column: string, value: NonNullable<F.Value>, path: string[], errors: ErrorSink): number | undefined {
 	const encoded = LC.dbValue(column, value, ctx)
 	if (LC.isUnmappedDbValue(encoded) || encoded === null || encoded === undefined) {
-		errors.push({ type: 'unmapped-value', path, column, value, msg: F_Msgs.unmappedValue(column, value) })
+		const displayName = LC.getColumnDef(column, ctx.effectiveColsConfig)?.displayName ?? column
+		errors.push({ type: 'unmapped-value', path, column, value, msg: F_Msgs.unmappedValue(displayName, value) })
 		return undefined
 	}
 	if (typeof encoded === 'boolean') return encoded ? 1 : 0

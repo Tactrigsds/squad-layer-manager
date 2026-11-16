@@ -304,6 +304,134 @@ describe('filter lowering validation', () => {
 	})
 })
 
+// -------- error attribution --------
+
+describe('lowering error attribution', () => {
+	const broken = FB.isNull('NotAColumn')
+	const ctxWith = (filters: Record<string, Partial<F.FilterEntity>>) => {
+		const ctx = testCtx()
+		for (const [id, entity] of Object.entries(filters)) ctx.filters.set(id, { id, ...entity } as F.FilterEntity)
+		return ctx
+	}
+	const errorsOf = (res: LE.LowerResult | null) => {
+		expect(res?.code).toBe('err:invalid-node')
+		return res?.code === 'err:invalid-node' ? res.errors : []
+	}
+
+	it('attributes an error in the root tree to no filter', () => {
+		const [error] = errorsOf(LE.lowerFilterNode(testCtx(), FB.and([FB.isNull('Map'), broken])))
+		expect(error).toMatchObject({ type: 'unmapped-column', ownerFilterId: null, part: 'filter', via: [], path: ['children', '1'] })
+		expect(error.rootPath).toEqual(error.path)
+	})
+
+	it('attributes an error inside a referenced filter to that filter', () => {
+		const ctx = ctxWith({ inner: { filter: FB.and([FB.isNull('Map'), broken]) } })
+		const errors = errorsOf(LE.lowerFilterNode(ctx, FB.and([FB.isNull('Map'), FB.includedIn('inner')])))
+		expect(errors).toHaveLength(1)
+		expect(errors[0]).toMatchObject({
+			ownerFilterId: 'inner',
+			via: ['inner'],
+			path: ['children', '1'],
+			rootPath: ['children', '1'],
+		})
+	})
+
+	it('attributes an error two references deep to the innermost filter, reached through the outermost apply node', () => {
+		const ctx = ctxWith({
+			inner: { filter: FB.and([FB.isNull('Map'), broken]) },
+			outer: { filter: FB.or([FB.includedIn('inner')]) },
+		})
+		const errors = errorsOf(LE.lowerFilterNode(ctx, FB.and([FB.isNull('Map'), FB.isNull('Map'), FB.excludedFrom('outer')])))
+		expect(errors).toHaveLength(1)
+		expect(errors[0]).toMatchObject({
+			ownerFilterId: 'inner',
+			via: ['outer', 'inner'],
+			path: ['children', '1'],
+			rootPath: ['children', '2'],
+		})
+
+		// lowered as a stored filter, the outer filter is the root tree
+		const [error] = errorsOf(LE.lowerFilterEntity(ctx, 'outer'))
+		expect(error).toMatchObject({ ownerFilterId: 'inner', via: ['inner'], path: ['children', '1'], rootPath: ['children', '0'] })
+	})
+
+	it('reports a reference cycle at the apply node that closes it', () => {
+		const ctx = ctxWith({ a: { filter: FB.includedIn('b') }, b: { filter: FB.and([FB.includedIn('a')]) } })
+		const [error] = errorsOf(LE.lowerFilterEntity(ctx, 'a'))
+		expect(error).toMatchObject({
+			type: 'recursive-filter',
+			filterId: 'a',
+			ownerFilterId: 'b',
+			via: ['b'],
+			path: ['children', '0', 'filterId'],
+			rootPath: [],
+		})
+	})
+
+	it('reports an unknown filter, referenced or lowered directly', () => {
+		const [referenced] = errorsOf(LE.lowerFilterNode(testCtx(), FB.and([FB.includedIn('gone')])))
+		expect(referenced).toMatchObject({
+			type: 'unknown-filter',
+			filterId: 'gone',
+			ownerFilterId: null,
+			path: ['children', '0', 'filterId'],
+			rootPath: ['children', '0', 'filterId'],
+		})
+		const [direct] = errorsOf(LE.lowerFilterEntity(testCtx(), 'gone'))
+		expect(direct).toMatchObject({ type: 'unknown-filter', filterId: 'gone', ownerFilterId: null, path: [] })
+	})
+
+	it('attributes a miss exemption error to the exemption of its filter', () => {
+		const ctx = ctxWith({ f: { filter: FB.isNull('Map'), missExemption: FB.and([broken]) } })
+		expect(LE.lowerFilterEntity(ctx, 'f').code).toBe('ok')
+		const [error] = errorsOf(LE.lowerMissExemption(ctx, 'f'))
+		expect(error).toMatchObject({ ownerFilterId: 'f', part: 'missExemption', via: [], path: ['children', '0'] })
+	})
+
+	it('points matchup and comparison-argument errors at their node', () => {
+		const matchup = errorsOf(LE.lowerFilterNode(testCtx(), FB.and([FB.allowMatchups([{ Faction: ['NotAFaction'] }, {}])])))
+		expect(matchup).toHaveLength(1)
+		expect(matchup[0]).toMatchObject({ type: 'unmapped-value', path: ['children', '0'] })
+
+		const comparison = errorsOf(LE.lowerFilterNode(testCtx(), FB.or([FB.isNull('Map'), FB.eq(FB.col('Faction_1'), FB.col('Unit_1'))])))
+		expect(comparison).toHaveLength(1)
+		expect(comparison[0]).toMatchObject({ type: 'invalid-node', path: ['children', '1'] })
+	})
+
+	it('resolves an error path to its node in a tree whose ids are not derived from positions', () => {
+		const ctx = ctxWith({ inner: { filter: broken } })
+		const nodes: [string, F.ShallowEditableFilterNode][] = [
+			['root', { type: 'and' } as F.ShallowEditableFilterNode],
+			['keep', FB.isNull('Map')],
+			['block', { type: 'or' } as F.ShallowEditableFilterNode],
+			['bad', broken],
+			['apply', FB.includedIn('inner')],
+		]
+		const tree: F.FilterNodeTree = {
+			rootId: 'root',
+			nodes: new Map(nodes),
+			children: new Map([
+				['root', ['keep', 'block']],
+				['block', ['bad', 'apply']],
+			]),
+			parents: new Map([
+				['keep', 'root'],
+				['block', 'root'],
+				['bad', 'block'],
+				['apply', 'block'],
+			]),
+		}
+		expect(F.isWellFormedTree(tree)).toBe(true)
+
+		const errors = errorsOf(LE.lowerFilterNode(ctx, F.treeToFilterNode(tree) as F.FilterNode))
+		expect(errors.map((error) => F.resolveErrorNode(tree, error.rootPath))).toEqual(['bad', 'apply'])
+		expect(F.resolveErrorNode(tree, ['children', '1', 'children', '1', 'filterId'])).toBe('apply')
+		expect(F.resolveErrorNode(tree, [])).toBe('root')
+		expect(F.resolveErrorNode(tree, ['children', '2'])).toBeNull()
+		expect(F.resolveErrorNode(tree, ['children', '0', 'children', '0'])).toBeNull()
+	})
+})
+
 // -------- matchup operators --------
 
 describe('matchup lowering', () => {

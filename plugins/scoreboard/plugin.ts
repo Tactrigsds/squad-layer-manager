@@ -7,7 +7,7 @@ export default definePlugin({
 	id: 'scoreboard',
 	name: 'Scoreboard',
 	version: '1.0.0',
-	apiVersion: '^0.22.1',
+	apiVersion: '^0.23',
 	description: 'Posts a scoreboard to Discord when a match ends, with leaderboards and charts of the match.',
 	configSchema: z.object({
 		enabledServers: Fields.serverIds().prefault([]).describe('Servers to post scoreboards for'),

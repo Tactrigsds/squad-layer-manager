@@ -42,6 +42,7 @@ import * as PartsSys from '@/systems/parts.client'
 import * as RbacClient from '@/systems/rbac.client'
 
 import EmojiDisplay from './emoji-display'
+import { FilterProblemsMark } from './filter-problems'
 import { FilterPoolFilterFor, FilterReferenceCount } from './filter-references'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
 import { Badge } from './ui/badge'
@@ -198,6 +199,7 @@ function FilterCard(props: { filter: F.FilterEntity }) {
 							<div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
 								<FilterTitle filter={filter} />
 								<span className="relative flex flex-wrap items-center gap-1.5">
+									<FilterProblemsMark filterId={filter.id} badge />
 									<FilterReferenceCount filterId={filter.id} />
 									<FilterPoolFilterFor filterId={filter.id} />
 								</span>
@@ -240,6 +242,7 @@ function FilterRow(props: { filter: F.FilterEntity; query: string }) {
 					<div className="flex min-w-0 flex-[1_1_16rem] items-center gap-2">
 						{filter.emoji && <EmojiDisplay emoji={filter.emoji} />}
 						<FilterTitle filter={filter} />
+						<FilterProblemsMark filterId={filter.id} badge className="relative" />
 					</div>
 					{snippet && <MatchSnippet {...snippet} />}
 					<OwnerBadge owner={filter.owner} />

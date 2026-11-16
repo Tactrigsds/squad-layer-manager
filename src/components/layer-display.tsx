@@ -2,7 +2,7 @@ import * as Icons from 'lucide-react'
 import React from 'react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
-import type * as ListHostPrt from '@/frame-partials/list-host.partial'
+import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
@@ -14,6 +14,7 @@ import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator.tsx'
+import { NotCheckedMark } from './filter-problems.tsx'
 import ShortLayerName from './short-layer-name.tsx'
 
 export default function LayerDisplay({
@@ -52,6 +53,7 @@ export default function LayerDisplay({
 		Zus.useStore(listHost, (s: ListHostPrt.Store | undefined) => (s ? LQY.getParityForLayerItem(s.layerItemsState, item) : 0)) ?? 0
 
 	const statusData = LayerQueriesClient.useLayerItemStatusData(props.item, listHost)
+	const statusProblemLines = Zus.useStore(listHost, ListHostPrt.Sel.statusProblemLines)
 	const badges: React.ReactNode[] = []
 
 	if (statusData) {
@@ -65,6 +67,7 @@ export default function LayerDisplay({
 				tourId={props.indicatorsTourId}
 			/>,
 		)
+		if (statusProblemLines.length > 0) badges.push(<NotCheckedMark key="not checked" lines={statusProblemLines} />)
 	}
 
 	if (props.badges) badges.push(...props.badges)

@@ -40,6 +40,7 @@ const ctx = {
 	filters: new Map(),
 	engine: {
 		columnIndex: (name: string) => COLUMNS.indexOf(name),
+		findColumnIndex: (name: string) => COLUMNS.indexOf(name),
 		// these cases carry no filter-entity constraint, so getLayerItemStatuses only reads `exists`
 		query: (q: { ids?: unknown[] }) => ({ exists: (q.ids ?? []).map(() => true), matches: [] }),
 	},
@@ -65,7 +66,7 @@ function whereFor(rule: LQY.RepeatRule, itemsState = list) {
 		list: itemsState,
 		cursor: { type: 'end' },
 	})
-	if (compiled.code !== 'ok') throw new Error('expected the constraints to compile')
+	if (compiled.problems.length > 0) throw new Error('expected the constraints to compile')
 	return compiled.where
 }
 
@@ -738,7 +739,7 @@ describe('the Hide Repeats filter', () => {
 			list: filterList,
 			cursor: { type: 'end' },
 		})
-		if (compiled.code !== 'ok') throw new Error('expected the constraints to compile')
+		if (compiled.problems.length > 0) throw new Error('expected the constraints to compile')
 		return compiled.where
 	}
 
