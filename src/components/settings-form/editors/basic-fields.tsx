@@ -232,9 +232,9 @@ export function MainPoolField(props: OverrideProps) {
 	const api = usePoolConfigApi(props)
 	// this form saves the server's settings as a whole, and a ruleset is part of the global settings, so the rules get
 	// a save button of their own
-	const repeatRulesetEditor = useFrameLifecycle(RepeatRulesetEditorFrame.frame, {
-		input: { source: { type: 'pool-draft', value$: props.value$ } },
-	})
+	const { value$ } = props
+	const repeatRulesetEditorInput = React.useMemo(() => RepeatRulesetEditorFrame.createInput({ type: 'pool-draft', value$ }), [value$])
+	const repeatRulesetEditor = useFrameLifecycle(RepeatRulesetEditorFrame.frame, { input: repeatRulesetEditorInput })
 	return (
 		<div className="space-y-6">
 			<PoolFiltersPanel api={api} />

@@ -67,9 +67,12 @@ function PoolConfigWindow(props: PoolConfigWindowProps) {
 		stores.squadServer!,
 		Zus.useShallow((s) => [s.settings.modified, s.settings.saving, s.settings.validationErrors]),
 	)
-	const repeatRulesetEditor = useFrameLifecycle(RepeatRulesetEditorFrame.frame, {
-		input: { source: { type: 'server', settingsKey: stores.squadServer! } },
-	})
+	const settingsKey = stores.squadServer!
+	const repeatRulesetEditorInput = React.useMemo(
+		() => RepeatRulesetEditorFrame.createInput({ type: 'server', settingsKey }),
+		[settingsKey],
+	)
+	const repeatRulesetEditor = useFrameLifecycle(RepeatRulesetEditorFrame.frame, { input: repeatRulesetEditorInput })
 	const [rulesChanged, rulesSaving] = Zus.useStore(
 		repeatRulesetEditor,
 		Zus.useShallow((s) => [s.modified, s.saving]),
