@@ -2,8 +2,10 @@ import * as E from 'drizzle-orm'
 
 import * as Schema from '$root/drizzle/schema'
 import type * as CS from '@/models/context-shared.models'
+import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
 import * as L from '@/models/layer.models'
+import * as Msgs from '@/models/messages.models'
 import type * as USR from '@/models/users.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
@@ -71,6 +73,19 @@ export async function rewriteLayerNodes(ctx: C.Db & CS.AbortSignal, root: HQ.Nod
 
 		sawLayerNode = true
 		lqCtx ??= await LayerQueries.resolveAnonLayerQueryCtx({ ...ctx })
+		const { errors } = await LayerQueriesShared.validateFilter({ ctx: lqCtx, input: { node: node.filter } })
+		if (errors.length > 0) {
+			module
+				.getLogger()
+				.debug('a match-layer filter cannot be applied:\n%s', errors.map((error) => F.describeNodeValidationError(error)).join('\n'))
+			return {
+				code: 'err:invalid-node',
+				message: Msgs.join(
+					errors.map((error) => error.msg),
+					'; ',
+				),
+			}
+		}
 
 		// the filter is evaluated against the layers actually played, not against the layer universe: the
 		// played set is bounded by the match count, while the universe is combinatorial
@@ -89,7 +104,6 @@ export async function rewriteLayerNodes(ctx: C.Db & CS.AbortSignal, root: HQ.Nod
 				],
 			},
 		})
-		if (pool.code !== 'ok') return pool
 		const outOfPool = new Set<L.LayerId>(pool.outOfPool)
 		// matched back by the text the rows hold
 		const inPool = played.filter((p) => !outOfPool.has(p.id)).map((p) => p.text)

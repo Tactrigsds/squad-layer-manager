@@ -160,6 +160,20 @@ export type Constraint =
 			id: string
 	  }
 
+// A constraint whose filter does not lower. Queries skip it, as if it were disabled, and report it.
+export type ConstraintProblem = {
+	// a filter menu item's is `filter-menu:<field>`
+	constraintId: string
+	constraintType: Constraint['type']
+	filterId?: F.FilterEntityId
+	part: F.FilterPart
+	errors: F.NodeValidationError[]
+}
+
+export function filterMenuItemConstraintId(field: string) {
+	return `filter-menu:${field}`
+}
+
 export type FilterMenuItem = {
 	field: string
 	node?: F.FilterNode
@@ -293,6 +307,7 @@ export type LayersSummary = {
 	ranges: Record<string, ColumnRange>
 	constraintCounts: Record<string, ConstraintCount> | null
 	complete: boolean
+	problems: ConstraintProblem[]
 }
 
 export type LayerExistsInput = L.LayerId[]
@@ -324,6 +339,8 @@ export type LayerItemStatuses = {
 	// This means that, for example, if constraint in question has a filterApplState of 'inverted', none of the returned items will contain descriptors for that constraint. This will need to be changed if we want to return more complex details for evaluated filters
 	matchDescriptors: Map<ItemId, MatchDescriptor[]>
 	warns: QueueWarning[]
+	// constraints that were not checked, because their filters do not lower
+	problems: ConstraintProblem[]
 }
 
 export type LayerItemStatusesPart = { layerItemStatuses: LayerItemStatuses }

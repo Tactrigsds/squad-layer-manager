@@ -8,6 +8,7 @@ import * as TZ from '@/lib/time-zones'
 import * as Zus from '@/lib/zustand'
 import * as I18n from '@/messages/i18n'
 import * as HQ from '@/models/history.models'
+import * as Msgs from '@/models/messages.models'
 import * as RPC from '@/orpc.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -90,6 +91,7 @@ export function queryFailure(res: { code: string; message?: unknown } | undefine
 	// react-query hands back whatever was thrown, which need not be an Error and need not stringify usefully
 	if (error) return typeof error === 'string' ? error : JSON.stringify(error)
 	if (!res || res.code === 'ok') return undefined
+	if (Msgs.isTString(res.message)) return I18n.ambient.text(res.message)
 	return typeof res.message === 'string' ? `${res.code}: ${res.message}` : res.code
 }
 

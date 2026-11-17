@@ -36,6 +36,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
+import { SkippedFiltersLabel } from './filter-problems'
 import LayerContextMenuOptions from './layer-context-menu-options'
 import { ColumnDistinctCount, ColumnSummaryTip, LayerTableSummaryView, LayerTableViewToggle } from './layer-table-summary'
 import MapLayerDisplay from './map-layer-display'
@@ -925,6 +926,12 @@ function SetRawLayerDialog(props: {
 	)
 }
 
+function LayerTableProblemsLabel(props: { stores: LayerTablePrt.KeyProp }) {
+	const lines = Zus.useStore(props.stores.layerTable, LayerTablePrt.Sel.problemLines)
+	const count = Zus.useStore(props.stores.layerTable, LayerTablePrt.Sel.skippedCount)
+	return <SkippedFiltersLabel lines={lines} count={count} className="min-w-0" />
+}
+
 function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; table: CoreTable<LayerQueriesClient.RowData> }) {
 	const initStatus = Zus.useStore(
 		LayerQueriesClient.Store,
@@ -951,7 +958,7 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 			data-query-settled={initStatus.status === 'ready' && frameState.settled && !frameState.isFetching}
 			className="flex items-center justify-between gap-4 whitespace-nowrap"
 		>
-			<div className="flex items-center gap-2">
+			<div className="flex min-w-0 items-center gap-2">
 				<LayerTableViewToggle stores={props.stores} />
 				{initStatus.status === 'ready' && !frameState.isFetching && (
 					<div className="text-sm text-text-2 [&_strong]:font-semibold [&_strong]:text-foreground">
@@ -962,6 +969,7 @@ function LayerTablePaginationControls(props: { stores: LayerTablePrt.KeyProp; ta
 						)}
 					</div>
 				)}
+				{initStatus.status === 'ready' && <LayerTableProblemsLabel stores={props.stores} />}
 				<div
 					data-loading={frameState.isFetching || initStatus.status === 'initializing' || initStatus.status === 'downloading-layers'}
 					className="group/loading flex items-center gap-2 invisible data-[loading=true]:visible "

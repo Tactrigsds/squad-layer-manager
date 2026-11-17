@@ -25,9 +25,11 @@ import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as MsgFmt from '@/messages/format'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as V_Msgs from '@/messages/vote.messages'
+import * as FPM from '@/models/filter-problems.models'
 import * as F from '@/models/filter.models'
 import type * as LL from '@/models/layer-list.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -39,7 +41,8 @@ import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 import { ConstraintEvalTooltip } from './constraint-matches-indicator'
 import EditLayerDialog from './edit-layer-dialog'
-import { Alert, AlertTitle } from './ui/alert'
+import { ProblemLines, ProblemsTip } from './filter-problems'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import TabsList from './ui/tabs-list'
 
@@ -90,6 +93,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 		choices,
 		chosenLayers,
 		choiceErrors,
+		choiceInvalid,
 		generating,
 		result: canSubmit,
 		cursor,
@@ -103,6 +107,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 			choices: s.choices,
 			chosenLayers: s.chosenLayers,
 			choiceErrors: s.choiceErrors,
+			choiceInvalid: s.choiceInvalid,
 			generating: s.generating,
 			result: s.result,
 			cursor: s.cursor,
@@ -239,6 +244,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 			{choices.map((choice, index) => {
 				const constraints = choice.layerId ? chosenLayers[choice.layerId]?.constraints : undefined
 				const error = choiceErrors[index]
+				const invalid = choiceInvalid[index]
 				const layer = choice.layerId ? (
 					<span className="flex items-center gap-2 min-w-0 whitespace-nowrap overflow-hidden">
 						<ShortLayerName
@@ -255,6 +261,19 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 							/>
 						)}
 					</span>
+				) : invalid ? (
+					<Alert variant="destructive" className="py-1">
+						<Icons.AlertCircle />
+						<AlertTitle>
+							<ProblemsTip
+								heading={tr.text(F_Msgs.choiceCannotBeApplied())}
+								lines={FPM.errorLines(invalid)}
+								fallbackLabel={tr.text(F_Msgs.choiceConditionsLabel())}
+							>
+								{tr.text(F_Msgs.choiceCannotBeApplied())}
+							</ProblemsTip>
+						</AlertTitle>
+					</Alert>
 				) : error ? (
 					<Alert variant="destructive" className="py-1">
 						<Icons.AlertCircle />
@@ -443,6 +462,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 								{regenButton}
 							</div>
 							{showAdvanced && advanced}
+							<SkippedFiltersAlert stores={genVoteStores} />
 							{choiceRows}
 							{addChoice}
 						</div>
@@ -489,6 +509,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 							</div>
 							{varyBy}
 							{regenButton}
+							<SkippedFiltersAlert stores={genVoteStores} />
 							{choiceRows}
 							{addChoice}
 							<div className="mt-1">{configEditor}</div>
@@ -551,17 +572,46 @@ function ChoiceConstraintSelect(props: {
 		}),
 	)
 
-	const allowedValues = Array.isArray(components.data) ? components.data.filter((v) => !disallowedValues.includes(v)) : undefined
+	const allowedValues = components.data?.code === 'ok' ? components.data.values.filter((v) => !disallowedValues.includes(v)) : undefined
+	const problems = components.data?.code === 'ok' ? FPM.appliedProblems(components.data.problems, input.constraints) : []
 
 	return (
-		<StringEqConfig
-			key={props.constraintKey}
-			className="w-[120px]"
-			column={column}
-			allowedValues={allowedValues}
-			value={props.value}
-			setValue={(value) => handleSetConstraint(props.index, props.constraintKey, value)}
-		/>
+		<span className="inline-flex items-center gap-1">
+			<StringEqConfig
+				key={props.constraintKey}
+				className="w-[120px]"
+				column={column}
+				allowedValues={allowedValues}
+				value={props.value}
+				setValue={(value) => handleSetConstraint(props.index, props.constraintKey, value)}
+			/>
+			{problems.length > 0 && (
+				<ProblemsTip
+					heading={tr.text(F_Msgs.optionsNotLimitedHint())}
+					lines={FPM.problemLines(problems)}
+					aria-label={tr.text(F_Msgs.optionsNotLimitedHint())}
+				>
+					<Icons.TriangleAlert className="size-3.5 shrink-0 text-warn" />
+				</ProblemsTip>
+			)}
+		</span>
+	)
+}
+
+// the filters the last generation ran without, because they cannot be applied
+function SkippedFiltersAlert(props: { stores: GenVoteFrame.KeyProp }) {
+	const lines = Zus.useStore(props.stores.genVote, GenVoteFrame.Sel.problemLines)
+	const names = Zus.useStore(props.stores.genVote, GenVoteFrame.Sel.skippedFilterNames)
+	if (lines.length === 0) return null
+	return (
+		<Alert variant="warning">
+			<Icons.FilterX />
+			<AlertTitle>{tr.text(F_Msgs.generatedWithout(MsgFmt.formatList(names)))}</AlertTitle>
+			<AlertDescription className="flex flex-col gap-1">
+				<p>{tr.text(F_Msgs.generatedWithoutHint())}</p>
+				<ProblemLines lines={lines} />
+			</AlertDescription>
+		</Alert>
 	)
 }
 

@@ -32,12 +32,12 @@ export type QueryLayersResponsePart =
 			layers: PostProcessedLayer[]
 			totalCount: number
 			pageCount: number
+			problems: LQY.ConstraintProblem[]
 	  }
 	| {
 			code: 'menu-item-possible-values'
 			values: Record<string, string[]>
 	  }
-	| F.InvalidFilterNodeResult
 
 // the constraint-driven queries need the engine, the column config and the filter entities; only generation and the
 // streamed query need the log and the generation config on top
@@ -58,8 +58,8 @@ function layerParser(): LayerParser {
 	}
 }
 
-function lowerCtx(ctx: QueryCtx): LE.LowerCtx {
-	return { ...ctx, colIndex: (name: string) => ctx.engine.columnIndex(name) }
+export function lowerCtx(ctx: QueryCtx): LE.LowerCtx {
+	return { ...ctx, colIndex: (name: string) => ctx.engine.findColumnIndex(name) }
 }
 
 // the app works in whole layers: every column of the effective config, in a stable order. Virtual
@@ -75,7 +75,6 @@ function columnIndexes(ctx: LE.Ctx, names: readonly string[]) {
 // ---------------------------- constraints ----------------------------
 
 type CompiledConstraints = {
-	code: 'ok'
 	// the pool: every constraint that filters, ANDed together
 	where: LE.Ir
 	// what `where` ANDs together
@@ -90,9 +89,11 @@ type CompiledConstraints = {
 	missExemptions: (LE.Ir | null)[]
 	// per filter-menu field that asked for them, the condition its possible values are computed under
 	menuItemConditions?: Record<string, LE.Ir>
+	// constraints left out because they do not lower
+	problems: LQY.ConstraintProblem[]
 }
 
-export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput): CompiledConstraints | F.InvalidFilterNodeResult {
+export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput): CompiledConstraints {
 	const lower = lowerCtx(ctx)
 	const constraints = input.constraints ?? []
 	const list = input.list ?? LQY.initLayerItemsState()
@@ -112,6 +113,7 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 	// each. Negating them individually and anding the results happens to say the same thing, but applying them
 	// regularly does not: that would ask for a layer repeating every rule at once.
 	const repeatIrs: Record<'regular' | 'inverted', LE.Ir[]> = { regular: [], inverted: [] }
+	const problems: LQY.ConstraintProblem[] = []
 
 	for (let i = 0; i < constraints.length; i++) {
 		const constraint = constraints[i]
@@ -119,30 +121,15 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 		if (constraint.showIndicator === 'disabled' && constraint.filterApplState === 'disabled') continue
 
 		let ir: LE.Ir
-		switch (constraint.type) {
-			case 'filter-anon': {
-				const res = LE.lowerFilterNode(lower, constraint.filter, [i.toString()])
-				if (res.code !== 'ok') return res
-				ir = res.ir
-				break
+		if (constraint.type === 'do-not-repeat') {
+			ir = repeatRuleIr(ctx, list, cursorIndex?.outerIndex ?? 0, constraint.rule)
+		} else {
+			const res = lowerConstraint(lower, constraint)
+			if (res.code !== 'ok') {
+				problems.push(constraintProblem(constraint, 'filter', res.errors))
+				continue
 			}
-			case 'filter-entity': {
-				const res = LE.lowerFilterNode(lower, FB.includedIn(constraint.filterId), [i.toString()])
-				if (res.code !== 'ok') return res
-				ir = res.ir
-				break
-			}
-			case 'installed-mods': {
-				const res = LE.lowerFilterNode(lower, FB.inValues('Collection', constraint.collections), [i.toString()])
-				if (res.code !== 'ok') return res
-				ir = res.ir
-				break
-			}
-			case 'do-not-repeat':
-				ir = repeatRuleIr(ctx, list, cursorIndex?.outerIndex ?? 0, constraint.rule)
-				break
-			default:
-				assertNever(constraint)
+			ir = res.ir
 		}
 
 		constraintIrs[i] = ir
@@ -169,7 +156,7 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 		// earlier match it repeats, which is not something a condition over the table can say
 		if (constraint.showIndicator && constraint.type !== 'do-not-repeat') indicators[i] = ir
 		if (constraint.type === 'filter-entity' && constraint.showIndicator !== 'disabled') {
-			missExemptions[i] = lowerMissExemption(ctx, lower, constraint.filterId, [i.toString(), 'missExemption'])
+			missExemptions[i] = lowerMissExemption(lower, constraint, problems)
 		}
 	}
 
@@ -187,7 +174,15 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 		for (const { field, node } of itemConstraint.items) {
 			if (!node) continue
 			const res = LE.lowerFilterNode(lower, node)
-			if (res.code !== 'ok') return res
+			if (res.code !== 'ok') {
+				problems.push({
+					constraintId: LQY.filterMenuItemConstraintId(field),
+					constraintType: itemConstraint.type,
+					part: 'filter',
+					errors: res.errors,
+				})
+				continue
+			}
 			itemConditions[field] = res.ir
 		}
 		conditions.push(...Object.values(itemConditions))
@@ -204,7 +199,6 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 	}
 
 	return {
-		code: 'ok',
 		where: LE.and(conditions),
 		conjuncts: conditions,
 		constraintIrs,
@@ -212,18 +206,68 @@ export function buildQueryConstraints(ctx: QueryCtx, input: LQY.BaseQueryInput):
 		indicators,
 		missExemptions,
 		menuItemConditions,
+		problems,
+	}
+}
+
+type FilterConstraint = Extract<LQY.Constraint, { type: 'filter-anon' | 'filter-entity' | 'installed-mods' }>
+
+function lowerConstraint(lower: LE.LowerCtx, constraint: FilterConstraint): LE.LowerResult {
+	switch (constraint.type) {
+		case 'filter-anon':
+			return LE.lowerFilterNode(lower, constraint.filter)
+		case 'filter-entity':
+			return LE.lowerFilterEntity(lower, constraint.filterId)
+		case 'installed-mods':
+			return lowerInstalledMods(lower, constraint.collections)
+		default:
+			assertNever(constraint)
+	}
+}
+
+export function lowerInstalledMods(lower: LE.LowerCtx, collections: string[]): LE.LowerResult {
+	return LE.lowerFilterNode(lower, FB.inValues('Collection', collections))
+}
+
+function constraintProblem(constraint: FilterConstraint, part: F.FilterPart, errors: F.NodeValidationError[]): LQY.ConstraintProblem {
+	return {
+		constraintId: constraint.id,
+		constraintType: constraint.type,
+		filterId: constraint.type === 'filter-entity' ? constraint.filterId : undefined,
+		part,
+		errors,
 	}
 }
 
 // An exemption that no longer lowers, such as one applying a filter that has since been deleted, exempts nothing
 // rather than failing the query it is evaluated alongside.
-function lowerMissExemption(ctx: QueryCtx, lower: LE.LowerCtx, filterId: F.FilterEntityId, path: string[]): LE.Ir | null {
-	const exemption = ctx.filters.get(filterId)?.missExemption
-	if (!exemption) return null
-	const res = LE.lowerFilterNode(lower, exemption, path)
+function lowerMissExemption(
+	lower: LE.LowerCtx,
+	constraint: Extract<LQY.Constraint, { type: 'filter-entity' }>,
+	problems: LQY.ConstraintProblem[],
+): LE.Ir | null {
+	const res = LE.lowerMissExemption(lower, constraint.filterId)
+	if (!res) return null
 	if (res.code === 'ok') return res.ir
-	console.warn(`miss exemption of filter ${filterId} does not lower, so it exempts nothing:`, res.errors)
+	problems.push(constraintProblem(constraint, 'missExemption', res.errors))
 	return null
+}
+
+// a filter that is the subject of a request rather than one of its constraints, such as an editor draft
+export async function validateFilter(args: {
+	ctx: QueryCtx
+	input: { node: F.FilterNode; missExemption?: F.FilterNode | null }
+}): Promise<{ code: 'ok'; errors: F.NodeValidationError[] }> {
+	const { ctx, input } = args
+	const lower = lowerCtx(ctx)
+	const errors: F.NodeValidationError[] = []
+	const res = LE.lowerFilterNode(lower, input.node)
+	if (res.code !== 'ok') errors.push(...res.errors)
+	if (input.missExemption) {
+		const exemption = LE.lowerFilterNode(lower, input.missExemption, { part: 'missExemption' })
+		if (exemption.code !== 'ok') errors.push(...exemption.errors)
+	}
+	return { code: 'ok', errors }
 }
 
 // the engine takes indicators as a dense list, so keep which constraint each answer belongs to alongside it. Miss
@@ -390,10 +434,6 @@ export async function* queryLayersStreamed(args: { input: LQY.LayersQueryInput; 
 	ctx.log.debug(input, 'running queryLayers')
 
 	const compiled = buildQueryConstraints(ctx, input)
-	if (compiled.code !== 'ok') {
-		yield compiled
-		return
-	}
 
 	const names = layerColumns(ctx)
 	const columns = columnIndexes(ctx, names)
@@ -430,6 +470,7 @@ export async function* queryLayersStreamed(args: { input: LQY.LayersQueryInput; 
 		layers,
 		totalCount: res.totalCount,
 		pageCount: Math.ceil(res.totalCount / input.pageSize!),
+		problems: compiled.problems,
 	}
 
 	if (compiled.menuItemConditions) {
@@ -586,10 +627,12 @@ function packMatchupEntry(ctx: LQY.Ctx, key: LC.MatchupKey, entry: LC.MatchupWei
 	return LC.packStepKey(key, (column) => byColumn.get(column) ?? null)
 }
 
+// a choice whose own conditions cannot be applied, by its index in the input's choices
+export type GenVoteInvalidChoice = { index: number; errors: F.NodeValidationError[] }
+
 export async function genVote(args: { ctx: LQY.Ctx; input: LQY.GenVote.Input }) {
 	const { input, ctx } = args
 	const base = buildQueryConstraints(ctx, input)
-	if (base.code !== 'ok') return base
 
 	const choices = Obj.deepClone(input.choices)
 	const chosenLayers: (PostProcessedLayer | undefined)[] = new Array<PostProcessedLayer>(choices.length)
@@ -597,14 +640,23 @@ export async function genVote(args: { ctx: LQY.Ctx; input: LQY.GenVote.Input }) 
 	const columns = columnIndexes(ctx, names)
 	const { indicators, indicatorConstraints, exemptionConstraints } = splitIndicators(base)
 	const seed = input.seed ?? LQY.getSeed()
+	const lctx = lowerCtx(ctx)
+
+	// a choice's values also constrain the other choices, so each choice's own values are checked before any draw
+	const invalidChoices: GenVoteInvalidChoice[] = []
+	for (let i = 0; i < choices.length; i++) {
+		const res = LE.lowerFilterNode(lctx, LQY.GenVote.getChoiceFilterNode([choices[i]], [], 0)!)
+		if (res.code !== 'ok') invalidChoices.push({ index: i, errors: res.errors })
+	}
+	if (invalidChoices.length > 0) return { code: 'err:invalid-choices' as const, choices: invalidChoices }
 
 	for (let i = 0; i < choices.length; i++) {
 		const choice = choices[i]
 		if (choice.layerId || (input.onlyIndex !== undefined && input.onlyIndex !== i)) continue
 		// each choice is drawn from the pool minus what the other choices took, which is what keeps them distinct
 		const filterNode = LQY.GenVote.getChoiceFilterNode(choices, input.uniqueConstraints, i)!
-		const res = LE.lowerFilterNode(lowerCtx(ctx), filterNode)
-		if (res.code !== 'ok') return res
+		const res = LE.lowerFilterNode(lctx, filterNode)
+		if (res.code !== 'ok') return { code: 'err:invalid-choices' as const, choices: [{ index: i, errors: res.errors }] }
 
 		const generated = ctx.engine.query<LE.SelectResponse>({
 			kind: 'select',
@@ -633,7 +685,7 @@ export async function genVote(args: { ctx: LQY.Ctx; input: LQY.GenVote.Input }) 
 		}
 	}
 
-	return { code: 'ok' as const, chosenLayers, choiceErrors }
+	return { code: 'ok' as const, chosenLayers, choiceErrors, problems: base.problems }
 }
 
 export type BackburnerTemplate = { itemId: string; filter: F.FilterNode }
@@ -644,6 +696,8 @@ export type GenerateWithBackburnerResult = {
 	consumedItemIds: string[]
 	// templates whose filter no longer lowers (e.g. references a deleted filter entity); skipped, never consumed
 	invalidItemIds: string[]
+	templateErrors: Record<string, F.NodeValidationError[]>
+	problems: LQY.ConstraintProblem[]
 }
 
 // The greedy backburner fold: AND each template into the accumulated constraints oldest-first, skipping any
@@ -681,7 +735,7 @@ function countSolutions(ctx: LE.Ctx, where: LE.Ir): number {
 export async function generateWithBackburner(args: {
 	ctx: LQY.Ctx
 	input: GenerateWithBackburnerInput
-}): Promise<GenerateWithBackburnerResult | F.InvalidFilterNodeResult> {
+}): Promise<GenerateWithBackburnerResult> {
 	const { ctx, input } = args
 	// templates carry their own filters (incl. pool membership), so the fold applies only the repeat rules on
 	// top of them; the full configured constraints only shape the draw when no template is consumed
@@ -689,24 +743,26 @@ export async function generateWithBackburner(args: {
 		...input,
 		constraints: (input.constraints ?? []).filter((c) => c.type === 'do-not-repeat'),
 	})
-	if (repeatBase.code !== 'ok') return repeatBase
 
 	const lowered: { itemId: string; ir: LE.Ir }[] = []
 	const invalidItemIds: string[] = []
+	const templateErrors: Record<string, F.NodeValidationError[]> = {}
 	for (const template of input.templates) {
 		const res = LE.lowerFilterNode(lowerCtx(ctx), template.filter)
 		if (res.code !== 'ok') {
 			invalidItemIds.push(template.itemId)
+			templateErrors[template.itemId] = res.errors
 			continue
 		}
 		lowered.push({ itemId: template.itemId, ir: res.ir })
 	}
 
 	let { where, consumedItemIds } = foldBackburnerTemplates(lowered, repeatBase.where, (w) => countSolutions(ctx, w))
+	let problems = repeatBase.problems
 	if (consumedItemIds.length === 0) {
 		const base = buildQueryConstraints(ctx, input)
-		if (base.code !== 'ok') return base
 		where = base.where
+		problems = base.problems
 	}
 
 	const names = layerColumns(ctx)
@@ -726,7 +782,7 @@ export async function generateWithBackburner(args: {
 		{ rows: generated.rows, names, indicatorResults: [], indicatorConstraints: [], exemptionConstraints: [] },
 		input,
 	)
-	return { code: 'ok', layer: layer ?? null, consumedItemIds, invalidItemIds }
+	return { code: 'ok', layer: layer ?? null, consumedItemIds, invalidItemIds, templateErrors, problems }
 }
 
 // Per-template "does this still have solutions within the base constraints" probe: request-time validation of
@@ -734,20 +790,28 @@ export async function generateWithBackburner(args: {
 export async function checkBackburnerTemplates(args: {
 	ctx: QueryCtx
 	input: LQY.BaseQueryInput & { templates: BackburnerTemplate[] }
-}): Promise<{ code: 'ok'; satisfiable: Record<string, boolean> } | F.InvalidFilterNodeResult> {
+}): Promise<{
+	code: 'ok'
+	// false for an invalid template as well as an unsatisfiable one
+	satisfiable: Record<string, boolean>
+	// per template whose own filter does not lower
+	invalid: Record<string, F.NodeValidationError[]>
+	problems: LQY.ConstraintProblem[]
+}> {
 	const { ctx, input } = args
 	const base = buildQueryConstraints(ctx, input)
-	if (base.code !== 'ok') return base
 	const satisfiable: Record<string, boolean> = {}
+	const invalid: Record<string, F.NodeValidationError[]> = {}
 	for (const template of input.templates) {
 		const res = LE.lowerFilterNode(lowerCtx(ctx), template.filter)
 		if (res.code !== 'ok') {
 			satisfiable[template.itemId] = false
+			invalid[template.itemId] = res.errors
 			continue
 		}
 		satisfiable[template.itemId] = countSolutions(ctx, LE.and([base.where, res.ir])) > 0
 	}
-	return { code: 'ok', satisfiable }
+	return { code: 'ok', satisfiable, invalid, problems: base.problems }
 }
 
 export async function layerExists({ input, ctx }: { input: LQY.LayerExistsInput; ctx: LE.Ctx }) {
@@ -771,21 +835,24 @@ export async function queryLayerComponent(args: { ctx: QueryCtx; input: LQY.Laye
 	const { ctx, input } = args
 	if (!LC.getColumnDef(input.column, ctx.effectiveColsConfig)) return { code: 'err:unknown-column' as const }
 	const compiled = buildQueryConstraints(ctx, input)
-	if (compiled.code !== 'ok') return compiled
 
 	const values = ctx.engine.query<(number | null)[]>({
 		kind: 'distinct',
 		where: compiled.where,
 		col: ctx.engine.columnIndex(input.column),
 	})
-	return values.map((value) => LC.fromDbValue(input.column, value, ctx)) as string[]
+	return {
+		code: 'ok' as const,
+		values: values.map((value) => LC.fromDbValue(input.column, value, ctx)) as string[],
+		problems: compiled.problems,
+	}
 }
 
 // One part of a summary of the layers a query returns. See LQY.LayersSummaryPart.
 export async function queryLayersSummaryPart(args: { ctx: QueryCtx; input: LQY.LayersSummaryPartInput }) {
 	const { ctx, input } = args
 	const compiled = buildQueryConstraints(ctx, input)
-	if (compiled.code !== 'ok') return compiled
+	const { problems } = compiled
 	const part = input.part
 	switch (part.type) {
 		case 'value-counts':
@@ -806,7 +873,7 @@ export async function queryLayersSummaryPart(args: { ctx: QueryCtx; input: LQY.L
 						count,
 					}))
 				})
-				return { code: 'ok' as const, result: { type: part.type, valueCounts } satisfies LQY.LayersSummaryPartResult }
+				return { code: 'ok' as const, result: { type: part.type, valueCounts } satisfies LQY.LayersSummaryPartResult, problems }
 			}
 			const filtered = ctx.engine.query<LE.FilteredRangesResponse>({ kind: 'filteredRanges', where: compiled.where, columns })
 			const all = ctx.engine.query<LE.RangeResponse[]>({ kind: 'ranges', columns })
@@ -821,20 +888,24 @@ export async function queryLayersSummaryPart(args: { ctx: QueryCtx; input: LQY.L
 					all: decode(column, all[i].min, all[i].max),
 				}
 			})
-			return { code: 'ok' as const, result: { type: part.type, ranges } satisfies LQY.LayersSummaryPartResult }
+			return { code: 'ok' as const, result: { type: part.type, ranges } satisfies LQY.LayersSummaryPartResult, problems }
 		}
 		case 'constraint-counts': {
 			const constraints = input.constraints ?? []
 			const lower = lowerCtx(ctx)
 			const counted: { id: string; filter: LE.Ir; conjunct: number | null }[] = []
+			const countProblems = [...problems]
 			constraints.forEach((constraint, i) => {
 				if (constraint.type !== 'filter-entity') return
 				let filter = compiled.constraintIrs[i]
-				// a constraint that neither filters nor shows an indicator is skipped by the query, and one that no longer
-				// lowers is left uncounted rather than failing the summary
 				if (!filter) {
-					const res = LE.lowerFilterNode(lower, FB.includedIn(constraint.filterId), [i.toString()])
-					if (res.code !== 'ok') return
+					if (problems.some((p) => p.constraintId === constraint.id && p.part === 'filter')) return
+					// a constraint that neither filters nor shows an indicator is skipped by the query, so it is lowered here
+					const res = LE.lowerFilterEntity(lower, constraint.filterId)
+					if (res.code !== 'ok') {
+						countProblems.push(constraintProblem(constraint, 'filter', res.errors))
+						return
+					}
 					filter = res.ir
 				}
 				counted.push({ id: constraint.id, filter, conjunct: compiled.conjunctOf[i] })
@@ -853,7 +924,11 @@ export async function queryLayersSummaryPart(args: { ctx: QueryCtx; input: LQY.L
 					constraintCounts[c.id] = { matches: res.matches[i], removed: c.conjunct === null ? null : res.removed[c.conjunct] }
 				})
 			}
-			return { code: 'ok' as const, result: { type: part.type, constraintCounts } satisfies LQY.LayersSummaryPartResult }
+			return {
+				code: 'ok' as const,
+				result: { type: part.type, constraintCounts } satisfies LQY.LayersSummaryPartResult,
+				problems: countProblems,
+			}
 		}
 		default:
 			assertNever(part)
@@ -866,13 +941,12 @@ export async function queryLayersSummaryPart(args: { ctx: QueryCtx; input: LQY.L
 export async function getLayersOutOfPool(args: {
 	ctx: QueryCtx
 	input: { layerIds: L.LayerId[]; constraints: LQY.Constraint[] }
-}): Promise<{ code: 'ok'; outOfPool: L.LayerId[] } | F.InvalidFilterNodeResult> {
+}): Promise<{ code: 'ok'; outOfPool: L.LayerId[]; problems: LQY.ConstraintProblem[] }> {
 	const { ctx } = args
 	const { layerIds, constraints } = args.input
-	if (constraints.length === 0 || layerIds.length === 0) return { code: 'ok' as const, outOfPool: [] }
+	if (constraints.length === 0 || layerIds.length === 0) return { code: 'ok' as const, outOfPool: [], problems: [] }
 
 	const compiled = buildQueryConstraints(ctx, { constraints })
-	if (compiled.code !== 'ok') return compiled
 
 	// ids that aren't in the canonical layer format can never be in the pool
 	const known: L.LayerId[] = []
@@ -892,7 +966,7 @@ export async function getLayersOutOfPool(args: {
 	for (let i = 0; i < known.length; i++) {
 		if (res.exists[i] && res.matches[0][i]) inPool.add(known[i])
 	}
-	return { code: 'ok' as const, outOfPool: layerIds.filter((id) => !inPool.has(id)) }
+	return { code: 'ok' as const, outOfPool: layerIds.filter((id) => !inPool.has(id)), problems: compiled.problems }
 }
 
 export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.LayerItemStatusesInput }) {
@@ -902,22 +976,29 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 	const layerItems = list.layerItems
 
 	// match state is needed for both indication and warning, so evaluate any constraint with either active
-	const filterConstraints = constraints.filter(
-		(c): c is Extract<LQY.Constraint, { type: 'filter-entity' }> =>
-			c.type === 'filter-entity' && (c.showIndicator !== 'disabled' || c.warn !== 'disabled'),
-	)
 	const lower = lowerCtx(ctx)
+	const problems: LQY.ConstraintProblem[] = []
+	const brokenConstraintIds = new Set<string>()
+	const filterConstraints: Extract<LQY.Constraint, { type: 'filter-entity' }>[] = []
 	const filterIrs: LE.Ir[] = []
-	for (const constraint of filterConstraints) {
-		const res = LE.lowerFilterNode(lower, FB.includedIn(constraint.filterId), [constraint.id])
-		if (res.code !== 'ok') return res
+	for (const constraint of constraints) {
+		if (constraint.type !== 'filter-entity' || (constraint.showIndicator === 'disabled' && constraint.warn === 'disabled')) continue
+		const res = LE.lowerFilterEntity(lower, constraint.filterId)
+		if (res.code !== 'ok') {
+			problems.push(constraintProblem(constraint, 'filter', res.errors))
+			brokenConstraintIds.add(constraint.id)
+			continue
+		}
+		filterConstraints.push(constraint)
 		filterIrs.push(res.ir)
 	}
 	// queried after the filters themselves, one per filter rather than per constraint
 	const exemptionSlots = new Map<F.FilterEntityId, number>()
+	const exemptionsLowered = new Set<F.FilterEntityId>()
 	for (const constraint of filterConstraints) {
-		if (exemptionSlots.has(constraint.filterId)) continue
-		const ir = lowerMissExemption(ctx, lower, constraint.filterId, [constraint.id, 'missExemption'])
+		if (exemptionsLowered.has(constraint.filterId)) continue
+		exemptionsLowered.add(constraint.filterId)
+		const ir = lowerMissExemption(lower, constraint, problems)
 		if (!ir) continue
 		exemptionSlots.set(constraint.filterId, filterIrs.length)
 		filterIrs.push(ir)
@@ -957,6 +1038,7 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 			const itemDescriptors = MapUtils.defaultInsGet(matchDescriptors, item.itemId, [])
 			for (const constraint of constraints) {
 				if (constraint.type === 'filter-anon' || constraint.type === 'filter-menu-items') continue
+				if (brokenConstraintIds.has(constraint.id)) continue
 				// installed-mods always reports: an unloadable layer is worth saying regardless of how it was applied
 				const active =
 					constraint.type === 'do-not-repeat' ||
@@ -1043,6 +1125,7 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 		const seedingOrTraining = L.isSeedingOrTrainingLayer(parse(item.layerId))
 		const itemDescriptors = matchDescriptors.get(item.itemId)
 		for (const constraint of constraints) {
+			if (brokenConstraintIds.has(constraint.id)) continue
 			const matched = LQY.isConstraintMatched(itemDescriptors, constraint.id)
 			if (constraint.type === 'filter-entity') {
 				const warnMatch = constraint.warn === 'regular' && matched && !seedingOrTraining
@@ -1080,6 +1163,7 @@ export async function getLayerItemStatuses(args: { ctx: QueryCtx; input: LQY.Lay
 		present,
 		matchDescriptors,
 		warns,
+		problems,
 	}
 
 	return { code: 'ok' as const, statuses }
@@ -1158,7 +1242,6 @@ export async function solveRepeatViolations({ ctx, input }: { ctx: QueryCtx; inp
 	// rather than mirroring it. Otherwise the swapped layer has to exist, and to be in the pool: the server refuses a swap
 	// out of it without queue:force-write.
 	const pool = buildQueryConstraints(ctx, { constraints: input.poolConstraints ?? [] })
-	if (pool.code !== 'ok') return pool
 	const swapOf = new Map<L.LayerId, L.LayerId>()
 	const lookups: L.KnownLayer[] = []
 	for (const id of new Set(LQY.getAllLayerIds(queueItems))) {
@@ -1200,6 +1283,7 @@ export async function solveRepeatViolations({ ctx, input }: { ctx: QueryCtx; inp
 		baselineViolations: 0,
 		swaps: 0,
 		moves: 0,
+		problems: pool.problems,
 	}
 	let segmentStart = 0
 	for (let i = 0; i <= queueItems.length; i++) {
@@ -1317,7 +1401,9 @@ function postProcessLayers(
 	return page.rows.map((row, rowIndex) => {
 		const layer = decodeRow(ctx, row, page.names)
 		const layerId = layer.id as L.LayerId
-		const constraintResults: boolean[] = new Array(constraints.length).fill(false)
+		// null for a constraint the query did not evaluate: one that shows no indicator, or one skipped because it
+		// cannot be applied. Neither is a miss.
+		const constraintResults: (boolean | null)[] = new Array(constraints.length).fill(null)
 		const matchDescriptors: LQY.MatchDescriptor[] = []
 
 		for (let i = 0; i < page.indicatorConstraints.length; i++) {
@@ -1362,10 +1448,8 @@ function postProcessLayers(
 				undefined,
 				parse,
 			)
-			if (descriptors) {
-				constraintResults[i] = true
-				if (constraint.showIndicator !== 'disabled') matchDescriptors.push(...descriptors)
-			}
+			constraintResults[i] = !!descriptors
+			if (descriptors && constraint.showIndicator !== 'disabled') matchDescriptors.push(...descriptors)
 		}
 
 		return { ...layer, constraints: constraintResults, matchDescriptors }
@@ -1466,6 +1550,7 @@ export const queries = {
 	genVote,
 	checkBackburnerTemplates,
 	solveRepeatViolations,
+	validateFilter,
 }
 
 // FNV-1a. Collisions are acceptable for cache keys, and it behaves the same on both hosts.

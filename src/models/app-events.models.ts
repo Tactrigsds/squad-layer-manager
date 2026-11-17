@@ -9,9 +9,11 @@ import * as ZodUtils from '@/lib/zod-utils'
 import * as AMS from '@/models/admin-message-shorthands.models'
 import type * as CS from '@/models/context-shared.models'
 import * as EM from '@/models/event-meta.models'
+import type * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as L from '@/models/layer.models'
 import type * as MH from '@/models/match-history.models'
+import * as Msgs from '@/models/messages.models'
 import * as SLL from '@/models/shared-layer-list.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
@@ -302,6 +304,29 @@ export const FilterChangedSchema = event('FILTER_CHANGED', {
 })
 export type FilterChanged = z.infer<typeof FilterChangedSchema>
 
+// A failing filter node, with its message kept untranslated so each reader sees it in their own language
+const FilterNodeProblemSchema = z.object({
+	type: z.string(),
+	ownerFilterId: z.string().nullable(),
+	part: z.enum(['filter', 'missExemption']),
+	path: z.array(z.string()),
+	msg: z.custom<Msgs.TString>((value) => Msgs.isTString(value)),
+})
+export type FilterNodeProblem = z.infer<typeof FilterNodeProblemSchema>
+
+export function toFilterNodeProblem(error: F.NodeValidationError): FilterNodeProblem {
+	return { type: error.type, ownerFilterId: error.ownerFilterId, part: error.part, path: error.path, msg: error.msg }
+}
+
+// a stored filter stopped lowering, so every query that applies it skips it. Recorded once per transition, not
+// while it stays broken.
+export const FilterBrokenSchema = event('FILTER_BROKEN', {
+	filterId: z.string(),
+	filterName: z.string().optional(),
+	errors: z.array(FilterNodeProblemSchema),
+})
+export type FilterBroken = z.infer<typeof FilterBrokenSchema>
+
 export const FilterContributorChangedSchema = event('FILTER_CONTRIBUTOR_CHANGED', {
 	action: z.enum(['added', 'removed']),
 	filterId: z.string(),
@@ -448,6 +473,26 @@ export const LayerRequestConsumedSchema = event('LAYER_REQUEST_CONSUMED', {
 })
 export type LayerRequestConsumed = z.infer<typeof LayerRequestConsumedSchema>
 
+// generation drew the next layer or vote without some of the server's configured filters, because they cannot be applied
+export const LayerGeneratedWithoutFiltersSchema = event('LAYER_GENERATED_WITHOUT_FILTERS', {
+	// the generated layer, or a generated vote's choices
+	layerIds: z.array(L.LayerIdSchema).min(1),
+	vote: z.boolean(),
+	queueItemId: LL.ItemIdSchema,
+	skipped: z
+		.array(
+			z.object({
+				constraintId: z.string(),
+				constraintType: z.string(),
+				filterId: z.string().optional(),
+				filterName: z.string().optional(),
+				errors: z.array(FilterNodeProblemSchema),
+			}),
+		)
+		.min(1),
+})
+export type LayerGeneratedWithoutFilters = z.infer<typeof LayerGeneratedWithoutFiltersSchema>
+
 // SLM set the next layer on the server. reason 'queue-updated' folds into its cause (the QUEUE_UPDATED linked via
 // causeId) and is audit-only; reason 'override' is when SLM set the layer back over an external set, and gets a feed
 // entry naming who it overrode.
@@ -536,9 +581,11 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	LayerRequestAddedSchema,
 	LayerRequestRemovedSchema,
 	LayerRequestConsumedSchema,
+	LayerGeneratedWithoutFiltersSchema,
 	SettingsUpdatedSchema,
 	ServerRegistryChangedSchema,
 	FilterChangedSchema,
+	FilterBrokenSchema,
 	FilterContributorChangedSchema,
 	RotationChangedSchema,
 	RotationContributorChangedSchema,
@@ -616,6 +663,13 @@ export const APP_EVENT_META = {
 		users: [{ get: (e) => e.requests?.map((r) => r.requester.discordId) }],
 		items: [{ get: (e) => e.queueItemId }],
 	}),
+	LAYER_GENERATED_WITHOUT_FILTERS: EM.meta<LayerGeneratedWithoutFilters>({
+		layers: [
+			{ kind: 'queued', get: (e) => (e.vote ? undefined : e.layerIds) },
+			{ kind: 'offered', get: (e) => (e.vote ? e.layerIds : undefined) },
+		],
+		items: [{ get: (e) => e.queueItemId }],
+	}),
 	// the net change, not the whole list: re-indexing every queued layer on every save would make "when was
 	// Gorodok queued" answer with every save it sat through
 	QUEUE_UPDATED: EM.meta<QueueUpdated>({
@@ -637,6 +691,7 @@ export const APP_EVENT_META = {
 	SETTINGS_UPDATED: EM.meta<SettingsUpdated>(),
 	SERVER_REGISTRY_CHANGED: EM.meta<ServerRegistryChanged>(),
 	FILTER_CHANGED: EM.meta<FilterChanged>(),
+	FILTER_BROKEN: EM.meta<FilterBroken>(),
 	FILTER_CONTRIBUTOR_CHANGED: EM.meta<FilterContributorChanged>(),
 	ROTATION_CHANGED: EM.meta<RotationChanged>(),
 	ROTATION_CONTRIBUTOR_CHANGED: EM.meta<RotationContributorChanged>(),

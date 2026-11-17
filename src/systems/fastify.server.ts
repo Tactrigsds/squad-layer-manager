@@ -23,6 +23,7 @@ import * as RBAC_Msgs from '@/messages/rbac.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as CS from '@/models/context-shared.models'
 import * as HQ from '@/models/history.models'
+import type * as Msgs from '@/models/messages.models'
 import { PLUGIN_API_EXPORTS } from '@/models/plugin-api-exports.models'
 import * as SHIM from '@/models/plugin-api-shim.models'
 import * as USR from '@/models/users.models'
@@ -477,6 +478,8 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 				.type('text/plain; charset=utf-8')
 				.send(t.text(RBAC_Msgs.permissionDenied(denied)))
 		res.type(`${contentType}; charset=utf-8`)
+		const failureText = (failure: { code: string; message?: string | Msgs.TString }) =>
+			failure.message === undefined ? failure.code : typeof failure.message === 'string' ? failure.message : t.text(failure.message)
 		const result = await History.searchRaw(ctx, search, contentType, History.DEFAULT_RENDER)
 		switch (result.code) {
 			case 'ok':
@@ -488,9 +491,10 @@ export const setup = Instr.spanOp('setup', { module }, async () => {
 				return res.status(404).send(t.text(HistoryMsgs.textSelectionNotFound()))
 			case 'err:invalid-query':
 			case 'err:too-broad':
-				return res.status(400).send(t.text(HistoryMsgs.queryFailed(result.message ?? result.code)))
+			case 'err:invalid-node':
+				return res.status(400).send(t.text(HistoryMsgs.queryFailed(failureText(result))))
 			default:
-				return res.status(500).send(t.text(HistoryMsgs.queryFailed(result.message ?? result.code)))
+				return res.status(500).send(t.text(HistoryMsgs.queryFailed(failureText(result))))
 		}
 		if (result.next) {
 			const next = new URL(req.url, ENV.ORIGIN)

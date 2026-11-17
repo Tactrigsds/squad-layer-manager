@@ -83,7 +83,7 @@ export default definePlugin({
 	id: 'scheduled-commands',
 	name: 'Scheduled Commands',
 	version: '1.1.0',
-	apiVersion: '^0.22.2',
+	apiVersion: '^0.23',
 	description: 'Runs RCON commands on a timer, at set times, or a set time after a match starts or ends.',
 	configSchema: z.object({
 		tasks: z

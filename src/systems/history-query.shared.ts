@@ -8,6 +8,7 @@ import { assertNever } from '@/lib/type-guards'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
 import * as L from '@/models/layer.models'
+import type * as Msgs from '@/models/messages.models'
 import * as VEH from '@/models/vehicles.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -77,6 +78,8 @@ export const COMBAT_EXPRS = {
 
 export type QueryError =
 	| { code: 'err:invalid-query'; message: string }
+	// a match-layer filter that cannot be applied. The message is translated where it is shown
+	| { code: 'err:invalid-node'; message: Msgs.TString }
 	| { code: 'err:too-broad'; message: string }
 	// a passthrough error from the layer query engine; every error code in the app follows the err: convention,
 	// which is what lets `res.code !== 'ok'` narrow

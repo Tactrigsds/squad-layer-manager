@@ -77,7 +77,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.22',
+	apiVersion: '^0.23',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -479,7 +479,7 @@ const res = await LayerQueries.query(ctx, {
 	sort: { type: 'column', sortBy: 'Asymmetry_Score', direction: 'ASC:ABS' },
 	constraints: [CB.filterEntity('pool', 'no-seed'), CB.repeatRule('no-repeat-map', { field: 'Map', label: 'Map', within: 3 })],
 })
-if (res.code === 'ok') res.layers // one page, with every column
+res.layers // one page, with every column
 ```
 
 |                   |                                                                |
@@ -503,8 +503,21 @@ Repeat rules need to know what is already queued and what was played. `query` an
 the live queue when `input.list` is left out, which is almost always the queue a plugin means. Pass `itemsState`
 yourself only to ask about a queue other than the current one.
 
-A malformed filter comes back as `{ code: 'err:invalid-node', errors }` rather than throwing. Each error names the
-node and the reason, and `msg.original` is that reason in english.
+A filter cannot be applied when it names a column or value this install's layer data does not have, or applies a
+filter that no longer exists. A constraint with such a filter is left out of the query, and the query runs on the
+rest. `query`, `componentValues`, `outOfPool` and `genVote` list the constraints they left out in `problems`, and
+`itemStatuses` lists them in `statuses.problems`. Each problem holds the constraint's `id`, its `filterId` for a
+filter-entity constraint, and the errors. Each error names the stored filter that holds the failing node
+(`ownerFilterId`), the path to the node, and the reason, and `msg.original` is that reason in english.
+`describeNodeValidationError` in `slm/models/filter` writes one error as a log line.
+
+A query whose only constraint cannot be applied matches every layer. Check `problems` before acting on a result
+that depends on one filter:
+
+```ts
+const res = await LayerQueries.query(ctx, { pageSize: 1, constraints: [CB.filterEntity('pool', filterId)] })
+if (res.problems.length > 0) return { code: 'err:filter-cannot-be-applied' }
+```
 
 `genVote` draws rather than lists. A choice either names a layer already or carries constraints to draw one from,
 and `uniqueConstraints` names the properties the drawn choices have to differ on.
@@ -523,7 +536,9 @@ if (res.code === 'ok') res.chosenLayers // one per choice, undefined where a cho
 
 The same seed draws the same layers. To repeat a draw, keep the seed. `onlyIndex` redraws one choice and leaves the
 rest. `unfilledChoices` holds the indices nothing could be found for, which is how an over-constrained draw reports
-itself.
+itself. `genVote` returns `{ code: 'err:invalid-choices', choices }` when the constraints of one or more choices
+cannot be applied. Each entry of `choices` holds the choice's index in `input.choices` and its `errors`, and nothing
+is drawn.
 
 Starting the vote is not here. Draw the choices, then put them in the queue.
 

@@ -18,6 +18,7 @@ import * as MapUtils from '@/lib/map-utils'
 import * as Obj from '@/lib/object-utils'
 import { cn } from '@/lib/utils.ts'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as MsgFmt from '@/messages/format'
 import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
@@ -39,6 +40,7 @@ import * as UPClient from '@/systems/user-presence.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { RepeatViolationDisplay } from './constraint-matches-indicator.tsx'
+import { ConfigProblemList } from './filter-problems.tsx'
 import { LayerList } from './layer-list.tsx'
 import { useOpenPoolConfigWindow } from './pool-config-window.helpers.ts'
 import ShortLayerName from './short-layer-name.tsx'
@@ -682,6 +684,22 @@ export function IngameVoteAlert(props: { stores: SquadServerFrame.KeyProp }) {
 			<AlertDescription>
 				{tr.text(LL_Msgs.inGameVoteBlurb())}
 				{ingameVote.choices.length > 0 && <> {tr.text(LL_Msgs.currentlyVotingBetween(MsgFmt.formatList(ingameVote.choices)))}</>}
+			</AlertDescription>
+		</Alert>
+	)
+}
+
+export function ConfigProblemsAlert(props: { stores: SquadServerFrame.KeyProp }) {
+	const rows = Zus.useStore(props.stores.squadServer, FilterEntityClient.ProblemsStore, SquadServerFrame.Sel.configProblemRows)
+	const title = Zus.useStore(props.stores.squadServer, FilterEntityClient.ProblemsStore, SquadServerFrame.Sel.configProblemsTitle)
+	if (rows.length === 0) return null
+	return (
+		<Alert variant="destructive">
+			<Icons.FilterX />
+			<AlertTitle>{tr.text(title)}</AlertTitle>
+			<AlertDescription className="flex flex-col gap-1.5">
+				<p>{tr.text(F_Msgs.configProblemsBlurb())}</p>
+				<ConfigProblemList rows={rows} />
 			</AlertDescription>
 		</Alert>
 	)

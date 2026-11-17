@@ -15,6 +15,7 @@ import { tr } from '@/systems/messages.client'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
+import { FilterProblemsMark } from './filter-problems.tsx'
 import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
@@ -176,14 +177,17 @@ export function PoolFilterCheckbox({ stores }: { stores: Partial<ListHostPrt.Key
 
 	const emoji = poolApplyAs === 'inverted' ? (filter.invertedEmoji ?? filter.emoji) : filter.emoji
 	return (
-		<TriStateCheckbox
-			checked={poolApplyAs}
-			onCheckedChange={(applyAs) => AppliedFiltersPrt.Actions.setPoolApplyAs(stores, applyAs)}
-			title={tr.text(SETTINGS_Msgs.poolStateTitles[poolApplyAs])}
-		>
-			{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
-			<span>{filter.name}</span>
-		</TriStateCheckbox>
+		<span className="inline-flex items-center gap-0.5">
+			<TriStateCheckbox
+				checked={poolApplyAs}
+				onCheckedChange={(applyAs) => AppliedFiltersPrt.Actions.setPoolApplyAs(stores, applyAs)}
+				title={tr.text(SETTINGS_Msgs.poolStateTitles[poolApplyAs])}
+			>
+				{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
+				<span>{filter.name}</span>
+			</TriStateCheckbox>
+			<FilterProblemsMark filterId={filter.id} />
+		</span>
 	)
 }
 
@@ -198,12 +202,15 @@ export function FilterCheckbox({ filterId, stores }: { filterId: string; stores:
 	}
 
 	return (
-		<TriStateCheckbox
-			checked={storeAppliedState}
-			onCheckedChange={(applyAs) => AppliedFiltersPrt.Actions.setAppliedFilterState(stores, filterId, applyAs)}
-		>
-			{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
-			<span>{filter?.name}</span>
-		</TriStateCheckbox>
+		<span className="inline-flex items-center gap-0.5">
+			<TriStateCheckbox
+				checked={storeAppliedState}
+				onCheckedChange={(applyAs) => AppliedFiltersPrt.Actions.setAppliedFilterState(stores, filterId, applyAs)}
+			>
+				{emoji && <EmojiDisplay size="sm" emoji={emoji} />}
+				<span>{filter?.name}</span>
+			</TriStateCheckbox>
+			<FilterProblemsMark filterId={filterId} />
+		</span>
 	)
 }

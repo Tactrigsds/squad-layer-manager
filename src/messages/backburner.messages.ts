@@ -9,6 +9,19 @@ export const added = def((parts: string[], ownCount: number, evictedCount: numbe
 
 export const noSolutions = def('No layers in the current pool match "{request}".', (request: string) => ({ request }))
 
+// a request whose own filter does not lower. filterNames are the filters it applies that cannot be applied, empty when
+// the problem is in the request's own conditions
+export const requestCannotBeApplied = def(
+	'{count, plural, =0 {This request cannot be applied.} one {This request uses the filter {filterList}, which cannot be applied.} other {This request uses the filters {filterList}, which cannot be applied.}}',
+	(filterNames: string[]) => ({ count: filterNames.length, filterList: filterNames.map((name) => `"${name}"`).join(', ') }),
+)
+
+// layer request filters left out of a request because they cannot be applied
+export const requestFiltersSkipped = def(
+	'{count, plural, one {The layer request filter {filterList} cannot be applied, so the request was queued without it.} other {The layer request filters {filterList} cannot be applied, so the request was queued without them.}} Fix {count, plural, one {the filter} other {the filters}} in SLM.',
+	(filterNames: string[]) => ({ count: filterNames.length, filterList: filterNames.map((name) => `"${name}"`).join(', ') }),
+)
+
 export const backburnerFull = def('The layer request list is full (max {max}).', (max: number) => ({ max }))
 
 export const removed = def((description: string) => ({
@@ -104,6 +117,13 @@ export const clearOtherConstraints = def('Remove all other constraints and selec
 export const satisfiableHint = def('This request has matching layers')
 
 export const unsatisfiableHint = def('No layers match this request right now; it stays queued for later')
+
+export const cannotBeAppliedLabel = def('Filter cannot be applied')
+
+export const cannotBeAppliedHint = def('Generation skips this request until its filter is fixed. The request stays queued.')
+
+// names the conditions of a request that are not a stored filter
+export const thisRequest = def('This request')
 
 export const customConditions = def('{count, plural, one {# custom condition} other {# custom conditions}}', (count: number) => ({ count }))
 

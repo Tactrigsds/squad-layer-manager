@@ -7,12 +7,14 @@ import type * as FRM from '@/lib/frame'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
 import * as Prom from '@/lib/promise-utils'
+import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
 import * as BB from '@/models/backburner.models'
 import * as CB from '@/models/constraint-builders.models'
 import * as EFB from '@/models/editable-filter-builders.models'
 import * as FB from '@/models/filter-builders.models'
+import * as FPM from '@/models/filter-problems.models'
 import * as F from '@/models/filter.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as SETTINGS from '@/models/settings.models'
@@ -61,6 +63,8 @@ type Primary = {
 	preserved: Pick<BB.TemplateParts, 'sizes' | 'other'>
 	// layers matching the request within the generation pool, from the same query that narrows the options
 	matchingCount: number | null
+	// the filters matchingCount was counted without, because they cannot be applied
+	countProblems: LQY.ConstraintProblem[]
 	matchupSideOptions: MatchupSideOptions | null
 }
 
@@ -111,6 +115,7 @@ const setup: Frame['setup'] = (args) => {
 		matchup: seedMatchup(parts),
 		preserved: { sizes: parts.sizes, other: parts.other },
 		matchingCount: null,
+		countProblems: [],
 		matchupSideOptions: null,
 	} satisfies Primary)
 
@@ -175,17 +180,17 @@ const setup: Frame['setup'] = (args) => {
 		}
 	})().catch(Prom.rethrowUnlessAborted)
 
-	// a query that fails to build (e.g. an applied filter referencing values the layer data no longer maps)
-	// degrades to no count and unfiltered options rather than killing the stream or looping
-	const firstCount = (input: LQY.LayersQueryInput): Rx.Observable<number | null> =>
+	// a query that fails degrades to no count and unfiltered options rather than killing the stream or looping
+	const NO_COUNT = { count: null, problems: [] as LQY.ConstraintProblem[] }
+	const firstCount = (input: LQY.LayersQueryInput): Rx.Observable<{ count: number | null; problems: LQY.ConstraintProblem[] }> =>
 		LayerQueriesClient.queryLayers$(input).pipe(
 			Rx.filter((packet) => packet.code === 'layers-page'),
-			Rx.map((packet) => (packet.code === 'layers-page' ? packet.totalCount : null)),
+			Rx.map((packet) => (packet.code === 'layers-page' ? { count: packet.totalCount, problems: packet.problems } : NO_COUNT)),
 			Rx.take(1),
-			Rx.defaultIfEmpty(null),
+			Rx.defaultIfEmpty(NO_COUNT),
 			Rx.catchError((error) => {
 				console.warn('backburner request count query failed:', error)
-				return Rx.of(null)
+				return Rx.of(NO_COUNT)
 			}),
 		)
 	const firstMenuValues = (input: LQY.LayersQueryInput): Rx.Observable<Record<string, string[]> | null> =>
@@ -219,7 +224,8 @@ const setup: Frame['setup'] = (args) => {
 				),
 			)
 			.subscribe(({ plan, count, valueSets }) => {
-				set({ matchingCount: count, ...mergeOptionSets(plan, valueSets) })
+				const countProblems = Obj.deepEqual(count.problems, args.get().countProblems) ? args.get().countProblems : count.problems
+				set({ matchingCount: count.count, countProblems, ...mergeOptionSets(plan, valueSets) })
 			}),
 	)
 }
@@ -278,6 +284,13 @@ function stringsOfComp(comp: F.EditableCompNode | undefined): string[] {
 }
 
 export namespace Sel {
+	export function countProblems(state: State) {
+		return state.countProblems
+	}
+	const countSkippedProblems = RSel.createSelector([countProblems], (problems) => FPM.skippedProblems(problems))
+	export const countProblemLines = RSel.createSelector([countSkippedProblems], (problems) => FPM.problemLines(problems))
+	export const countSkipped = RSel.createSelector([countSkippedProblems], (problems) => FPM.skippedCount(problems))
+
 	// pool membership + the user's applied filters + generation-only filters + preserved chat parts:
 	// everything except the matchup and the identity fields, which each query expresses its own way
 	function baseConstraints(state: State): LQY.Constraint[] {

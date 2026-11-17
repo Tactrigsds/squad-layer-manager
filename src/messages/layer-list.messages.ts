@@ -18,7 +18,31 @@ export type NextLayerViolations = {
 	poolViolations: string[]
 	// collections the next layer needs that this server has no mod for
 	unsupportedMods: string[]
+	// names of configured filters that cannot be applied, so the next layer was not checked against them
+	uncheckedFilters: string[]
 }
+
+function quotedList(names: string[]) {
+	return names.map((name) => `"${name}"`).join(', ')
+}
+
+function uncheckedFiltersLine(violations: NextLayerViolations) {
+	if (violations.uncheckedFilters.length === 0) return undefined
+	return t(
+		'WARNING: the next layer was not checked against {count, plural, one {the filter {filterList}, which cannot be applied. Fix the filter in SLM.} other {the filters {filterList}, which cannot be applied. Fix the filters in SLM.}}',
+		{ count: violations.uncheckedFilters.length, filterList: quotedList(violations.uncheckedFilters) },
+	)
+}
+
+// One warn per generation, sent to every admin in game
+export const generatedWithoutFilters = def(
+	'{kind, select, vote {Next vote was generated} other {Next layer was generated}} without {count, plural, one {the filter {filterList}. The filter cannot be applied. Fix it in SLM.} other {the filters {filterList}. These filters cannot be applied. Fix them in SLM.}}',
+	(vote: boolean, filterNames: string[]) => ({
+		kind: vote ? 'vote' : 'layer',
+		count: filterNames.length,
+		filterList: quotedList(filterNames),
+	}),
+)
 
 // The next layer cannot load at all, which outranks anything else wrong with it, so it gets its own line.
 function unsupportedModsLine(violations: NextLayerViolations) {
@@ -173,6 +197,8 @@ export const showNext = def(
 				if (unsupportedMods) lines.push(unsupportedMods)
 				const violations = opts.violations && violationsLine(opts.violations)
 				if (violations) lines.push(violations)
+				const unchecked = opts.violations && uncheckedFiltersLine(opts.violations)
+				if (unchecked) lines.push(unchecked)
 			}
 
 			return { msg: lines }

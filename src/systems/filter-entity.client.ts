@@ -2,11 +2,13 @@ import { useMutation } from '@tanstack/react-query'
 
 import * as MapUtils from '@/lib/map-utils'
 import * as ReactRx from '@/lib/react-rxjs'
+import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as F_Msgs from '@/messages/filter.messages'
+import * as FPM from '@/models/filter-problems.models'
 import type * as FR from '@/models/filter-references.models'
 import type * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
@@ -14,7 +16,7 @@ import type * as USR from '@/models/users.models'
 import * as RPC from '@/orpc.client'
 import * as AppEventsClient from '@/systems/app-events.client'
 import * as ConfigClient from '@/systems/config.client'
-import type { FilterEntityChange } from '@/systems/filter-entity.server'
+import type { FilterEntityChange, FilterProblems } from '@/systems/filter-entity.server'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
@@ -104,6 +106,47 @@ export const [useFilterReferences, filterReferences$] = ReactRx.bindWithDefault(
 	new Map<F.FilterEntityId, FR.Reference[]>() as FR.Index,
 )
 
+// which filters, and which servers' installed mods, do not lower. Empty until the first message lands.
+export const ProblemsStore = Zus.createStore<FilterProblems>(() => ({ filters: {}, installedMods: {} }))
+
+const problems$ = RPC.observe('filters.watchFilterProblems', () => RPC.orpc.filters.watchFilterProblems.call()).pipe(
+	Rx.tap((problems) => ProblemsStore.setState(problems, true)),
+)
+
+export namespace Sel {
+	const NO_ERRORS: F.NodeValidationError[] = []
+	const MAX_CACHED_SELECTORS = 500
+
+	const filterErrors = RSel.memoizeFactoryLru(
+		(filterId: F.FilterEntityId) => (s: FilterProblems) => s.filters[filterId] ?? NO_ERRORS,
+		MAX_CACHED_SELECTORS,
+	)
+
+	export type FilterProblemSummary = {
+		lines: FPM.ProblemLine[]
+		// every problem is in the miss exemption, so the filter itself still applies
+		exemptionOnly: boolean
+	}
+	export const filterProblemSummary = RSel.memoizeFactoryLru(
+		(filterId: F.FilterEntityId) =>
+			RSel.createSelector([filterErrors(filterId)], (errors): FilterProblemSummary => ({
+				lines: FPM.errorLines(errors),
+				exemptionOnly: errors.every((error) => error.part === 'missExemption'),
+			})),
+		MAX_CACHED_SELECTORS,
+	)
+}
+
+// the names of the configured filters a result skipped, as this client knows them now, and the installed mods when
+// those were skipped
+export function skippedFilterNames(problems: LQY.ConstraintProblem[]): string[] {
+	const names = FPM.skippedFilterIds(problems).map((id) => filterEntities.get(id)?.name ?? tr.text(F_Msgs.deletedFilterLabel(id)))
+	if (FPM.skippedProblems(problems).some((problem) => problem.constraintType === 'installed-mods')) {
+		names.push(tr.text(F_Msgs.installedModsLabel()))
+	}
+	return names
+}
+
 // A user owner's name comes from `user`, which the caller resolves: only it knows whether the user is already in hand.
 // `user` defaults to the owning user as the parts store knows them
 export function useOwnerName(owner: F.FilterOwner, user?: USR.User): string | undefined {
@@ -126,6 +169,7 @@ export function setup() {
 	filterMutation$.subscribe()
 	filterEntities$.subscribe()
 	filterReferences$.subscribe()
+	problems$.subscribe()
 	initializedFilterEntities$().pipe(ReactRx.retryHot()).subscribe()
 }
 

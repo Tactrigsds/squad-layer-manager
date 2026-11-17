@@ -11,6 +11,7 @@ import type * as LQY from '@/models/layer-queries.models'
 import { tr } from '@/systems/messages.client'
 
 import FilterCard from './filter-card'
+import { FilterValidationErrorDisplay } from './filter-extra-errors'
 import { Button } from './ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 
@@ -51,6 +52,7 @@ export function MissExemptionEditor(props: {
 			</div>
 			<p className="text-sm text-muted-foreground">{tr.text(F_Msgs.missExemptionDescription())}</p>
 			<CollapsibleContent className="flex flex-col gap-2">
+				<FilterValidationErrorDisplay stores={stores} tree="exemptions" />
 				<FilterCard stores={stores} builderOnly />
 				<Button
 					type="button"

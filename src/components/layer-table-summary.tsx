@@ -8,14 +8,18 @@ import * as LayerTablePrt from '@/frame-partials/layer-table.partial'
 import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as MsgFmt from '@/messages/format'
 import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as DH from '@/models/display-helpers.models'
+import type * as FPM from '@/models/filter-problems.models'
 import type * as LC from '@/models/layer-columns.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
+
+import { ProblemsTip } from './filter-problems'
 
 const TIP_VALUES_SHOWN = 12
 const CARD_VALUES_SHOWN = 5
@@ -262,31 +266,43 @@ function FilterSummaryTable(props: { stores: LayerTablePrt.KeyProp; rows: LayerT
 			</TableHeader>
 			<TableBody>
 				{props.rows.map((row) => {
-					const share = total ? row.count.matches / total : 0
+					const share = total && row.count ? row.count.matches / total : 0
 					return (
 						<TableRow key={row.filterId}>
 							<TableCell className="truncate font-medium">{filters.get(row.filterId)?.name ?? row.filterId}</TableCell>
 							<TableCell>
-								<AppliedAsBadge appliedAs={row.appliedAs} />
+								{row.count ? <AppliedAsBadge appliedAs={row.appliedAs} /> : <CannotBeAppliedBadge lines={row.problemLines} />}
 							</TableCell>
 							<TableCell>
-								<span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-									<span className="fd-prog">
-										<span className="fd-prog-bar" style={{ width: `${share * 100}%` }} />
+								{row.count && (
+									<span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+										<span className="fd-prog">
+											<span className="fd-prog-bar" style={{ width: `${share * 100}%` }} />
+										</span>
+										<span className="fd-num font-mono text-xs text-text-2">
+											{tr.text(
+												L_Msgs.summaryMatchCount(MsgFmt.formatNumber(row.count.matches), String(Math.round(share * 100))),
+											)}
+										</span>
 									</span>
-									<span className="fd-num font-mono text-xs text-text-2">
-										{tr.text(L_Msgs.summaryMatchCount(MsgFmt.formatNumber(row.count.matches), String(Math.round(share * 100))))}
-									</span>
-								</span>
+								)}
 							</TableCell>
 							<TableCell className="fd-num text-end font-mono text-xs">
-								{row.count.removed === null ? <span className="text-text-3">-</span> : MsgFmt.formatNumber(row.count.removed)}
+								{row.count?.removed == null ? <span className="text-text-3">-</span> : MsgFmt.formatNumber(row.count.removed)}
 							</TableCell>
 						</TableRow>
 					)
 				})}
 			</TableBody>
 		</Table>
+	)
+}
+
+function CannotBeAppliedBadge(props: { lines: FPM.ProblemLine[] }) {
+	return (
+		<ProblemsTip heading={tr.text(F_Msgs.filterCannotBeAppliedHint())} lines={props.lines}>
+			<span className="fd-badge fd-badge-dng truncate">{tr.text(F_Msgs.cannotBeApplied())}</span>
+		</ProblemsTip>
 	)
 }
 

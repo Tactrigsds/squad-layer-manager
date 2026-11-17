@@ -44,6 +44,9 @@ function sweepFrameKeys(filterId: string) {
 	})
 }
 
+// the paths F.resolveErrorNode reads: child indexes, optionally ending at an apply-filter node's filterId
+const NODE_PATH = /^(children\.\d+)(\.children\.\d+)*(\.filterId)?$|^filterId$/
+
 export const Route = createFileRoute('/_app/filters/$filterId')({
 	component: RouteComponent,
 
@@ -53,6 +56,12 @@ export const Route = createFileRoute('/_app/filters/$filterId')({
 				filterId: F.FilterEntityIdSchema.parse(params.filterId),
 			}
 		},
+	},
+	// `node` is a lowering error path joined by '.', revealed once the tree has rendered
+	validateSearch: (search): { node?: string } => {
+		const node = search.node
+		if (typeof node !== 'string' || !NODE_PATH.test(node)) return {}
+		return { node }
 	},
 	staleTime: Infinity,
 	preloadStaleTime: Infinity,
@@ -127,6 +136,14 @@ function RouteComponent() {
 	const loaderData = Route.useLoaderData()
 	const params = Route.useParams()
 	const frameKey = useLiveFrameKey(params.filterId, loaderData?.frameKey, loaderData?.frameInput)
+	const revealedNode = Route.useSearch({ select: (search) => search.node })
+
+	React.useEffect(() => {
+		if (!frameKey || !revealedNode) return
+		const controller = new AbortController()
+		EditFrame.Actions.revealPath({ filterEditor: frameKey }, revealedNode.split('.'), controller.signal)
+		return () => controller.abort()
+	}, [frameKey, revealedNode])
 
 	// the page was actually opened, so the preloaded frame is in use and its sweep no longer applies
 	React.useEffect(() => {

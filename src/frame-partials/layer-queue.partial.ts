@@ -514,7 +514,11 @@ export namespace Actions {
 			toast.error(...tr.toast(LL_Msgs.opFailed()))
 			return false
 		}
-		if (res.code === 'ok') return true
+		if (res.code === 'ok') {
+			// an accepted layer request that left out a layer request filter which cannot be applied
+			if ('msg' in res && res.msg) toast.warning(res.msg)
+			return true
+		}
 		rollbackOp(slice, op.opId)
 		if (res.code === 'err:permission-denied') RbacClient.handlePermissionDenied(res)
 		else toast.error('msg' in res ? res.msg : res.code)

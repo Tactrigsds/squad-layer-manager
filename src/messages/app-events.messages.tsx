@@ -139,6 +139,9 @@ export const layerRequestBy = def((description: string, who: React.ReactNode) =>
 export const unnamedRequester = def('a player')
 
 // a generic line for the types the feed has no renderer of its own for; the description comes from the models
+// one failing node of a filter that a generation left out
+export const skippedFilterProblem = def('"{filter}": {reason}', (filter: string, reason: TString) => ({ filter, reason }))
+
 export const genericLine = def((actor: React.ReactNode, description: string) => rt('{actor} {description}', { actor, description }))
 
 // a plugin's own rendering of one of its events. Same shape as genericLine, but the predicate is a node the
@@ -592,6 +595,12 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 				e.layerId,
 			)}`
 		}
+		case 'LAYER_GENERATED_WITHOUT_FILTERS': {
+			const names = e.skipped.map((s) => `"${s.filterName ?? s.filterId ?? s.constraintId}"`).join(', ')
+			const filters = `${e.skipped.length === 1 ? 'the filter' : 'the filters'} ${names}, which cannot be applied`
+			if (e.vote) return `generated a vote (${e.layerIds.map((id) => DH.toShortLayerNameFromId(id)).join(', ')}) without ${filters}`
+			return `generated next layer ${DH.toShortLayerNameFromId(e.layerIds[0])} without ${filters}`
+		}
 		case 'MAP_SET': {
 			const layer = DH.toShortLayerNameFromId(e.layerId)
 			if (e.reason === 'override') {
@@ -622,6 +631,10 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			const name = e.filterName ? `"${e.filterName}"` : e.filterId
 			const fields = e.action === 'updated' && e.changedFields?.length ? ` (${e.changedFields.join(', ')})` : ''
 			return `${e.action} filter ${name}${fields}`
+		}
+		case 'FILTER_BROKEN': {
+			const name = e.filterName ? `"${e.filterName}"` : e.filterId
+			return `filter ${name} can no longer be applied: ${e.errors.map((error) => I18n.ambient.text(error.msg)).join('; ')}`
 		}
 		case 'FILTER_CONTRIBUTOR_CHANGED': {
 			const name = e.filterName ? `"${e.filterName}"` : e.filterId

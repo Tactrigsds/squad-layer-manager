@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as CHAT_Msgs from '@/messages/chat.messages'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as I18n from '@/messages/i18n'
 import * as AppEvents from '@/models/app-events.models'
 import type * as CHAT from '@/models/chat.models'
@@ -158,6 +159,11 @@ function SentBroadcasts(props: { broadcasts: ServerBroadcast[] }) {
 }
 
 // who made a layer request: the SLM user, else the player the roster knew them as
+function skippedFilterLabel(skipped: AppEvents.LayerGeneratedWithoutFilters['skipped'][number]) {
+	if (skipped.constraintType === 'installed-mods') return tr.text(F_Msgs.installedModsLabel())
+	return skipped.filterName ?? skipped.filterId ?? skipped.constraintId
+}
+
 function requesterLabel(
 	ctx: RC.RenderCtx,
 	event: AppEventEntry,
@@ -808,6 +814,31 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 			</details>
 		)
 	}
+	if (appEvent.type === 'LAYER_GENERATED_WITHOUT_FILTERS') {
+		return (
+			<details className={DETAILS_CLASS} open={ctx.focusItemId !== undefined && ctx.focusItemId === appEvent.queueItemId}>
+				<summary className={SUMMARY_CLASS}>
+					<Atoms.EventTime time={event.time} />
+					<EventIcon name="AlertTriangle" className="text-warn" />
+					<span className="grow min-w-0 wrap-anywhere">
+						{tr.richText(AppEvents_Msgs.genericLine(actorLabel, AppEvents_Msgs.describeAppEvent(appEvent)))}
+					</span>
+				</summary>
+				<div className="ps-6 pt-1 flex flex-col gap-0.5">
+					{appEvent.skipped.flatMap((skipped) =>
+						skipped.errors.map((error) => (
+							<span
+								key={`${skipped.constraintId}|${error.ownerFilterId}|${error.part}|${error.path.join('.')}|${error.type}`}
+								className="min-w-0 wrap-anywhere"
+							>
+								{tr.text(AppEvents_Msgs.skippedFilterProblem(skippedFilterLabel(skipped), error.msg))}
+							</span>
+						)),
+					)}
+				</div>
+			</details>
+		)
+	}
 	if (appEvent.type === 'LAYER_REQUEST_ADDED' || appEvent.type === 'LAYER_REQUEST_REMOVED' || appEvent.type === 'LAYER_REQUEST_CONSUMED') {
 		const icon =
 			appEvent.type === 'LAYER_REQUEST_CONSUMED' ? (
@@ -849,6 +880,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		appEvent.type === 'SETTINGS_UPDATED' ||
 		appEvent.type === 'SERVER_REGISTRY_CHANGED' ||
 		appEvent.type === 'FILTER_CHANGED' ||
+		appEvent.type === 'FILTER_BROKEN' ||
 		appEvent.type === 'FILTER_CONTRIBUTOR_CHANGED' ||
 		appEvent.type === 'ROTATION_CHANGED' ||
 		appEvent.type === 'ROTATION_CONTRIBUTOR_CHANGED' ||

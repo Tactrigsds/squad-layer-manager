@@ -15,6 +15,7 @@ import * as RequestFrame from '@/frames/backburner-request.frame'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
 import * as SelectLayersFrame from '@/frames/select-layers.frame'
 import type * as SquadServerFrame from '@/frames/squad-server.frame'
+import * as Obj from '@/lib/object-utils'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
@@ -26,6 +27,7 @@ import * as BB from '@/models/backburner.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CB from '@/models/constraint-builders.models'
 import type * as DND from '@/models/dndkit.models'
+import * as FPM from '@/models/filter-problems.models'
 import * as F from '@/models/filter.models'
 import * as LL from '@/models/layer-list.models'
 import * as L from '@/models/layer.models'
@@ -48,6 +50,7 @@ import { EndDropZone } from './end-drop-zone.tsx'
 import type { ComparisonHandle, MatchupActions } from './filter-card'
 import { Comparison, MatchupConfig } from './filter-card'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
+import { SkippedFiltersLabel, ProblemsTip } from './filter-problems.tsx'
 import { LayerRequester } from './layer-requester'
 import { ListEditor } from './list-editor.tsx'
 import SelectLayersDialog from './select-layers-dialog.tsx'
@@ -87,7 +90,7 @@ export default function BackburnerPanel(props: StoresProp) {
 		disabled: dragging?.type !== 'layer-item' || !canRequest,
 	})
 
-	const satisfiable = useBackburnerSatisfiability(items)
+	const templateChecks = useBackburnerSatisfiability(items)
 	const combinableWith = useCombinability(items)
 
 	const queueKey: LayerQueuePrt.KeyProp = React.useMemo(() => ({ queue: props.stores.squadServer! }), [props.stores.squadServer])
@@ -278,7 +281,8 @@ export default function BackburnerPanel(props: StoresProp) {
 								itemId={item.itemId}
 								canWriteQueue={canWriteQueue}
 								canRequest={canRequest}
-								satisfiable={satisfiable?.[item.itemId]}
+								satisfiable={templateChecks?.satisfiable[item.itemId]}
+								invalid={templateChecks?.invalid[item.itemId]}
 								combinable={combinableWith?.[item.itemId] ?? false}
 								onEdit={() => setEditorState({ open: true, itemId: item.itemId })}
 							/>
@@ -354,7 +358,8 @@ async function onlyMatchingLayer(filter: F.FilterNode): Promise<L.LayerId | null
 	}
 }
 
-// per-item "still has solutions" flags, refreshed when the items change. Templates carry their own filters
+// per-item "still has solutions" flags and the errors of templates whose own filter cannot be applied, refreshed
+// when the items change. Templates carry their own filters
 // (incl. generation constraints), so the probe applies nothing on top; do-not-repeat rules stay out (transient),
 // matching the server's request-time validation.
 function useBackburnerSatisfiability(items: BB.BackburnerItem[]) {
@@ -366,9 +371,16 @@ function useBackburnerSatisfiability(items: BB.BackburnerItem[]) {
 		enabled: items.length > 0,
 		queryFn: async () => {
 			const res = await LayerQueriesClient.checkBackburnerTemplates({ constraints: [], templates })
-			return res.code === 'ok' ? res.satisfiable : {}
+			if (res.code !== 'ok') return NO_TEMPLATE_CHECKS
+			return { satisfiable: res.satisfiable, invalid: Obj.map(res.invalid, (errors) => FPM.errorLines(errors)) }
 		},
 	}).data
+}
+
+// `invalid` holds the problem lines of each template whose own filter cannot be applied
+const NO_TEMPLATE_CHECKS: { satisfiable: Record<string, boolean>; invalid: Record<string, FPM.ProblemLine[]> } = {
+	satisfiable: {},
+	invalid: {},
 }
 
 // while a backburner row is being dragged: which OTHER rows its template can merge into. A merge that fails
@@ -442,6 +454,8 @@ function BackburnerRow(
 		canWriteQueue: boolean
 		canRequest: boolean
 		satisfiable: boolean | undefined
+		// the problems of the template's own filter, when it cannot be applied
+		invalid: FPM.ProblemLine[] | undefined
 		combinable: boolean
 		onEdit: () => void
 	},
@@ -485,7 +499,7 @@ function BackburnerRow(
 			>
 				<Icons.GripVertical className="size-3.5" />
 			</button>
-			{props.satisfiable !== undefined && (
+			{!props.invalid && props.satisfiable !== undefined && (
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<span className={cn('size-[7px] shrink-0 rounded-full', props.satisfiable ? 'bg-ok' : 'bg-warn')} />
@@ -494,6 +508,19 @@ function BackburnerRow(
 				</Tooltip>
 			)}
 			<TemplateDisplay filter={item.filter} className="min-w-0 flex-1 truncate" />
+			{props.invalid && (
+				<ProblemsTip
+					heading={tr.text(BB_Msgs.cannotBeAppliedHint())}
+					lines={props.invalid}
+					fallbackLabel={tr.text(BB_Msgs.thisRequest())}
+					triggerClassName={cn('min-w-0', underEndZone)}
+				>
+					<Badge variant="destructive" className="min-w-0">
+						<Icons.TriangleAlert className="size-3 shrink-0" />
+						<span className="truncate">{tr.text(BB_Msgs.cannotBeAppliedLabel())}</span>
+					</Badge>
+				</ProblemsTip>
+			)}
 			<span className={cn('flex', underEndZone)}>
 				<RequestOwner source={item.source} />
 			</span>
@@ -830,10 +857,15 @@ function RequestMenuField(props: { field: string; stores: RequestFrame.KeyProp }
 
 function MatchingCount(props: { stores: RequestFrame.KeyProp }) {
 	const count = Zus.useStore(props.stores.backburnerRequest, (s) => s.matchingCount)
+	const problemLines = Zus.useStore(props.stores.backburnerRequest, RequestFrame.Sel.countProblemLines)
+	const skipped = Zus.useStore(props.stores.backburnerRequest, RequestFrame.Sel.countSkipped)
 	if (count === null) return null
 	return (
-		<span className={cn('me-auto text-xs', count === 0 ? 'text-warn' : 'text-muted-foreground')}>
-			{tr.text(count === 0 ? BB_Msgs.noMatchingLayers() : BB_Msgs.matchingLayers(count))}
+		<span className="me-auto flex min-w-0 items-center gap-2">
+			<span className={cn('shrink-0 text-xs', count === 0 ? 'text-warn' : 'text-muted-foreground')}>
+				{tr.text(count === 0 ? BB_Msgs.noMatchingLayers() : BB_Msgs.matchingLayers(count))}
+			</span>
+			<SkippedFiltersLabel lines={problemLines} count={skipped} className="min-w-0 text-xs" />
 		</span>
 	)
 }

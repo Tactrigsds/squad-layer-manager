@@ -12,6 +12,7 @@ import type * as F from '@/models/filter.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 
+import { FilterProblemsMark } from './filter-problems.tsx'
 import { Checkbox } from './ui/checkbox.tsx'
 
 export default function FilterEntitySelect(props: {
@@ -33,12 +34,7 @@ export default function FilterEntitySelect(props: {
 		if (!props.excludedFilterIds || !props.excludedFilterIds.includes(f.id)) {
 			filterOptions.push({
 				value: f.id,
-				label: (
-					<span className="flex items-center space-x-1">
-						{f.emoji && <EmojiDisplay emoji={f.emoji} size="sm" />}
-						<span>{f.name}</span>
-					</span>
-				),
+				label: <FilterEntityLabel filter={f} />,
 			})
 		}
 	}
@@ -61,13 +57,16 @@ export default function FilterEntitySelect(props: {
 	)
 }
 
-export function FilterEntityLabel(props: { className?: string; filter: F.FilterEntity; includeLink?: boolean }) {
+// `hideProblems` leaves out the problems mark, where the surrounding row marks the filter itself
+export function FilterEntityLabel(props: { className?: string; filter: F.FilterEntity; includeLink?: boolean; hideProblems?: boolean }) {
 	return (
 		<span className={cn('flex items-center space-x-1', props.className)}>
 			<span className="flex items-center space-x-1">
 				{props.filter.emoji && <EmojiDisplay emoji={props.filter.emoji} size="sm" />}
 				<span>{props.filter.name}</span>
 			</span>
+			{/* no links: a click on a picker option selects it */}
+			{!props.hideProblems && <FilterProblemsMark filterId={props.filter.id} links={false} />}
 			{props.includeLink && <FilterEntityLink filterId={props.filter.id} />}
 		</span>
 	)

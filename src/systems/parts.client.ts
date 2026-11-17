@@ -13,7 +13,7 @@ export const PartsStore = Zus.createStore<PartsStore>()(
 		return {
 			users: [],
 			layerInPoolState: new Map(),
-			layerItemStatuses: { matching: new Map(), present: new Set(), matchDescriptors: new Map(), warns: [] },
+			layerItemStatuses: { matching: new Map(), present: new Set(), matchDescriptors: new Map(), warns: [], problems: [] },
 			matchHistory: new Map(),
 			upsert(key, entity) {
 				set((draft) => {

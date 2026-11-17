@@ -25,6 +25,7 @@ import * as RbacClient from '@/systems/rbac.client'
 import * as UsersClient from '@/systems/users.client'
 
 import { ConstraintEvalSheetButton } from './constraint-matches-indicator.tsx'
+import { SkippedFiltersLabel } from './filter-problems.tsx'
 import LayerContextMenuOptions from './layer-context-menu-options.tsx'
 import LayerFilterMenu from './layer-filter-menu.tsx'
 import { RichSearchField, SearchErrors, SearchSuggestions } from './layer-search-parts.tsx'
@@ -120,17 +121,20 @@ function ResultCount(props: { frameKey: SelectLayersFrame.Key }) {
 		props.frameKey,
 		Zus.useShallow((s) => [s.layerTable.pageData?.totalCount ?? null, s.layerTable.isFetching] as const),
 	)
+	const problemLines = Zus.useStore(props.frameKey, LayerTablePrt.Sel.problemLines)
+	const skippedCount = Zus.useStore(props.frameKey, LayerTablePrt.Sel.skippedCount)
 	return (
 		<div
 			role="status"
-			className="flex min-h-6 items-center gap-2 text-text-2 [&_strong]:font-mono [&_strong]:text-xl [&_strong]:font-bold [&_strong]:text-pri-hi"
+			className="flex min-h-6 min-w-0 items-center gap-2 text-text-2 [&_strong]:font-mono [&_strong]:text-xl [&_strong]:font-bold [&_strong]:text-pri-hi"
 		>
 			{total === null ? null : total > 0 ? (
-				<span>{tr.richText(L_Msgs.matchedLayers(MsgFmt.formatNumber(total)))}</span>
+				<span className="shrink-0">{tr.richText(L_Msgs.matchedLayers(MsgFmt.formatNumber(total)))}</span>
 			) : (
-				<span className="font-semibold text-text">{tr.text(L_Msgs.noLayersMatched())}</span>
+				<span className="shrink-0 font-semibold text-text">{tr.text(L_Msgs.noLayersMatched())}</span>
 			)}
 			{(fetching || total === null) && <span className="fd-spin" />}
+			<SkippedFiltersLabel lines={problemLines} count={skippedCount} className="min-w-0" />
 		</div>
 	)
 }

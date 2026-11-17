@@ -67,12 +67,19 @@ export class LayerEngine {
 	}
 
 	columnIndex(name: string): number {
+		const index = this.findColumnIndex(name)
+		if (index === -1) throw new LayerEngineError(`Column "${name}" is not in the layer artifact`)
+		return index
+	}
+
+	// -1 when the artifact has no such column
+	findColumnIndex(name: string): number {
 		const cached = this.columnIndexes.get(name)
 		if (cached !== undefined) return cached
 		const [ptr, len] = this.write(this.encoder.encode(name))
 		const index = this.exports.column_index(ptr, len)
 		this.exports.dealloc(ptr, len)
-		if (index === UNKNOWN_COLUMN) throw new LayerEngineError(`Column "${name}" is not in the layer artifact`)
+		if (index === UNKNOWN_COLUMN) return -1
 		this.columnIndexes.set(name, index)
 		return index
 	}

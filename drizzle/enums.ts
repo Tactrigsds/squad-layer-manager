@@ -93,6 +93,8 @@ export const APP_EVENT_TYPE = z.enum([
 	'ANNOUNCEMENT_SENT',
 	'PLAYER_NOTE_ADDED',
 	'RCON_COMMAND_RUN',
+	'FILTER_BROKEN',
+	'LAYER_GENERATED_WITHOUT_FILTERS',
 ])
 export type AppEventType = z.infer<typeof APP_EVENT_TYPE>
 

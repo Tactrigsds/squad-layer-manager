@@ -39,7 +39,7 @@ import EmojiDisplay from './emoji-display'
 import FilterCard from './filter-card'
 import { CloneFilterDialog } from './filter-clone-dialog'
 import { FilterDetailsForm } from './filter-details-form'
-import { FilterValidationErrorDisplay } from './filter-extra-errors'
+import { FilterProblemCountBadge, FilterValidationErrorDisplay } from './filter-extra-errors'
 import { FilterReferences } from './filter-references'
 import LayerTable from './layer-table'
 import { MarkdownDescription } from './markdown-description'
@@ -147,6 +147,7 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 	const filterCard = React.useMemo(
 		() => (
 			<FilterCard stores={stores}>
+				<FilterProblemCountBadge stores={stores} />
 				{saveBtn}
 				{cloneBtn}
 				{deleteBtn}

@@ -11,6 +11,9 @@ import * as ReactRx from '@/lib/react-rxjs'
 import * as RSel from '@/lib/reselect'
 import * as Rx from '@/lib/rxjs'
 import * as Zus from '@/lib/zustand'
+import * as F_Msgs from '@/messages/filter.messages'
+import * as FPM from '@/models/filter-problems.models'
+import type * as F from '@/models/filter.models'
 import * as LQY from '@/models/layer-queries.models'
 import type * as MH from '@/models/match-history.models'
 import * as RRS from '@/models/repeat-rulesets.models'
@@ -19,6 +22,7 @@ import * as SLL from '@/models/shared-layer-list.models'
 import * as SM from '@/models/squad.models'
 import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
+import type { FilterProblems } from '@/systems/filter-entity.server'
 import * as LayerQueueClient from '@/systems/layer-queue.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import * as SettingsClient from '@/systems/settings.client'
@@ -216,6 +220,23 @@ export namespace Sel {
 			},
 		),
 	)
+
+	const NO_ERRORS: F.NodeValidationError[] = []
+	// the filters of this server's configuration that cannot be applied, each with what the configuration uses it for
+	export const configProblemRows = RSel.createSelector(
+		[
+			(_s: State, problems: FilterProblems) => problems.filters,
+			(s: State, problems: FilterProblems) =>
+				problems.installedMods[s.listHost.type === 'server' ? s.listHost.serverId : ''] ?? NO_ERRORS,
+			(s: State) => s.settings.saved.queue.mainPool,
+		],
+		FPM.configProblemRows,
+	)
+
+	export const configProblemsTitle = RSel.createSelector([configProblemRows], (rows) => {
+		const filterCount = rows.filter((row) => row.filterId !== null).length
+		return filterCount > 0 ? F_Msgs.configProblemsTitle(filterCount) : F_Msgs.installedModsProblemsTitle()
+	})
 
 	// the counts and limits the queue header reads
 	export const queueHeader = RSel.createDeepSelector(
