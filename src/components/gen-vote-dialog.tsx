@@ -249,6 +249,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 					<span className="flex items-center gap-2 min-w-0 whitespace-nowrap overflow-hidden">
 						<ShortLayerName
 							layerId={choice.layerId}
+							teamParity={teamParity}
 							matchDescriptors={constraints?.matchDescriptors}
 							className={cn(phone && 'flex-col items-start')}
 						/>

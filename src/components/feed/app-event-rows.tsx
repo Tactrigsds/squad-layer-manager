@@ -63,7 +63,7 @@ function LayerNames(props: { ctx: RC.RenderCtx; layerIds: L.LayerId[] }) {
 			{I18n.nodeList(
 				[
 					...shown.map((layerId) => (
-						<Atoms.ShortLayerName key={layerId} normalized={props.ctx.displayTeamsNormalized} layerId={layerId} />
+						<Atoms.ShortLayerName teamSides={false} key={layerId} normalized={props.ctx.displayTeamsNormalized} layerId={layerId} />
 					)),
 					...(props.layerIds.length > shown.length ? [tr.text(AppEvents_Msgs.queueMore(props.layerIds.length - shown.length))] : []),
 				],
@@ -88,7 +88,7 @@ function VoteTally(props: { ctx: RC.RenderCtx; appEvent: AppEvents.VoteEnded }) 
 						<div className="flex items-baseline gap-2">
 							{/* the layer name wraps rather than running under the count */}
 							<span className={cn('min-w-0 flex-1 wrap-anywhere', won ? 'font-semibold text-foreground' : undefined)}>
-								<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={choice.layerId} />
+								<Atoms.ShortLayerName teamSides={false} normalized={ctx.displayTeamsNormalized} layerId={choice.layerId} />
 							</span>
 							<span className={cn('shrink-0 tabular-nums', won ? 'font-semibold text-primary' : undefined)}>{choice.votes}</span>
 						</div>
@@ -127,9 +127,9 @@ function ExternalSetSyncLine(props: {
 	externalSet: ServerMapSet
 }) {
 	const { ctx, appEvent, externalSet } = props
-	const layer = <Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={externalSet.layerId} />
+	const layer = <Atoms.NextLayerName ctx={ctx} matchId={props.event.matchId} layerId={externalSet.layerId} />
 	const aheadOf = appEvent.list[1]?.layerId
-	const ahead = aheadOf ? <Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={aheadOf} /> : undefined
+	const ahead = aheadOf ? <Atoms.ShortLayerName teamSides={false} normalized={ctx.displayTeamsNormalized} layerId={aheadOf} /> : undefined
 	const who = externalSetter(ctx, externalSet)
 	return who
 		? tr.richText(AppEvents_Msgs.externalSetQueued(who, layer, ahead))
@@ -376,7 +376,7 @@ function QueueUpdatedRow(props: {
 					nextAfter !== null && nextAfter !== nextBefore
 						? {
 								external: appEvent.trigger === 'external-layer-change',
-								layer: <Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={nextAfter} />,
+								layer: <Atoms.ShortLayerName teamSides={false} normalized={ctx.displayTeamsNormalized} layerId={nextAfter} />,
 							}
 						: undefined,
 				),
@@ -710,7 +710,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 				{appEvent.winnerLayerId
 					? tr.richText(
 							AppEvents_Msgs.voteWinner(
-								<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={appEvent.winnerLayerId} />,
+								<Atoms.ShortLayerName teamSides={false} normalized={ctx.displayTeamsNormalized} layerId={appEvent.winnerLayerId} />,
 							),
 						)
 					: tr.text(AppEvents_Msgs.voteNoWinner())}
@@ -743,8 +743,8 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 					{tr.richText(
 						AppEvents_Msgs.externalSetRestored(
 							setter,
-							<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={externalSet.layerId} />,
-							<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={appEvent.layerId} />,
+							<Atoms.NextLayerName ctx={ctx} matchId={matchId} layerId={externalSet.layerId} />,
+							<Atoms.NextLayerName ctx={ctx} matchId={matchId} layerId={appEvent.layerId} />,
 						),
 					)}
 				</Atoms.EventLine>
@@ -755,9 +755,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 			return (
 				<Atoms.EventLine time={event.time} icon={icon}>
 					{tr.richText(
-						AppEvents_Msgs.nextLayerRestored(
-							<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={appEvent.layerId} />,
-						),
+						AppEvents_Msgs.nextLayerRestored(<Atoms.NextLayerName ctx={ctx} matchId={matchId} layerId={appEvent.layerId} />),
 					)}
 				</Atoms.EventLine>
 			)
@@ -775,10 +773,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		return (
 			<Atoms.EventLine time={event.time} icon={icon}>
 				{tr.richText(
-					AppEvents_Msgs.nextLayerOverrode(
-						who,
-						<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={appEvent.layerId} />,
-					),
+					AppEvents_Msgs.nextLayerOverrode(who, <Atoms.NextLayerName ctx={ctx} matchId={matchId} layerId={appEvent.layerId} />),
 				)}
 			</Atoms.EventLine>
 		)
@@ -796,7 +791,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 						{tr.richText(
 							AppEvents_Msgs.layerRequestsFulfilled(
 								requests.length,
-								<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={appEvent.layerId} />,
+								<Atoms.ShortLayerName teamSides={false} normalized={ctx.displayTeamsNormalized} layerId={appEvent.layerId} />,
 							),
 						)}
 					</span>

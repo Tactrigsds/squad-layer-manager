@@ -388,9 +388,7 @@ function RoundEnded(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriche
 			event.action.type === 'AdminChangeLayer' ? (
 				<span>
 					{tr.richText(
-						CHAT_Msgs.roundEndSwitchingTo(
-							<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={event.action.layerId} />,
-						),
+						CHAT_Msgs.roundEndSwitchingTo(<Atoms.NextLayerName ctx={ctx} matchId={event.matchId} layerId={event.action.layerId} />),
 					)}
 				</span>
 			) : null
@@ -518,9 +516,7 @@ function WoundedOrDied(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnri
 // layer the server already had, which reads as an anonymous set unless it says so.
 function MapSet(props: { ctx: RC.RenderCtx; event: Extract<CHAT.EventEnriched, { type: 'MAP_SET' }> }) {
 	const { ctx, event } = props
-	const layer = () => (
-		<Atoms.ShortLayerName normalized={ctx.displayTeamsNormalized} layerId={event.layerId} teamParity={0} className="text-xs" />
-	)
+	const layer = () => <Atoms.NextLayerName ctx={ctx} matchId={event.matchId} layerId={event.layerId} className="text-xs" />
 	const iconElt = <Icon name="Map" className="h-4 w-4 text-info shrink-0" />
 	if (event.source?.type === 'observed') {
 		return (

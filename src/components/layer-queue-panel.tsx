@@ -723,7 +723,7 @@ export function SlmUpdatesDisabledAlert(props: { stores: SquadServerFrame.KeyPro
 				    would be stating something that is still being decided */}
 				{nextLayer &&
 					updatesDisabled.type !== 'ingame-vote' &&
-					tr.richText(LL_Msgs.currentNextLayerIs(<ShortLayerName layerId={nextLayer.id} />))}
+					tr.richText(LL_Msgs.currentNextLayerIs(<ShortLayerName layerId={nextLayer.id} teamSides={false} />))}
 				<br />
 				{tr.richText(
 					LL_Msgs.enableUpdatesCta(

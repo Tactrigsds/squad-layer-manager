@@ -52,7 +52,7 @@ function LayerHistoryWindow(props: LayerHistoryWindowProps) {
 			</DraggableWindowDragBar>
 			<div className="flex flex-col gap-2 border-b border-border/50 px-3 py-2 text-xs">
 				<div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-					<ShortLayerName layerId={props.layerId} className="min-w-0 truncate text-sm" />
+					<ShortLayerName layerId={props.layerId} teamSides={false} className="min-w-0 truncate text-sm" />
 					{queueEntry && (
 						<span className="rounded bg-muted px-1.5 text-muted-foreground">
 							{tr.text(LH_Msgs.queuePosition(queueEntry.index.outerIndex + 1))}

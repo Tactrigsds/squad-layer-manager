@@ -25,6 +25,7 @@ export default function ShortLayerName({
 	matchDescriptors,
 	allowShowInfo: _allowShowInfo,
 	normalized,
+	teamSides,
 	tourId,
 	ref,
 	className,
@@ -36,6 +37,8 @@ export default function ShortLayerName({
 	allowShowInfo?: boolean
 	// overrides the global displayTeamsNormalized setting; see TeamFactionDisplay
 	normalized?: boolean
+	// see Atoms.ShortLayerNameProps
+	teamSides?: boolean
 	tourId?: string
 	className?: string
 	ref?: React.Ref<HTMLSpanElement>
@@ -49,6 +52,7 @@ export default function ShortLayerName({
 			backfillLayerId={backfillLayerId}
 			matchDescriptors={matchDescriptors}
 			normalized={normalized ?? globalNormalized}
+			teamSides={teamSides}
 		/>
 	)
 

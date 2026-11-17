@@ -872,13 +872,37 @@ function ValuesSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig; 
 	return <ValueRun items={Array.from(parts.values())} />
 }
 
+// every layer a "select layers" node holds, named as the rest of the app names a layer. The row is a button, so the
+// names carry no layer-info button of their own.
+function LayerSetSummary(props: { arg: F.EditableArg | undefined; marks: Marks }) {
+	const values = (props.arg?.type === 'values' ? props.arg.values : undefined) ?? []
+	const layers = [...new Set(values.filter((item): item is string => typeof item === 'string'))]
+	if (layers.length === 0) return <Incomplete />
+	return (
+		<ValueRun
+			items={layers.map((layer) => {
+				const invalid = valueMarked(layer, props.marks)
+				return (
+					<span
+						key={layer}
+						data-invalid={invalid || undefined}
+						className={cn('rounded-sm bg-muted px-1', invalid && INVALID_PART_CLASS)}
+					>
+						<ShortLayerName layerId={L.readStoredLayerId(layer)} teamSides={false} allowShowInfo={false} />
+					</span>
+				)
+			})}
+		/>
+	)
+}
+
 function CompSummary(props: { node: F.EditableCompNode; cfg: ColConfig; marks: Marks }) {
 	const node = props.node
 	const marks = props.marks
 	const subject = node.args[0] as F.EditableScalarArg | undefined
-	// `id` is reachable only through the "select layers" node, whose values are the layers' stored text
+	// `id` is reachable only through the "select layers" node
 	if (subject?.type === 'column' && subject.column === 'id') {
-		return trSummary.richText(F_Msgs.layerSetSummary(node.neg, <ValuesSummary arg={node.args[1]} cfg={props.cfg} marks={marks} />))
+		return trSummary.richText(F_Msgs.layerSetSummary(node.neg, <LayerSetSummary arg={node.args[1]} marks={marks} />))
 	}
 	const readable = F_Msgs.compTypeReadableNames[node.type]
 	const op = node.neg ? readable.negated : readable.plain
@@ -2247,7 +2271,7 @@ function LayersInConfig(props: {
 				<ul className="flex flex-wrap items-center gap-1">
 					{filteredValues.map((layerId) => (
 						<li key={layerId} className="flex min-w-0 items-center justify-between gap-1 px-2 py-1 bg-secondary rounded-md">
-							<ShortLayerName layerId={L.readStoredLayerId(layerId)} className="text-sm" />
+							<ShortLayerName layerId={L.readStoredLayerId(layerId)} teamSides={false} className="text-sm" />
 							<Button
 								size="sm"
 								variant="ghost"
