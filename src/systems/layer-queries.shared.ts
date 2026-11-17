@@ -10,6 +10,7 @@ import * as LE from '@/models/layer-engine.models'
 import * as LQY from '@/models/layer-queries.models'
 import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
+import * as VEH from '@/models/vehicles.models'
 
 // The query layer, running against the factored engine (layer-engine/) rather than SQLite.
 //
@@ -857,24 +858,43 @@ export async function queryLayersSummaryPart(args: { ctx: QueryCtx; input: LQY.L
 	switch (part.type) {
 		case 'value-counts':
 		case 'ranges': {
+			const vehicleColumns: string[] = []
+			const physicalColumns: string[] = []
 			for (const column of part.columns) {
-				if (!LC.getColumnDef(column, ctx.effectiveColsConfig) || LC.isVirtualColumn(column, ctx.effectiveColsConfig)) {
-					return { code: 'err:unknown-column' as const, column }
-				}
+				if (!LC.getColumnDef(column, ctx.effectiveColsConfig)) return { code: 'err:unknown-column' as const, column }
+				if (part.type === 'value-counts' && LC.vehicleColumnInfo(column)) vehicleColumns.push(column)
+				else if (LC.isVirtualColumn(column, ctx.effectiveColsConfig)) return { code: 'err:unknown-column' as const, column }
+				else physicalColumns.push(column)
 			}
-			const columns = columnIndexes(ctx, part.columns)
+			const vehicleData = VEH.hasVehicleData(L.StaticLayerComponents) ? L.StaticLayerComponents : undefined
+			if (vehicleColumns.length > 0 && !vehicleData) {
+				return { code: 'err:unknown-column' as const, column: vehicleColumns[0] }
+			}
 			if (part.type === 'value-counts') {
-				const res = ctx.engine.query<LE.ValueCountsResponse>({ kind: 'valueCounts', where: compiled.where, columns })
+				// vehicle columns are counted from the unit record column of their team, queried once per team
+				const recordColumns = [...new Set(vehicleColumns.map((column) => LC.UNIT_RECORD_COLUMNS[LC.vehicleColumnInfo(column)!.team]))]
+				const queried = [...physicalColumns, ...recordColumns]
+				const res = ctx.engine.query<LE.ValueCountsResponse>({
+					kind: 'valueCounts',
+					where: compiled.where,
+					columns: columnIndexes(ctx, queried),
+				})
 				const valueCounts: Record<string, LQY.ValueCount[]> = {}
-				part.columns.forEach((column, i) => {
+				physicalColumns.forEach((column, i) => {
 					valueCounts[column] = res[i].map(([value, count]) => ({
 						// fromDbValue reads a null boolean as false, which would merge it with the real falses
 						value: value === null ? null : (LC.fromDbValue(column, value, ctx) as LQY.ValueCount['value']),
 						count,
 					}))
 				})
+				for (const column of vehicleColumns) {
+					const info = LC.vehicleColumnInfo(column)!
+					const recordCounts = res[queried.indexOf(LC.UNIT_RECORD_COLUMNS[info.team])]
+					valueCounts[column] = VEH.vehicleValueCounts(recordCounts, info.kind, vehicleData!)
+				}
 				return { code: 'ok' as const, result: { type: part.type, valueCounts } satisfies LQY.LayersSummaryPartResult, problems }
 			}
+			const columns = columnIndexes(ctx, part.columns)
 			const filtered = ctx.engine.query<LE.FilteredRangesResponse>({ kind: 'filteredRanges', where: compiled.where, columns })
 			const all = ctx.engine.query<LE.RangeResponse[]>({ kind: 'ranges', columns })
 			const decode = (column: string, min: number | null, max: number | null): LQY.ValueRange | null =>

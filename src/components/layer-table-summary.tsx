@@ -14,7 +14,7 @@ import * as LC_Msgs from '@/messages/layer-columns.messages'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as DH from '@/models/display-helpers.models'
 import type * as FPM from '@/models/filter-problems.models'
-import type * as LC from '@/models/layer-columns.models'
+import * as LC from '@/models/layer-columns.models'
 import type * as LQY from '@/models/layer-queries.models'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
@@ -24,9 +24,13 @@ import { ProblemsTip } from './filter-problems'
 const TIP_VALUES_SHOWN = 12
 const CARD_VALUES_SHOWN = 5
 
-function valueLabel(value: LQY.ValueCount['value']) {
+function valueLabel(column: string, value: LQY.ValueCount['value']) {
 	if (value === null) return tr.text(L_Msgs.noValue())
 	if (typeof value === 'boolean') return value ? 'True' : 'False'
+	if (LC.vehicleColumnInfo(column)?.kind === 'vehicleTypes') {
+		const label = LC_Msgs.vehicleTypeLabels[value]
+		if (label) return tr.text(label)
+	}
 	return String(value)
 }
 
@@ -78,15 +82,23 @@ function ValueCountList(props: { stores: LayerTablePrt.KeyProp; column: string; 
 	return (
 		<>
 			<ul className="flex flex-col gap-1">
-				{shown.map((entry) => (
-					<li key={String(entry.value)} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] items-center gap-2">
-						<span className={cn('truncate', entry.value === null && 'text-text-2')}>{valueLabel(entry.value)}</span>
-						<span className="fd-prog">
-							<span className="fd-prog-bar" style={{ width: `${(entry.count / max) * 100}%` }} />
-						</span>
-						<span className="fd-num text-end font-mono text-xs text-text-2">{MsgFmt.formatNumber(entry.count)}</span>
-					</li>
-				))}
+				{shown.map((entry) => {
+					const label = valueLabel(props.column, entry.value)
+					return (
+						<li key={String(entry.value)} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] items-center gap-2">
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<span className={cn('truncate', entry.value === null && 'text-text-2')}>{label}</span>
+								</TooltipTrigger>
+								<TooltipContent>{label}</TooltipContent>
+							</Tooltip>
+							<span className="fd-prog">
+								<span className="fd-prog-bar" style={{ width: `${(entry.count / max) * 100}%` }} />
+							</span>
+							<span className="fd-num text-end font-mono text-xs text-text-2">{MsgFmt.formatNumber(entry.count)}</span>
+						</li>
+					)
+				})}
 			</ul>
 			{!props.hideRemainder && counts.length > shown.length && (
 				<span className="text-text-2">{tr.text(L_Msgs.moreValues(MsgFmt.formatNumber(counts.length - shown.length)))}</span>
