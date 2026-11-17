@@ -3,6 +3,19 @@
 <h2 id="for-users" class="docs-heading">For users<a href="#for-users" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/changes#for-users" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <ul>
 <li>
+<p><strong>Added:</strong> Filters that cannot be applied are marked wherever they are used, with the reason and a link to the failing condition.</p>
+<ul>
+<li>The queue dashboard lists each filter of the server&#x27;s configuration that cannot be applied, and what the configuration uses it for.</li>
+<li>A queued layer is marked when a filter could not be checked against it.</li>
+<li>The layer table names the filters that cannot be applied to its results, beside the result count. The summary view marks each of those filters.</li>
+<li>The vote generation dialog names the filters its choices were generated without. The Fix Repeats message names them too.</li>
+<li>A layer request whose own filter cannot be applied is marked in the layer requests panel.</li>
+<li>The filter list, the applied filters and the filter pickers mark each filter that cannot be applied.</li>
+<li>The filter editor marks each condition that cannot be applied and lists the problems above the filter. Select a problem to jump to its condition. A problem in a referenced filter links to the failing condition in that filter.</li>
+<li>A filter that cannot be applied can still be saved, with a warning that counts its problems.</li>
+</ul>
+</li>
+<li>
 <p><strong>Added:</strong> The new Scheduled Commands plugin runs RCON commands on your servers on a schedule. A task can run on an interval, at set times from a cron pattern, a set time after each match starts, or a set time after each match ends.</p>
 <p>Each task is listed under the plugin on the settings page with its next run and its last result. Click <em>Run now</em> to run a task straight away. Commands can include variables such as <code>{{layer}}</code>, <code>{{nextLayer}}</code>, <code>{{server}}</code> and <code>{{players}}</code>, filled in each time the task runs. Each command appears in the server&#x27;s activity feed.</p>
 </li>
@@ -24,6 +37,11 @@ and end, and the joins and leaves during the round.</p>
 <li>
 <p><strong>Changed:</strong> The activity feed folds repeated combat events from one player into one expandable row. A gunner&#x27;s run of hits on one vehicle, a multi-kill with one weapon, and several deployables destroyed with one weapon each show as one row.</p>
 <p>The row sums up the run, such as &quot;hit BTR-80 12 times for 340&quot;. Expand it to see each event. Events join a row while they keep arriving less than 5 seconds apart. Warns that share their text and sender now fold the same way, and a folded warn row now updates its count as more warns arrive.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> A filter that cannot be applied no longer stops SLM from generating a layer. A filter cannot be applied when it names a column or value the current layer data does not have, or applies a filter that was deleted.</p>
+<p>SLM now generates the next layer or vote from your server&#x27;s other filters. SLM warns the admins in game, naming each filter it left out, and the activity feed records the generated layer with those filters. Before, SLM queued a fixed default layer instead. The next-layer warn that admins see also names each filter the next layer could not be checked against.</p>
+<p>A layer request filter that cannot be applied is left out of new layer requests, and the reply names it. A request that applies such a filter itself is refused with a message saying the filter cannot be applied, instead of &quot;No layers in the current pool match this request&quot;.</p>
 </li>
 <li>
 <p><strong>Changed:</strong> The filter, rotation and settings text editors list every problem with its line, and underline it in the text.</p>
@@ -80,8 +98,16 @@ and end, and the joins and leaves during the round.</p>
 </details>
 <h2 id="for-operators" class="docs-heading">For operators<a href="#for-operators" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/changes#for-operators" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <ul>
-<li><strong>Added:</strong> Plugin API 0.22.2 lets a plugin time jobs from a match and derive its jobs from its config. <code>afterMatchStart</code> and <code>afterMatchEnd</code> in <code>slm/plugin/schedule</code> run a server job a set time after the server&#x27;s match starts or ends. The server module&#x27;s <code>jobs</code> export can be a function of the config, called again on each save, and a job&#x27;s <code>label</code> and <code>description</code> name and describe it on the settings page. <code>execute</code> in <code>slm/systems/squad-rcon</code> runs a raw RCON command and records it in the audit log. Plugins built for 0.22.1 keep working.</li>
-<li><strong>Added:</strong> Plugin API 0.22.3 lets a plugin link to a rotation from outside SLM, such as in a Discord message. <code>pageUrl</code> in <code>slm/systems/rotation</code> returns the rotation page&#x27;s address, built from <code>ORIGIN</code>. Plugins built for 0.22.2 keep working.</li>
+<li>
+<p><strong>Breaking:</strong> A plugin of your own that calls <code>slm/systems/layer-queries</code> must handle filters that cannot be applied through <code>problems</code>, and its manifest must declare plugin API 0.23. <code>query</code>, <code>componentValues</code>, <code>outOfPool</code> and <code>itemStatuses</code> no longer return <code>err:invalid-node</code>. A constraint whose filter cannot be applied is left out of the query, and the result lists it in <code>problems</code> (<code>statuses.problems</code> for <code>itemStatuses</code>), so a query on that filter alone matches every layer. <code>genVote</code> returns <code>err:invalid-choices</code> in place of <code>err:invalid-node</code>, with the index of each choice whose own constraints cannot be applied. A layer in a <code>query</code> or <code>genVote</code> result holds <code>null</code> in <code>constraints</code> for each constraint the query left out or did not evaluate, where it used to hold <code>false</code>.</p>
+<p>Each error names the stored filter it is in and the path to the failing node. <code>describeNodeValidationError</code> in <code>slm/models/filter</code> writes one as a log line. The plugin guide&#x27;s &quot;Layer queries&quot; section describes the new results. The tt-slm-plugins set ships an updated release alongside this one.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Plugin API 0.22.2 lets a plugin time jobs from a match and derive its jobs from its config. <code>afterMatchStart</code> and <code>afterMatchEnd</code> in <code>slm/plugin/schedule</code> run a server job a set time after the server&#x27;s match starts or ends. The server module&#x27;s <code>jobs</code> export can be a function of the config, called again on each save, and a job&#x27;s <code>label</code> and <code>description</code> name and describe it on the settings page. <code>execute</code> in <code>slm/systems/squad-rcon</code> runs a raw RCON command and records it in the audit log. Plugins built for 0.22.1 keep working.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Plugin API 0.22.3 lets a plugin link to a rotation from outside SLM, such as in a Discord message. <code>pageUrl</code> in <code>slm/systems/rotation</code> returns the rotation page&#x27;s address, built from <code>ORIGIN</code>. Plugins built for 0.22.2 keep working.</p>
+</li>
 </ul>
 <details><summary>Smaller fixes and tweaks</summary>
 <ul>
