@@ -4,6 +4,7 @@ import * as LC_Msgs from '@/messages/layer-columns.messages'
 
 import * as LC from './layer-columns.models'
 import * as L from './layer.models'
+import * as VEH from './vehicles.models'
 
 describe('vehicle classes', () => {
 	// the classification reads the map icon, so a vehicle whose icon names a role rather than a chassis
@@ -61,5 +62,38 @@ describe('vehicle classes', () => {
 			})
 		}
 		expect(unresolved).toEqual([])
+	})
+})
+
+describe('vehicleValueCounts', () => {
+	const components = {
+		vehicles: ['A', 'B', 'C'],
+		vehicleTypes: ['TRAN', 'MBT'],
+		vehicleTypeIds: [0, 0, 1],
+		unitRecords: ['r0', 'r1', 'r2'],
+		unitRecordVehicles: [[0, 1], [1, 2], []],
+	}
+	const recordCounts = [
+		[0, 10],
+		[1, 5],
+		[2, 3],
+		[null, 2],
+	] as const
+
+	it('counts a layer once toward each vehicle its record fields', () => {
+		expect(VEH.vehicleValueCounts(recordCounts, 'vehicles', components)).toEqual([
+			{ value: 'B', count: 15 },
+			{ value: 'A', count: 10 },
+			{ value: 'C', count: 5 },
+			{ value: null, count: 5 },
+		])
+	})
+
+	it('counts a type once per record, however many of its vehicles the record fields', () => {
+		expect(VEH.vehicleValueCounts(recordCounts, 'vehicleTypes', components)).toEqual([
+			{ value: 'TRAN', count: 15 },
+			{ value: 'MBT', count: 5 },
+			{ value: null, count: 5 },
+		])
 	})
 })

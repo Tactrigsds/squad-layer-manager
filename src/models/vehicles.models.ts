@@ -61,6 +61,49 @@ export function canonicalVehiclesForUnitRecord(
 	})
 }
 
+// Turns counts of layers per unit record into counts of layers per vehicle or vehicle type. A layer counts once
+// toward every vehicle (or type) its unit record fields, so the counts do not add up to the layer total. Layers
+// with no unit record, or one that fields nothing, are counted under null. Sorted by count, descending.
+export function vehicleValueCounts(
+	recordCounts: readonly (readonly [number | null, number])[],
+	kind: 'vehicles' | 'vehicleTypes',
+	components: VehicleComponents,
+): { value: string | null; count: number }[] {
+	const byType = kind === 'vehicleTypes'
+	const names = byType ? components.vehicleTypes : components.vehicles
+	const counts = new Uint32Array(names.length)
+	// the last record (1-based) that counted each type, so a record with two vehicles of one type counts it once
+	const countedFor = byType ? new Uint32Array(names.length) : undefined
+	const typeIds = components.vehicleTypeIds
+	let none = 0
+	for (let i = 0; i < recordCounts.length; i++) {
+		const recordId = recordCounts[i][0]
+		const count = recordCounts[i][1]
+		const vehicleIds = recordId === null ? undefined : components.unitRecordVehicles[recordId]
+		if (vehicleIds === undefined || vehicleIds.length === 0) {
+			none += count
+			continue
+		}
+		if (countedFor === undefined) {
+			for (let j = 0; j < vehicleIds.length; j++) counts[vehicleIds[j]] += count
+			continue
+		}
+		const stamp = i + 1
+		for (let j = 0; j < vehicleIds.length; j++) {
+			const typeId = typeIds[vehicleIds[j]]
+			if (countedFor[typeId] === stamp) continue
+			countedFor[typeId] = stamp
+			counts[typeId] += count
+		}
+	}
+	const out: { value: string | null; count: number }[] = []
+	for (let i = 0; i < counts.length; i++) {
+		if (counts[i] > 0) out.push({ value: names[i], count: counts[i] })
+	}
+	if (none > 0) out.push({ value: null, count: none })
+	return out.sort((a, b) => b.count - a.count)
+}
+
 export function vehicleTypeName(vehicleId: number, components: VehicleComponents): string {
 	return components.vehicleTypes[components.vehicleTypeIds[vehicleId]]
 }

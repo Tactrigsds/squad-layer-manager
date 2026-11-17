@@ -16,7 +16,8 @@ import * as FPM from '@/models/filter-problems.models'
 import type * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns.models'
 import * as LQY from '@/models/layer-queries.models.ts'
-import type * as L from '@/models/layer.models'
+import * as L from '@/models/layer.models'
+import * as VEH from '@/models/vehicles.models'
 import * as RBAC from '@/rbac.models'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import type * as RbacClient from '@/systems/rbac.client'
@@ -277,7 +278,12 @@ export function initLayerTable(args: Args) {
 					const ctx: LC.Ctx = { ...CS.init(), effectiveColsConfig: table.colConfig }
 					const valueColumns: string[] = []
 					const rangeColumns: string[] = []
+					const hasVehicleData = VEH.hasVehicleData(L.StaticLayerComponents)
 					for (const [name, def] of Object.entries(table.colConfig.defs)) {
+						if (LC.vehicleColumnInfo(name)) {
+							if (hasVehicleData) valueColumns.push(name)
+							continue
+						}
 						if (LC.isVirtualColumn(name, table.colConfig)) continue
 						if (LC.isEnumeratedColumn(name, ctx) || def.type === 'boolean') valueColumns.push(name)
 						else if (LC.isNumericColumn(name, ctx) && table.columnVisibility[name]) rangeColumns.push(name)
@@ -497,11 +503,11 @@ export namespace Sel {
 		(column: string) => (store: Store) => store.layerTable.expandedSummaryColumns.includes(column),
 	)
 
-	// how many layers the summary covers: every column's counts add up to it
+	// how many layers the summary covers: every non-vehicle column's counts add up to it
 	export function summaryTotal(store: Store) {
 		const counts = store.layerTable.summary?.valueCounts
 		if (!counts) return null
-		const first = Object.values(counts)[0]
+		const first = Object.entries(counts).find(([column]) => !LC.vehicleColumnInfo(column))?.[1]
 		return first ? first.reduce((n, entry) => n + entry.count, 0) : null
 	}
 

@@ -270,6 +270,12 @@ test.describe('applied filters', () => {
 		await expect(gamemode).toContainText('1 value')
 		await expect(gamemode.getByRole('listitem')).toHaveText([/^RAAS/])
 
+		// vehicle columns have no artifact column of their own, so their counts are derived from the unit records
+		for (const name of ['Vehicle T1', 'Vehicle type T2']) {
+			const card = summary.getByRole('article').filter({ has: page.getByRole('heading', { name, exact: true }) })
+			await expect(card.getByRole('listitem').first()).toBeVisible()
+		}
+
 		await dialog.getByRole('radio', { name: 'Results' }).click()
 		const poolControl = dialog.getByRole('checkbox', { name: 'RAAS Only' })
 		await poolControl.click()
