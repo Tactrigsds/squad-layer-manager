@@ -63,7 +63,6 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 					<EditDetailsButton denied={createDenied} onClick={() => setDetailsOpen(true)} />
 				</span>
 				<Separator orientation="horizontal" />
-				<MarkdownDescription description={meta.description} />
 			</header>
 			<EditDetailsDialog
 				open={detailsOpen}
@@ -74,8 +73,15 @@ export default function FilterNew(props: { stores: EditFrame.KeyProp }) {
 			>
 				<FilterDetailsForm stores={stores} creating onClose={() => setDetailsOpen(false)} />
 			</EditDetailsDialog>
-			<FilterValidationErrorDisplay stores={stores} />
-			<FilterCard stores={stores}>
+			<FilterCard
+				stores={stores}
+				header={
+					<>
+						<MarkdownDescription description={meta.description} />
+						<FilterValidationErrorDisplay stores={stores} />
+					</>
+				}
+			>
 				<FilterProblemCountBadge stores={stores} />
 				<PermissionDeniedTooltip denied={createDenied}>
 					<Button variant="primary" onClick={() => void create()} disabled={!isValidFilter || creating || !!createDenied}>

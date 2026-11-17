@@ -437,31 +437,42 @@ export function defaultCompType(domain: ValueDomain | undefined): CompType {
 }
 
 // -------- subject column groups --------
-// the filter editor's categorized add menu scopes a comparison's subject dropdown to one group. the
-// group is re-derived from the current subject column so the restriction persists without touching the AST.
+// the sections of a comparison's subject picker. The picker opens on the section of the current subject, or of
+// the add-menu entry that created a blank comparison.
 
-export type SubjectColumnGroup = 'layer-identity' | 'team' | 'extra'
+export const SUBJECT_COLUMN_GROUPS = ['layer', 'faction', 'vehicle', 'scores'] as const
+export type SubjectColumnGroup = (typeof SUBJECT_COLUMN_GROUPS)[number]
 
-const TEAM_BASE_COLUMNS: ReadonlySet<string> = new Set(Object.values(TEAM_COLUMN_PAIRS).flat())
-
-export function subjectColumnGroup(column: string, cfg = LC.BASE_COLUMN_CONFIG): SubjectColumnGroup | undefined {
-	if ((LC.LAYER_IDENTITY_COLUMNS as readonly string[]).includes(column)) return 'layer-identity'
-	if (TEAM_BASE_COLUMNS.has(column)) return 'team'
-	if (LC.getColumnDef(column, cfg)?.table === 'extra-cols') return 'extra'
-	return undefined
+export function teamColumnGroup(column: TeamColumn): SubjectColumnGroup {
+	return column === 'Vehicle' || column === 'VehicleType' ? 'vehicle' : 'faction'
 }
 
-export function columnsInGroup(group: SubjectColumnGroup, cfg = LC.BASE_COLUMN_CONFIG): string[] {
-	switch (group) {
-		case 'layer-identity':
-			return [...LC.LAYER_IDENTITY_COLUMNS]
-		case 'team':
-			return Object.values(TEAM_COLUMN_PAIRS).flat()
-		case 'extra':
-			return Object.keys(cfg.defs).filter((c) => cfg.defs[c].table === 'extra-cols')
-		default:
-			assertNever(group)
-	}
+const TEAM_COLUMN_BY_BASE_COLUMN: ReadonlyMap<string, TeamColumn> = new Map(
+	TEAM_COLUMNS.flatMap((column) => TEAM_COLUMN_PAIRS[column].map((base) => [base, column] as const)),
+)
+
+export function subjectColumnGroup(column: string): SubjectColumnGroup {
+	if ((LC.LAYER_IDENTITY_COLUMNS as readonly string[]).includes(column)) return 'layer'
+	const teamColumn = TEAM_COLUMN_BY_BASE_COLUMN.get(column)
+	return teamColumn ? teamColumnGroup(teamColumn) : 'scores'
+}
+
+// The team dimension a comparison's subject reads, and which sides of a matchup it constrains: one side for a
+// concrete T1/T2 column, both for a "both" team column, and either side for an "either" one.
+export type SubjectTeamDimension = { column: TeamColumn; sides: 'first' | 'second' | 'both' | 'either' }
+
+export function subjectTeamDimension(arg: EditableScalarArg | undefined): SubjectTeamDimension | undefined {
+	if (arg?.type === 'team-column' && arg.column) return { column: arg.column, sides: arg.quantifier === 'both' ? 'both' : 'either' }
+	if (arg?.type !== 'column' || !arg.column) return undefined
+	const column = TEAM_COLUMN_BY_BASE_COLUMN.get(arg.column)
+	if (!column) return undefined
+	return { column, sides: TEAM_COLUMN_PAIRS[column][0] === arg.column ? 'first' : 'second' }
+}
+
+export function subjectArgGroup(arg: EditableScalarArg | undefined): SubjectColumnGroup | undefined {
+	if (arg?.type === 'column' && arg.column) return subjectColumnGroup(arg.column)
+	if (arg?.type === 'team-column' && arg.column) return teamColumnGroup(arg.column)
+	return undefined
 }
 
 // -------- operator selection --------

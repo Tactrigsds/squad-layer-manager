@@ -51,9 +51,9 @@ export const createInput = (args: {
 		instanceId: createId(4),
 	}
 }
-// one-shot intent recorded when a node is added from the categorized add menu, keyed by the new node's
-// id. `group` scopes a comparison's subject dropdown while it is still blank (it is otherwise re-derived
-// from the chosen column); `focus`/`autoOpenLayers` are consumed once on mount.
+// one-shot intent recorded when a node is added or converted from the node kind menu, keyed by the node's id, and
+// kept only until the editor is next opened or closed by hand (see Actions.setNodeEditing). `group` is the section a
+// blank comparison's subject picker opens on; `focus`/`autoOpenLayers` steer that first editor as it mounts.
 export type CreateHint = {
 	group?: F.SubjectColumnGroup
 	focus?: 'operator' | 'values'
@@ -733,8 +733,10 @@ export namespace Actions {
 		el.querySelector<HTMLElement>('[data-node-summary]')?.focus({ preventScroll: true })
 	}
 
+	// a hint only steers the editor that opens as its node is added or converted, so opening any editor by hand,
+	// or closing one, drops them all
 	export function setNodeEditing(stores: KeyProp, id: string | null) {
-		store(stores).setState({ editingNodeId: id })
+		store(stores).setState({ editingNodeId: id, createHints: new Map() })
 	}
 
 	export function setNodeComment(stores: KeyProp, id: string, comment: string | null) {
@@ -769,10 +771,66 @@ export namespace Actions {
 		const nodeId = FE.createNodeId()
 		dispatch(stores, { code: 'add-node', parentId, nodeId, node: F.toShallowNode(seed), index })
 		if (!s.getState().tree.nodes.has(nodeId)) return
-		// a new node has nothing to read yet, so it opens as its editor rather than as a compact row
-		s.setState({ editingNodeId: nodeId })
-		// the hint is one-shot chrome for whoever added the node, so it stays on this client
-		if (hint) s.setState({ createHints: new Map(s.getState().createHints).set(nodeId, hint) })
+		// a new node has nothing to read yet, so it opens as its editor rather than as a compact row. The hint is
+		// one-shot chrome for whoever added the node, so it stays on this client.
+		s.setState({ editingNodeId: nodeId, createHints: hintsFor(nodeId, hint) })
+	}
+
+	// Turns a node into another kind of node where it stands, carrying over what still means something to the new
+	// kind: a block keeps its children when it changes block type, an apply-filter node keeps its filter, a
+	// matchup node keeps its teams, a matchup and a team comparison trade values (EFB.carryOver), and a leaf that becomes a block is kept as the block's first child. Anything else starts from `seed`, keeping
+	// only the comment. The root stays a block, since the editor adds nodes through it.
+	export function convertNode(stores: KeyProp, id: string, seed: F.EditableFilterNode, hint?: CreateHint) {
+		const s = store(stores)
+		const tree = s.getState().tree
+		const current = tree.nodes.get(id)
+		if (!current) return
+		const parentId = tree.parents.get(id)
+		const currentIsBlock = F.isEditableBlockNode(current)
+		const seedIsBlock = F.isBlockType(seed.type)
+		const withComment = (node: F.ShallowEditableFilterNode) =>
+			current.comment ? ({ ...node, comment: current.comment } as F.ShallowEditableFilterNode) : node
+
+		if (currentIsBlock && seedIsBlock) {
+			updateNode(stores, id, (draft) => {
+				draft.type = seed.type
+			})
+			return
+		}
+		if (!currentIsBlock && !seedIsBlock) {
+			const sameFamily =
+				(F.isApplyFilterNode(current) && F.isApplyFilterNode(seed)) || (F.isMatchupNode(current) && F.isMatchupNode(seed))
+			const node = sameFamily
+				? { ...current, type: seed.type }
+				: withComment(F.toShallowNode(EFB.carryOver(current as F.EditableFilterNode, seed)))
+			dispatch(stores, { code: 'update-node', nodeId: id, node: node as F.ShallowEditableFilterNode })
+			s.setState({ editingNodeId: id, createHints: hintsFor(id, hint) })
+			return
+		}
+		if (parentId === undefined) return
+		const index = tree.children.get(parentId)!.indexOf(id)
+		const nodeId = FE.createNodeId()
+		if (seedIsBlock) {
+			dispatch(
+				stores,
+				{ code: 'add-node', parentId, nodeId, node: F.toShallowNode(seed), index },
+				{ code: 'move-node', nodeId: id, parentId: nodeId, index: 0 },
+			)
+		} else {
+			dispatch(
+				stores,
+				{ code: 'add-node', parentId, nodeId, node: withComment(F.toShallowNode(seed)), index },
+				{ code: 'delete-node', nodeId: id },
+			)
+		}
+		if (!s.getState().tree.nodes.has(nodeId)) return
+		s.setState({ editingNodeId: nodeId, createHints: hintsFor(nodeId, hint) })
+		pruneNodeChrome(s)
+	}
+
+	// the hints once `nodeId`'s editor opens: only the node being edited has an editor for a hint to steer
+	function hintsFor(nodeId: string, hint: CreateHint | undefined): Map<string, CreateHint> {
+		return hint ? new Map([[nodeId, hint]]) : new Map()
 	}
 
 	export function duplicateNode(stores: KeyProp, id: string) {

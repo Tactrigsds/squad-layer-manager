@@ -193,7 +193,7 @@ test.describe('filter references', () => {
 
 		await page.getByRole('button', { name: 'Add condition' }).first().click({ timeout: 20_000 })
 		// a freshly added apply-filter node opens its picker itself, so clicking it here would close it
-		await page.getByRole('button', { name: 'apply existing filter' }).click()
+		await page.getByRole('option', { name: 'included in filter' }).click()
 		await page.getByRole('option', { name: 'RAAS on Harju' }).click()
 
 		await expect(page.getByRole('alert')).toContainText('raas-only -> raas-harju -> raas-only')
@@ -319,9 +319,8 @@ test.describe('option groupings', () => {
 		await expect(addCondition).toBeVisible({ timeout: 20_000 })
 
 		await addCondition.click()
-		await page.getByRole('button', { name: 'faction/unit' }).click()
-		// the blank comparison opens its own column picker, and picking a column hands focus on to the value
-		// picker, which opens itself in turn -- clicking either trigger here would close it
+		// the new comparison hands focus on to its value picker, which opens itself -- clicking its trigger here
+		// would close it
 		await page.getByRole('option', { name: 'Vehicle T1', exact: true }).click()
 
 		// the picker names itself by the dimension, not by the column's table header ('Vehicle', not 'Vehicle T1')
@@ -431,7 +430,7 @@ test.describe('reading and editing the tree', () => {
 
 		// the gap above the first condition, where the block's own add button would append
 		await page.getByRole('button', { name: 'Insert condition here' }).first().click()
-		await page.getByRole('button', { name: 'layer', exact: true }).click()
+		await page.getByRole('option', { name: 'Layer', exact: true }).click()
 		// a node with nothing to read yet opens as its editor, so it takes a Done to read the tree again
 		await page.getByRole('button', { name: 'Done' }).click()
 		await expect(rows).toHaveText(['all of', 'Layer is any of incomplete', 'Gamemode = RAAS', 'any of', 'Map = Harju'])

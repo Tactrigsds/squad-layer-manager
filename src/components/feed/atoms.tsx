@@ -216,6 +216,7 @@ function teamsDisplayPair(
 	displayLayersNormalized: boolean,
 	extraStyles?: Record<keyof L.KnownLayer, string | undefined>,
 	includeUnits = true,
+	showTeamIndicators = true,
 ): [React.ReactNode, React.ReactNode] {
 	const parity = teamParity ?? 0
 	const [left, right] = MH.getDisplayedTeamOrder(parity, displayLayersNormalized).map((normedTeam) => (
@@ -225,7 +226,7 @@ function teamsDisplayPair(
 			includeUnits={includeUnits}
 			layer={layer}
 			team={MH.getDenormedTeamId(normedTeam, parity)}
-			showAltTeamIndicator={true}
+			showAltTeamIndicator={showTeamIndicators}
 			normalized={displayLayersNormalized}
 			extraStyles={extraStyles}
 		/>
@@ -272,6 +273,9 @@ const BACKFILLED_STYLE = 'text-text-3'
 
 export type ShortLayerNameProps = {
 	normalized: boolean
+	// false for a layer outside any match, such as one picked into a filter, where which side a team plays on means
+	// nothing: the teams show in the layer's own order without side markers, whatever `normalized` says
+	teamSides?: boolean
 	layerId: L.LayerId
 	teamParity?: number
 	backfillLayerId?: L.LayerId
@@ -318,7 +322,9 @@ export function ShortLayerNameContent(props: ShortLayerNameProps) {
 	const backfilled = { ...(backfillLayer ?? {}), ...partialLayer }
 	const hasFactions = !!backfilled.Faction_1 && !!backfilled.Faction_2
 	const [leftTeamElt, rightTeamElt] = hasFactions
-		? teamsDisplayPair(backfilled, props.teamParity ?? 0, props.normalized, extraStyles)
+		? props.teamSides === false
+			? teamsDisplayPair(backfilled, 0, false, extraStyles, true, false)
+			: teamsDisplayPair(backfilled, props.teamParity ?? 0, props.normalized, extraStyles)
 		: [null, null]
 
 	return (
@@ -337,6 +343,22 @@ export function ShortLayerNameContent(props: ShortLayerNameProps) {
 				</>
 			)}
 		</>
+	)
+}
+
+// A layer the server held as its next layer during match `matchId`, which it can only play as the match right after.
+// Its teams take that match's sides. Not for a layer only queued: the queue's head can play later, or never, when
+// SLM is not the one setting the server's next layer. Without the match loaded, the teams show without sides.
+export function NextLayerName(props: { ctx: RC.RenderCtx; matchId: number | null; layerId: L.LayerId; className?: string }) {
+	const match = props.ctx.matchById(props.matchId)
+	return (
+		<ShortLayerName
+			normalized={props.ctx.displayTeamsNormalized}
+			layerId={props.layerId}
+			teamParity={match ? (match.ordinal + 1) % 2 : undefined}
+			teamSides={match !== undefined}
+			className={props.className}
+		/>
 	)
 }
 

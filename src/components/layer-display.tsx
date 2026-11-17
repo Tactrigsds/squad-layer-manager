@@ -108,6 +108,7 @@ export default function LayerDisplay({
 						className="min-w-0 [&>*]:whitespace-nowrap"
 						layerId={props.item.layerId}
 						teamParity={teamParity}
+						teamSides={listHost !== undefined}
 						backfillLayerId={props.backfillLayerId}
 						matchDescriptors={statusData?.highlightedMatchDescriptors}
 						allowShowInfo={props.allowShowInfo}
@@ -129,6 +130,7 @@ export default function LayerDisplay({
 							className="flex-nowrap shrink-0 whitespace-nowrap"
 							layerId={props.item.layerId}
 							teamParity={teamParity}
+							teamSides={listHost !== undefined}
 							backfillLayerId={props.backfillLayerId}
 							matchDescriptors={statusData?.highlightedMatchDescriptors}
 							allowShowInfo={props.allowShowInfo}
