@@ -48,6 +48,8 @@ export function initSquadRcon(
 			defaultTTL: LAYERS_STATUS_TTL_MS * pollIntervalScale,
 			retries: 4,
 			retryDelay: 1000,
+			// a reconnect invalidates the resource, which refetches it
+			canRetryResponse: () => rcon.connected,
 			isErrorResponse: (res: SM.LayerStatusRes) => res.code !== 'ok',
 			onFatalError: opts.onFatalError,
 		},
@@ -62,6 +64,8 @@ export function initSquadRcon(
 			defaultTTL: SERVER_INFO_TTL_MS * pollIntervalScale,
 			retries: 4,
 			retryDelay: 1000,
+			// a reconnect invalidates the resource, which refetches it
+			canRetryResponse: () => rcon.connected,
 			isErrorResponse: (res: SM.ServerInfoRes) => res.code !== 'ok',
 			onFatalError: opts.onFatalError,
 		},
@@ -76,6 +80,8 @@ export function initSquadRcon(
 			defaultTTL: TEAMS_TTL_MS * pollIntervalScale,
 			retries: 4,
 			retryDelay: 1000,
+			// a reconnect invalidates the resource, which refetches it
+			canRetryResponse: () => rcon.connected,
 			isErrorResponse: (res: SM.TeamsRes) => res.code !== 'ok',
 			onFatalError: opts.onFatalError,
 		},
@@ -554,6 +560,9 @@ export const setNextLayer = Instr.spanOp(
 		const cmd = L.getLayerCommand(layer, 'set-next')
 		log.info(`Setting next layer: %s, `, cmd)
 		const execRes = await ctx.rcon.execute(cmd, { level: 'info', signal: ctx.signal })
+		// the read-back would wait out the reconnect while the caller holds updateLayerMtx. A command that landed before
+		// the drop is read back by the resync that follows the reconnect.
+		if (execRes.code !== 'ok' && !ctx.rcon.connected) return execRes
 		ctx.squadRcon.layersStatus.invalidate(ctx)
 		const newStatus = await ctx.squadRcon.layersStatus.get(ctx)
 		if (newStatus.code !== 'ok') return newStatus

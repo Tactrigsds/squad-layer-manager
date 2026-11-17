@@ -78,16 +78,6 @@ export async function createRollingFixture(opts?: { env?: Record<string, string>
 			app.emu.world.startNewGame()
 		},
 		withRconOffline: async (fn) => {
-			// A set-next still in flight from an earlier roll would hold updateLayerMtx through its retries against the
-			// downed RCON, and the roll `fn` starts waits on that mutex inside event processing, stalling log ingest.
-			await app.waitForNextLayerSync()
-			await app.waitFor(
-				async () => {
-					const status = await app.control('ingest-status', { serverId: app.serverId })
-					return (status.code === 'ok' && !status.rolling && status.nextLayerSyncState !== 'syncing') || undefined
-				},
-				{ label: 'the previous roll to finish writing the next layer' },
-			)
 			const port = app.emu.rconPort
 			await app.emu.rcon.goOffline()
 			try {

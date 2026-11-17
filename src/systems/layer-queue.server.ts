@@ -178,14 +178,22 @@ export const setupInstance = Instr.spanOp(
 		// -------- retry a set-next the dropped connection lost --------
 		// nothing else retries it: the queue has not changed, and the reconnect reports the layer the server still had.
 		// Keyed off the processed reconnect rather than the socket, so the server's next layer the reconnect records
-		// predates this write and can't be read back as somebody else setting it.
+		// predates this write and can't be read back as somebody else setting it. A reconnect mid-roll is folded into
+		// the roll, whose server-roll RESET is then the first event processed with RCON back.
 		ctx.server.event$
 			.pipe(
-				Rx.filter(([, event]) => event.type === 'RCON_CONNECTED' && ctx.layerQueue.nextLayerSyncState$.value.code === 'err:rcon'),
+				Rx.filter(([, event]) => event.type === 'RCON_CONNECTED' || (event.type === 'RESET' && event.source === 'server-roll')),
+				// the roll writes the head itself, and holds the rolling flag until that write has finished
+				Rx.concatMap((value) =>
+					ctx.server.serverRolling$.pipe(
+						Rx.filter((rolling) => rolling === null),
+						Rx.take(1),
+						Rx.map(() => value),
+					),
+				),
+				Rx.filter(() => ctx.layerQueue.nextLayerSyncState$.value.code === 'err:rcon'),
 				Instr.durableSub('resync-next-layer-on-reconnect', { module }, async ([evtCtx], signal) => {
 					const ctx = SquadServer.eventCtx(evtCtx, signal)
-					// the roll writes the head itself
-					if (ctx.server.serverRolling$.value) return
 					const queue = getSavedQueue(ctx)
 					const nextLayerId = LL.getNextLayerId(queue)
 					if (!nextLayerId) return
