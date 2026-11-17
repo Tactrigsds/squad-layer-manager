@@ -15,6 +15,8 @@ type AsyncResourceOpts<T> = {
 	retries: number
 	isErrorResponse: (value: T) => boolean
 	retryDelay: number
+	// checked after each error response. false ends the fetch with that response. Thrown errors always use up the retries
+	canRetryResponse: (value: T) => boolean
 	deferredTimeout: number
 
 	// called when a fetch fails for real (non-abort, retries exhausted). without a handler the error escalates to an
@@ -78,6 +80,7 @@ export class AsyncResource<T, Ctx extends GCtx.Ctx & Partial<GCtx.AbortSignal> =
 			retries: opts.retries ?? 0,
 			isErrorResponse: opts.isErrorResponse ?? (() => false),
 			retryDelay: opts.retryDelay ?? 0,
+			canRetryResponse: opts.canRetryResponse ?? (() => true),
 			deferredTimeout: opts.deferredTimeout ?? 2000,
 			onFatalError: opts.onFatalError,
 		}
@@ -133,7 +136,7 @@ export class AsyncResource<T, Ctx extends GCtx.Ctx & Partial<GCtx.AbortSignal> =
 						return withThrownAsync(() => this.cb(fetchCtx))
 					})
 					if (error !== null || this.opts.isErrorResponse(res!)) {
-						if (retriesLeft === 0) {
+						if (retriesLeft === 0 || (error === null && !this.opts.canRetryResponse(res!))) {
 							if (error) throw error
 							return res as T
 						}
