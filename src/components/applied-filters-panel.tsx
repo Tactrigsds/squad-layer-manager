@@ -16,7 +16,7 @@ import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import EmojiDisplay from './emoji-display.tsx'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import { FilterProblemsMark } from './filter-problems.tsx'
-import { ScrollArea, ScrollBar } from './ui/scroll-area.tsx'
+import { ScrollArea } from './ui/scroll-area.tsx'
 import { TriStateCheckbox } from './ui/tri-state-checkbox.tsx'
 
 // scrollLeft runs from 0 toward negative values in RTL
@@ -32,6 +32,7 @@ export default function AppliedFiltersPanel(props: { stores: Partial<ListHostPrt
 		AppliedFiltersPrt.Sel.extraFilterIds,
 	)
 	const selectableFilterIds = Zus.useStore(listHost, AppliedFiltersPrt.Sel.selectableFilterIds)
+	const pinnedFilterIds = Zus.useStore(listHost, AppliedFiltersPrt.Sel.pinnedFilterIds)
 	const addableFilters = Zus.useStore(listHost, FilterEntityClient.filterEntities$, AppliedFiltersPrt.Sel.addableFilters)
 	const [canScrollBack, setCanScrollBack] = React.useState(false)
 	const [canScrollForward, setCanScrollForward] = React.useState(false)
@@ -88,18 +89,19 @@ export default function AppliedFiltersPanel(props: { stores: Partial<ListHostPrt
 			// Use ResizeObserver to detect content size changes
 			const resizeObserver = new ResizeObserver(checkScrollability)
 			resizeObserver.observe(viewport)
+			if (viewport.firstElementChild) resizeObserver.observe(viewport.firstElementChild)
 
 			return () => {
 				sub.unsubscribe()
 				resizeObserver.disconnect()
 			}
 		}
-	}, [extraFilterIds])
+	}, [])
 
 	const options = addableFilters.map((filter) => ({ value: filter.id, label: <FilterEntityLabel filter={filter} /> }))
 
 	return (
-		<div data-tour="applied-filters" className="flex items-center gap-2 min-w-0">
+		<div data-tour="applied-filters" className="flex flex-1 items-center gap-2 min-w-0">
 			<ComboBoxMulti
 				options={options}
 				values={extraFilterIds}
@@ -126,13 +128,19 @@ export default function AppliedFiltersPanel(props: { stores: Partial<ListHostPrt
 			>
 				<Icons.ChevronLeft className="rtl:-scale-x-100" />
 			</Button>
-			<ScrollArea ref={scrollRef} className="max-w-[55vw] min-w-0">
-				<div className="flex flex-row gap-1 w-max">
+			<ScrollArea ref={scrollRef} orientation="horizontal" gutter className="flex-1 min-w-0">
+				<div className="flex flex-row items-center gap-1 w-max">
 					{extraFilterIds.map((filterId) => {
 						return <FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
 					})}
+					{extraFilterIds.length > 0 && pinnedFilterIds.size > 0 && (
+						<span className="w-px h-4 mx-1 bg-line shadow-[1px_0_0_var(--line-soft)] rtl:shadow-[-1px_0_0_var(--line-soft)]" />
+					)}
+					<PoolFilterCheckbox stores={props.stores} />
+					{selectableFilterIds.map((filterId) => {
+						return <FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
+					})}
 				</div>
-				<ScrollBar orientation="horizontal" />
 			</ScrollArea>
 			<Button
 				variant="ghost"
@@ -146,13 +154,6 @@ export default function AppliedFiltersPanel(props: { stores: Partial<ListHostPrt
 			>
 				<Icons.ChevronRight className="rtl:-scale-x-100" />
 			</Button>
-			<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)] rtl:shadow-[-1px_0_0_var(--line-soft)]" />
-			<div className="flex flex-row gap-1 w-max">
-				<PoolFilterCheckbox stores={props.stores} />
-				{selectableFilterIds.map((filterId) => {
-					return <FilterCheckbox key={filterId} filterId={filterId} stores={{ appliedFilters: props.stores.appliedFilters }} />
-				})}
-			</div>
 			<Button
 				title={tr.text(F_Msgs.disableAllFilters())}
 				variant="ghost"

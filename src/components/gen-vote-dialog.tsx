@@ -440,7 +440,6 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 						<PoolCheckboxes stores={{ poolCheckboxes: frameKey }} />
 						<span className="w-px h-4 bg-line shadow-[1px_0_0_var(--line-soft)] rtl:shadow-[-1px_0_0_var(--line-soft)]" />
 						<AppliedFiltersPanel stores={{ listHost: props.stores.listHost, appliedFilters: frameKey }} />
-						<span className="flex-1" />
 						<span className="flex items-center gap-1.5">
 							<Switch
 								id={showAdvancedId}

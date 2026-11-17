@@ -15,7 +15,7 @@ import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 // style-invalidation: the bar mounts only when the content starts or stops overflowing, and the restyle stays inside
 // the area (97 elements for the queue panel's).
 const GUTTER_PADDING =
-	'not-pointer-coarse:[&:has(>[data-orientation=vertical][data-state=visible])>[data-radix-scroll-area-viewport]>div]:pe-2.5'
+	'not-pointer-coarse:[&:has(>[data-orientation=vertical][data-state=visible])>[data-radix-scroll-area-viewport]>div]:pe-2.5 not-pointer-coarse:[&:has(>[data-orientation=horizontal][data-state=visible])>[data-radix-scroll-area-viewport]>div]:pb-2.5'
 
 const ScrollArea = React.forwardRef<
 	React.ElementRef<typeof ScrollAreaPrimitive.Root>,
@@ -24,7 +24,7 @@ const ScrollArea = React.forwardRef<
 		// stretch content shorter than the viewport to fill it, instead of leaving it shrink-wrapped at the
 		// top. The children become a flex column, so the one to stretch takes `flex-1`.
 		fill?: boolean
-		// keep content out from under the vertical scrollbar, which radix overlays on the viewport's edge. The
+		// keep content out from under the scrollbars, which radix overlays on the viewport's edges. A
 		// bar then shows whenever the content overflows, rather than on hover.
 		gutter?: boolean
 	}
