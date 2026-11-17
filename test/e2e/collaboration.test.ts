@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Page, WebSocketRoute } from '@playwright/test'
 import * as fsp from 'node:fs/promises'
 
 import * as FB from '@/models/filter-builders.models'
@@ -231,6 +231,36 @@ test.describe('one user in two tabs', () => {
 			await page.getByRole('button', { name: 'Finish Editing' }).click()
 		} finally {
 			await pageB.close()
+		}
+	})
+
+	test("a tab opened while another tab's connection is down does not take over its editing session", async ({ page }) => {
+		const dropped = await page.context().newPage()
+		const opened = await page.context().newPage()
+		try {
+			// the dropped tab's reconnects are left unanswered, so the server holds its session as interrupted until it
+			// gives up on it
+			let server: WebSocketRoute | undefined
+			await dropped.routeWebSocket(/\/orpc/, (ws) => {
+				if (!server) server = ws.connectToServer()
+			})
+			await gotoReady(page, app.loginUrl())
+			await gotoReady(dropped, app.loginUrl())
+			const avatars = Dash.queueSection(page).getByRole('img', { name: app.adminUser.username })
+			await Dash.queueLabel(page).click()
+			await expect(avatars).toHaveCount(1, { timeout: 15_000 })
+
+			await dropped.getByRole('button', { name: 'Start Editing' }).click()
+			await expect(avatars).toHaveCount(2, { timeout: 15_000 })
+			// any code but 1000 and 1001 is an unclean close
+			await server!.close({ code: 4000 })
+
+			await gotoReady(opened, app.loginUrl())
+			await expect(opened.getByRole('button', { name: 'Start Editing' })).toBeVisible()
+			await expect(avatars).toHaveCount(1, { timeout: 15_000 })
+		} finally {
+			await dropped.close()
+			await opened.close()
 		}
 	})
 })

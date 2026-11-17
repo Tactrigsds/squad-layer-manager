@@ -204,32 +204,17 @@ const dispatchOp = Instr.spanOp(
 // Called at connection time (see createOrpcSessionBase): hand the new connection the wsClientId it is
 // reconnecting into, so its held presence (activity + locks) carries over untouched and no ghost entry is
 // left behind. Returns the reclaimed id, or undefined to mint a fresh one.
+//
+// Only the exact id the client names is reclaimed. A page load names none, and must not take over another tab of
+// the same user whose socket dropped: that would hand it the other tab's editing sessions and locks.
 export function reclaimClientId(userId: bigint, priorClientId?: string): string | undefined {
-	// The reconnecting client told us the id it last held. Reclaim that exact entry whether it is still
-	// `connected` (its old socket half-open, close not yet detected -- the common reconnect case) or already
-	// `connection-interrupted`, and evict any stale socket still parked on it. Scoped to this user's own ids.
-	if (priorClientId !== undefined) {
-		const presence = globalUserPresence.session.state.presence.get(priorClientId)
-		if (presence && presence.userId === userId && presence.connectionState !== 'disconnected') {
-			WsSessionSys.evictStaleSocket(priorClientId)
-			return markReclaimed(priorClientId)
-		}
-	}
-
-	// Fallback for a client that supplied no usable prior id: reclaim its most-recently-seen interrupted entry.
-	let reclaimedId: string | undefined
-	let bestSeen = -Infinity
-	for (const [clientId, presence] of globalUserPresence.session.state.presence) {
-		if (presence.userId !== userId) continue
-		if (presence.connectionState !== 'connection-interrupted') continue
-		const seen = presence.lastSeen ?? 0
-		if (seen >= bestSeen) {
-			bestSeen = seen
-			reclaimedId = clientId
-		}
-	}
-	if (reclaimedId === undefined) return undefined
-	return markReclaimed(reclaimedId)
+	if (priorClientId === undefined) return undefined
+	// Reclaimed whether it is still `connected` (its old socket half-open, close not yet detected -- the common
+	// reconnect case) or already `connection-interrupted`, evicting any stale socket still parked on it.
+	const presence = globalUserPresence.session.state.presence.get(priorClientId)
+	if (!presence || presence.userId !== userId || presence.connectionState === 'disconnected') return undefined
+	WsSessionSys.evictStaleSocket(priorClientId)
+	return markReclaimed(priorClientId)
 }
 
 // the reconnecting socket owns this id now; cancel any pending disconnect and mark it live
