@@ -39,6 +39,12 @@ and end, and the joins and leaves during the round.</p>
 <p>The row sums up the run, such as &quot;hit BTR-80 12 times for 340&quot;. Expand it to see each event. Events join a row while they keep arriving less than 5 seconds apart. Warns that share their text and sender now fold the same way, and a folded warn row now updates its count as more warns arrive.</p>
 </li>
 <li>
+<p><strong>Changed:</strong> Conditions in the filter editor are added and changed from one searchable menu. The menu sorts conditions into <em>Block</em>, <em>Layer</em>, <em>Faction</em>, <em>Vehicle</em> and <em>Scores</em> tabs, and opens on the tab of the condition being changed.</p>
+<p>Any condition can be changed into any other kind. A condition keeps what still applies after the change: a block keeps its conditions, a matchup keeps its teams, and a faction or unit condition passes its values to a matchup and back. A condition that becomes a block is kept inside the new block.</p>
+<p><em>Included in filter</em>, <em>excluded from filter</em>, <em>allow matchups</em> and <em>disallow matchups</em> are separate entries in the menu. A matchup starts with only its faction and unit fields. Use <em>+ dimension</em> to add alliance or vehicle fields.</p>
+<p>A condition&#x27;s collapsed row lists every value it matches, and wraps onto more lines when the values do not fit. <em>Select layers</em> conditions list their layers instead of a count. The save, clone and delete buttons sit beside the filter&#x27;s description, so the conditions use the full width of the page.</p>
+</li>
+<li>
 <p><strong>Changed:</strong> A filter that cannot be applied no longer stops SLM from generating a layer. A filter cannot be applied when it names a column or value the current layer data does not have, or applies a filter that was deleted.</p>
 <p>SLM now generates the next layer or vote from your server&#x27;s other filters. SLM warns the admins in game, naming each filter it left out, and the activity feed records the generated layer with those filters. Before, SLM queued a fixed default layer instead. The next-layer warn that admins see also names each filter the next layer could not be checked against.</p>
 <p>A layer request filter that cannot be applied is left out of new layer requests, and the reply names it. A request that applies such a filter itself is refused with a message saying the filter cannot be applied, instead of &quot;No layers in the current pool match this request&quot;.</p>
@@ -92,10 +98,16 @@ and end, and the joins and leaves during the round.</p>
 <p><strong>Changed:</strong> A filter&#x27;s References section lists only what references the filter directly. A layer pool or plugin that reaches the filter through another filter is no longer listed.</p>
 </li>
 <li>
+<p><strong>Fixed:</strong> A layer that is not tied to a match shows its teams in the layer&#x27;s own order, without (1)/(2) or (A)/(B) markers. That covers layers picked into a filter, the layer history window, and activity feed lines about queue edits, votes and fulfilled requests. Feed lines about a next layer set on the server mark its teams with the sides of the match it is set for, instead of sides that were sometimes wrong.</p>
+</li>
+<li>
 <p><strong>Fixed:</strong> The links menu shows each site&#x27;s icon for more sites, including BattleMetrics, MySquadStats, SquadCalc and the SLM docs. Dark icons such as GitHub&#x27;s stay visible on the dark theme, and the icons no longer pop in after the menu opens.</p>
 </li>
 <li>
 <p><strong>Fixed:</strong> Opening a dropdown closes the one already open. Before, two dropdowns could stay open side by side in the layer filters.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> Opening a <em>Select layers</em> condition in the filter editor no longer opens the layer picker. The picker opens on its own only when the condition is added.</p>
 </li>
 <li>
 <p><strong>Fixed:</strong> The settings page responds faster to edits.</p>
