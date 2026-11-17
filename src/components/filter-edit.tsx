@@ -146,14 +146,23 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 
 	const filterCard = React.useMemo(
 		() => (
-			<FilterCard stores={stores}>
+			<FilterCard
+				stores={stores}
+				header={
+					<>
+						<MarkdownDescription description={meta.description} />
+						<FilterReferences filterId={props.entity.id} />
+						<FilterValidationErrorDisplay stores={stores} />
+					</>
+				}
+			>
 				<FilterProblemCountBadge stores={stores} />
 				{saveBtn}
 				{cloneBtn}
 				{deleteBtn}
 			</FilterCard>
 		),
-		[stores, deleteBtn, saveBtn, cloneBtn],
+		[stores, deleteBtn, saveBtn, cloneBtn, meta.description, props.entity.id],
 	)
 
 	const _nodeMapStore = Zus.useStore(stores.filterEditor, (s) => s.nodeMapStore)
@@ -221,8 +230,6 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 					</span>
 				</div>
 				<Separator orientation="horizontal" />
-				<MarkdownDescription description={meta.description} />
-				<FilterReferences filterId={props.entity.id} />
 			</div>
 			<EditDetailsDialog
 				open={detailsOpen}
@@ -232,7 +239,6 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 			>
 				<FilterDetailsForm stores={stores} creating={false} onClose={() => setDetailsOpen(false)} />
 			</EditDetailsDialog>
-			<FilterValidationErrorDisplay stores={stores} />
 			{filterCard}
 			<LayerTable stores={{ layerTable: stores.filterEditor }} />
 		</div>

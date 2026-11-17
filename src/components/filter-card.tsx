@@ -34,6 +34,7 @@ import { tr } from '@/systems/messages.client'
 import ComboBoxMulti from './combo-box/combo-box-multi.tsx'
 import type { ComboBoxHandle, ComboBoxOption } from './combo-box/combo-box.tsx'
 import ComboBox from './combo-box/combo-box.tsx'
+import type { ComboBoxGroupingDef } from './combo-box/options.ts'
 import { enumGroupings, enumOptionGroups } from './enum-options.helpers.ts'
 import { FilterEntityLabel } from './filter-entity-select.tsx'
 import type { FilterTextEditorHandle } from './filter-text-editor.types'
@@ -44,7 +45,7 @@ import ShortLayerName from './short-layer-name.tsx'
 import { Button, buttonVariants } from './ui/button'
 import { ButtonGroup } from './ui/button-group'
 import { Input } from './ui/input'
-import { Separator } from './ui/separator.tsx'
+import TabsList from './ui/tabs-list.tsx'
 import { Textarea } from './ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx'
 import { UndoRedoButtons } from './undo-redo-buttons'
@@ -62,15 +63,15 @@ export type FilterCardProps = {
 	stores: EditFrame.KeyProp
 }
 
-const triggerClass =
-	'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm'
-
 // standard compact display for the operator (comparison-type) select: its options are short symbols
 // (=, [..], not in), so it gets tight padding, a collapsed chevron gap, and a smaller chevron. px-1 is
 // important so container padding rules (e.g. the filter menu grid) can't stretch it back out.
 const operatorSelectClass = 'px-1! gap-0.5 [&_svg]:ms-0 [&_svg]:size-3'
-// `builderOnly` drops the text mode and the toolbar, for a filter edited as one field of a larger form
-export default function FilterCard(props: FilterCardProps & ({ children: React.ReactNode; builderOnly?: false } | { builderOnly: true })) {
+// `builderOnly` drops the text mode and the toolbar, for a filter edited as one field of a larger form.
+// `header` is laid out beside the toolbar, so the editor below it gets the full width.
+export default function FilterCard(
+	props: FilterCardProps & ({ children: React.ReactNode; header?: React.ReactNode; builderOnly?: false } | { builderOnly: true }),
+) {
 	const activeTab = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.view)
 	const setActiveTab = (view: EditFrame.View) => EditFrame.Actions.setView(props.stores, view)
 	const scopeId = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.scopeId)
@@ -163,8 +164,69 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 	}
 
 	const rendered = (
-		<div ref={kbScope.ref} defaultValue="builder" className="w-full space-x-2 flex">
-			<div className="flex-1 min-w-0 overflow-x-auto">
+		<div ref={kbScope.ref} className="flex w-full flex-col gap-2">
+			<div className="flex w-full gap-2">
+				<div className="flex min-w-0 flex-1 flex-col gap-2">{props.header}</div>
+				{/* -------- toolbar -------- */}
+				<div className="flex flex-col space-y-2">
+					<div className="flex items-center space-x-1 justify-end">
+						{/* -------- format -------- */}
+						<Tooltip help>
+							<TooltipTrigger asChild>
+								<Button
+									onClick={() => editorRef.current?.format()}
+									variant="ghost"
+									size="icon"
+									className={activeTab === 'text' ? '' : 'invisible'}
+								>
+									<Braces color="hsl(var(--muted-foreground))" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>{tr.text(F_Msgs.reformat())}</p>
+							</TooltipContent>
+						</Tooltip>
+
+						<UndoRedoButtons
+							size="icon"
+							undo={{
+								description: undoKind && tr.text(F_Msgs.undoTooltip('undo', undoKind)),
+								onClick: () => EditFrame.Actions.undo(props.stores),
+							}}
+							redo={{
+								description: redoKind && tr.text(F_Msgs.undoTooltip('redo', redoKind)),
+								onClick: () => EditFrame.Actions.redo(props.stores),
+							}}
+						/>
+
+						{/* -------- reset filter -------- */}
+						<Tooltip help>
+							<TooltipTrigger asChild>
+								<Button disabled={!modified} onClick={() => EditFrame.Actions.reset(props.stores)} variant="ghost" size="icon">
+									<RotateCcw className="rtl:-scale-x-100" color="hsl(var(--muted-foreground))" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>{tr.text(F_Msgs.resetFilter())}</p>
+							</TooltipContent>
+						</Tooltip>
+					</div>
+					<div className="flex items-center space-x-1 justify-end">{props.children}</div>
+					<TabsList
+						className="self-end"
+						options={[
+							{ value: 'text', label: tr.text(F_Msgs.textTab()) },
+							{ value: 'builder', label: tr.text(F_Msgs.builderTab()) },
+						]}
+						active={activeTab}
+						setActive={(tab) => {
+							setActiveTab(tab)
+							if (tab === 'text') editorRef.current!.focus()
+						}}
+					/>
+				</div>
+			</div>
+			<div className="w-full min-w-0 overflow-x-auto">
 				<div className={activeTab === 'builder' ? '' : 'hidden'} data-filter-tree={scopeId}>
 					<StoredParentNode nodeId={rootNodeId} store={nodeStore} />
 				</div>
@@ -172,73 +234,6 @@ export default function FilterCard(props: FilterCardProps & ({ children: React.R
 					<React.Suspense fallback={<p className="text-sm text-muted-foreground">{tr.text(F_Msgs.loadingEditor())}</p>}>
 						<FilterTextEditor ref={editorRef} stores={props.stores} active={activeTab === 'text'} />
 					</React.Suspense>
-				</div>
-			</div>
-			{/* -------- toolbar -------- */}
-			<div className="flex flex-col space-y-2">
-				<div className="flex items-center space-x-1 justify-end">
-					{/* -------- format -------- */}
-					<Tooltip help>
-						<TooltipTrigger asChild>
-							<Button
-								onClick={() => editorRef.current?.format()}
-								variant="ghost"
-								size="icon"
-								className={activeTab === 'text' ? '' : 'invisible'}
-							>
-								<Braces color="hsl(var(--muted-foreground))" />
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>
-							<p>{tr.text(F_Msgs.reformat())}</p>
-						</TooltipContent>
-					</Tooltip>
-
-					<UndoRedoButtons
-						size="icon"
-						undo={{
-							description: undoKind && tr.text(F_Msgs.undoTooltip('undo', undoKind)),
-							onClick: () => EditFrame.Actions.undo(props.stores),
-						}}
-						redo={{
-							description: redoKind && tr.text(F_Msgs.undoTooltip('redo', redoKind)),
-							onClick: () => EditFrame.Actions.redo(props.stores),
-						}}
-					/>
-
-					{/* -------- reset filter -------- */}
-					<Tooltip help>
-						<TooltipTrigger asChild>
-							<Button disabled={!modified} onClick={() => EditFrame.Actions.reset(props.stores)} variant="ghost" size="icon">
-								<RotateCcw className="rtl:-scale-x-100" color="hsl(var(--muted-foreground))" />
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>
-							<p>{tr.text(F_Msgs.resetFilter())}</p>
-						</TooltipContent>
-					</Tooltip>
-				</div>
-				<div className="flex items-center space-x-1 justify-end">{props.children}</div>
-				<div className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
-					<button
-						type="button"
-						data-state={activeTab === 'text' && 'active'}
-						onClick={() => {
-							setActiveTab('text')
-							editorRef.current!.focus()
-						}}
-						className={triggerClass}
-					>
-						{tr.text(F_Msgs.textTab())}
-					</button>
-					<button
-						type="button"
-						data-state={activeTab === 'builder' && 'active'}
-						onClick={() => setActiveTab('builder')}
-						className={triggerClass}
-					>
-						{tr.text(F_Msgs.builderTab())}
-					</button>
 				</div>
 			</div>
 		</div>
@@ -296,87 +291,170 @@ function FilterNodeDisplay(props: FilterCardProps & { nodeId: string }) {
 	)
 }
 
-type InlineAddAction = { label: React.ReactNode; onSelect: () => void } | 'separator'
+// the grouping that sections the add menu and the subject picker
+const SUBJECT_GROUPING = 'subject'
+const BLOCK_GROUP = 'block'
 
-// collapse only once focus has left the whole control, not when moving between its buttons
-function collapseOnFocusLeave(e: React.FocusEvent<HTMLElement>, collapse: () => void) {
-	if (!e.currentTarget.contains(e.relatedTarget as Node | null)) collapse()
+// The kinds of node that are not a comparison on a column, as the add menu and the node kind pickers offer them.
+// Their values are prefixed so they cannot collide with a column name.
+const NODE_KIND_PREFIX = 'node:'
+type NodeSeed = { node: F.EditableFilterNode; hint?: EditFrame.CreateHint }
+type NodeKindEntry = { label: () => string; description?: () => string; group: string; seed: () => NodeSeed }
+const NODE_KIND_ENTRIES: Record<string, NodeKindEntry> = {
+	...Object.fromEntries(
+		F.BLOCK_TYPES.map((type): [string, NodeKindEntry] => [
+			type,
+			{
+				label: () => tr.text(F_Msgs.blockTypeNames[type]),
+				description: () => tr.text(F_Msgs.blockTypeDescriptions[type]),
+				group: BLOCK_GROUP,
+				seed: () => ({ node: EFB.nodeOfType(type) }),
+			},
+		]),
+	),
+	...Object.fromEntries(
+		F.APPLY_FILTER_TYPES.map((type): [string, NodeKindEntry] => [
+			type,
+			{
+				label: () => tr.text(F_Msgs.applyFilterKindNames[type]),
+				description: () => tr.text(F_Msgs.applyFilterTypeDescriptions[type]),
+				group: BLOCK_GROUP,
+				seed: () => ({ node: EFB.nodeOfType(type) }),
+			},
+		]),
+	),
+	'select-layers': {
+		label: () => tr.text(F_Msgs.selectLayers()),
+		group: 'layer',
+		seed: () => ({ node: EFB.inValues('id'), hint: { autoOpenLayers: true } }),
+	},
+	...Object.fromEntries(
+		F.MATCHUP_TYPES.map((type): [string, NodeKindEntry] => [
+			type,
+			{ label: () => tr.text(F_Msgs.matchupTypeNames[type]), group: 'faction', seed: () => ({ node: EFB.nodeOfType(type) }) },
+		]),
+	),
 }
 
-// the kinds of node a block can hold. The block's own add button and the insert points between its
-// children share the list and differ only in where the new node lands.
-function blockAddActions(actions: EditFrame.BlockNodeActions, index?: number): InlineAddAction[] {
-	return [
-		{ label: 'condition block', onSelect: () => actions.addChild('and', index) },
-		'separator',
-		{ label: 'map', onSelect: () => actions.addSeeded(EFB.inValues('Map'), { group: 'layer-identity', focus: 'operator' }, index) },
-		{ label: 'layer', onSelect: () => actions.addSeeded(EFB.inValues('Layer'), { group: 'layer-identity', focus: 'operator' }, index) },
-		{
-			label: 'gamemode',
-			onSelect: () => actions.addSeeded(EFB.inValues('Gamemode'), { group: 'layer-identity', focus: 'operator' }, index),
-		},
-		{
-			label: 'collection',
-			onSelect: () => actions.addSeeded(EFB.inValues('Collection'), { group: 'layer-identity', focus: 'operator' }, index),
-		},
-		{ label: 'matchup', onSelect: () => actions.addChild('allow-matchups', index) },
-		{ label: 'faction/unit', onSelect: () => actions.addSeeded(EFB.inValues(), { group: 'team' }, index) },
-		{
-			label: 'vehicle',
-			onSelect: () => actions.addSeeded(EFB.inValuesForTeamColumn('Vehicle'), { group: 'team', focus: 'values' }, index),
-		},
-		{ label: 'scores', onSelect: () => actions.addSeeded(EFB.comp(), { group: 'extra' }, index) },
-		{ label: 'select layers', onSelect: () => actions.addSeeded(EFB.inValues('id'), { autoOpenLayers: true }, index) },
-		'separator',
-		{ label: 'apply existing filter', onSelect: () => actions.addChild('included-in', index) },
-	]
+// `blocksOnly` is for the root, which stays a block
+function nodeKindEntryOptions(blocksOnly = false): ComboBoxOption<string>[] {
+	return Object.entries(NODE_KIND_ENTRIES)
+		.filter(([key]) => !blocksOnly || F.isBlockType(key))
+		.map(([key, entry]) => ({
+			value: NODE_KIND_PREFIX + key,
+			label: entry.label(),
+			description: entry.description?.(),
+			groups: { [SUBJECT_GROUPING]: entry.group },
+		}))
 }
 
-function AddActionStrip(props: { actions: InlineAddAction[]; onSelected: () => void }) {
+function nodeKindOptions(cfg: ColConfig, blocksOnly = false): ComboBoxOption<string>[] {
+	if (blocksOnly) return nodeKindEntryOptions(true)
+	return [...nodeKindEntryOptions(), ...subjectColumnOptions(cfg, true)]
+}
+
+function seedForKind(value: string, cfg: ColConfig): NodeSeed {
+	if (value.startsWith(NODE_KIND_PREFIX)) return NODE_KIND_ENTRIES[value.slice(NODE_KIND_PREFIX.length)].seed()
+	const subject = parseSubjectValue(value)
+	const domain = F.argValueDomain(subject, cfg ?? undefined)
+	const group = F.subjectArgGroup(subject)
+	// a layer column is as often excluded as included, so its operator is chosen first, like a number's
+	const focus = domain?.kind === 'number' || group === 'layer' ? 'operator' : 'values'
+	return { node: EFB.forSubject(subject, domain), hint: { group, focus } }
+}
+
+// the option a node kind picker shows as selected for `node`
+function nodeKindValue(node: F.ShallowEditableFilterNode): string | undefined {
+	if (F.isBlockType(node.type) || F.isApplyFilterType(node.type) || F.isMatchupType(node.type)) return NODE_KIND_PREFIX + node.type
+	if (!F.isCompNode(node)) return undefined
+	const subject = (node as F.EditableCompNode).args[0] as F.EditableScalarArg | undefined
+	if (subject?.type === 'column' && subject.column === 'id') return NODE_KIND_PREFIX + 'select-layers'
+	if (subject?.type === 'team-column' && subject.column) return teamColumnValue(subject.column, subject.quantifier ?? 'either')
+	return subject?.type === 'column' ? subject.column : undefined
+}
+
+function nodeKindGroup(value: string | undefined): string | undefined {
+	if (!value) return undefined
+	if (value.startsWith(NODE_KIND_PREFIX)) return NODE_KIND_ENTRIES[value.slice(NODE_KIND_PREFIX.length)]?.group
+	return F.subjectArgGroup(parseSubjectValue(value))
+}
+
+// Picks what kind of node an existing node is, converting it on a change (see EditFrame.Actions.convertNode).
+// A comparison's column picker does the same job for comparisons, so this is for every other kind of node.
+function NodeKindPicker(props: NodeProps & { node: F.ShallowEditableFilterNode; blocksOnly?: boolean }) {
+	const cfg = ConfigClient.useEffectiveColConfig()
+	const value = nodeKindValue(props.node)
+	const group = nodeKindGroup(value)
 	return (
-		<div className="flex items-center space-x-1 overflow-x-auto">
-			{props.actions.map((action, i) => {
-				// actions are a static, non-reordered config; a positional key is stable here
-				const key = action === 'separator' ? `sep-${i}` : typeof action.label === 'string' ? action.label : `action-${i}`
-				if (action === 'separator') return <Separator key={key} orientation="vertical" className="h-6" />
-				return (
-					<Button
-						key={key}
-						size="sm"
-						variant="outline"
-						className="whitespace-nowrap"
-						onClick={() => {
-							action.onSelect()
-							props.onSelected()
-						}}
-					>
-						{action.label}
-					</Button>
-				)
-			})}
-		</div>
+		<ComboBox
+			className="w-min"
+			title={tr.text(F_Msgs.nodeKindPicker())}
+			value={value}
+			options={nodeKindOptions(cfg, props.blocksOnly)}
+			sort={false}
+			groupings={subjectGroupings()}
+			defaultGroups={group ? SUBJECT_GROUP_SELECTIONS[group] : undefined}
+			renderGroupPrefix={false}
+			preventCloseAutoFocus
+			onSelect={(next) => {
+				if (!next || next === value) return
+				const seed = seedForKind(next, cfg)
+				EditFrame.Actions.convertNode(props.stores, props.nodeId, seed.node, seed.hint)
+			}}
+		/>
 	)
 }
 
-// a "+" button that reveals its actions inline to the right when opened, and collapses once focus
-// leaves the widget. replaces a popover/dropdown so a freshly added node's auto-opened editor isn't
-// slammed shut by the menu's focus-restore.
-function InlineAddButton(props: { actions: InlineAddAction[]; className?: string; compact?: boolean }) {
-	const [expanded, setExpanded] = React.useState(false)
+// The add menu: a sectioned picker of every kind of node a block can hold. The block's own add button and the
+// insert points between its children share it and differ only in where the new node lands.
+function AddNodeComboBox(props: {
+	actions: EditFrame.BlockNodeActions
+	index?: number
+	trigger: React.ReactElement
+	autoOpen?: boolean
+	onOpenChange?: (open: boolean) => void
+}) {
+	const cfg = ConfigClient.useEffectiveColConfig()
 	return (
-		<div className={cn('flex items-center space-x-1', props.className)} onBlur={(e) => collapseOnFocusLeave(e, () => setExpanded(false))}>
-			<Button
-				className={cn('min-h-0', props.compact && 'size-6 [&_svg]:size-3.5')}
-				size="icon"
-				variant="outline"
-				aria-label={tr.text(F_Msgs.addCondition())}
-				aria-expanded={expanded}
-				onClick={() => setExpanded((v) => !v)}
-			>
-				<Plus />
-			</Button>
-			{expanded && <AddActionStrip actions={props.actions} onSelected={() => setExpanded(false)} />}
-		</div>
+		<ComboBox
+			title={tr.text(F_Msgs.addCondition())}
+			value={undefined}
+			options={nodeKindOptions(cfg)}
+			sort={false}
+			groupings={subjectGroupings()}
+			renderGroupPrefix={false}
+			// the new node's editor takes focus as it mounts, which the trigger must not take back
+			preventCloseAutoFocus
+			autoOpen={props.autoOpen}
+			onOpenChange={props.onOpenChange}
+			onSelect={(value) => {
+				if (value) {
+					const seed = seedForKind(value, cfg)
+					props.actions.addSeeded(seed.node, seed.hint, props.index)
+				}
+				props.onOpenChange?.(false)
+			}}
+		>
+			{props.trigger}
+		</ComboBox>
+	)
+}
+
+function InlineAddButton(props: { actions: EditFrame.BlockNodeActions; compact?: boolean }) {
+	return (
+		<AddNodeComboBox
+			actions={props.actions}
+			trigger={
+				<Button
+					className={cn('min-h-0', props.compact && 'size-6 [&_svg]:size-3.5')}
+					size="icon"
+					variant="outline"
+					aria-label={tr.text(F_Msgs.addCondition())}
+				>
+					<Plus />
+				</Button>
+			}
+		/>
 	)
 }
 
@@ -388,12 +466,6 @@ function BlockNodeControlPanel(props: NodeProps) {
 	const isRootNode = depth === 0
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
 	const { delete: deleteNode } = actions.common
-	const { setBlockType } = actions.block
-	const blockTypeOptions = F.BLOCK_TYPES.map((type) => ({
-		value: type,
-		label: tr.text(F_Msgs.blockTypeNames[type]),
-		description: tr.text(F_Msgs.blockTypeDescriptions[type]),
-	}))
 	const opCluster = (
 		<>
 			<CommentButton nodeId={props.nodeId} stores={props.stores} />
@@ -416,7 +488,7 @@ function BlockNodeControlPanel(props: NodeProps) {
 					<NodeSummary node={node} />
 				</NodeSummaryButton>
 				<NodeErrorMark nodeId={props.nodeId} stores={props.stores} />
-				<InlineAddButton compact actions={blockAddActions(actions.block)} />
+				<InlineAddButton compact actions={actions.block} />
 				<CompactOpCluster>{opCluster}</CompactOpCluster>
 			</div>
 		)
@@ -424,15 +496,9 @@ function BlockNodeControlPanel(props: NodeProps) {
 
 	return (
 		<div className="flex items-center space-x-1">
-			<ComboBox
-				className="w-min"
-				title={tr.text(F_Msgs.operatorPicker())}
-				value={node.type}
-				options={blockTypeOptions}
-				onSelect={(v) => setBlockType(v as F.BlockType)}
-			/>
+			<NodeKindPicker nodeId={props.nodeId} stores={props.stores} node={node} blocksOnly={isRootNode} />
 			<NodeErrorMark nodeId={props.nodeId} stores={props.stores} />
-			<InlineAddButton actions={blockAddActions(actions.block)} />
+			<InlineAddButton actions={actions.block} />
 			{opCluster}
 			<DoneButton onClick={() => actions.common.setEditing(false)} />
 		</div>
@@ -464,10 +530,17 @@ function ChildNodeSeparator(props: {
 
 	if (expanded) {
 		return (
-			<div className="flex min-w-0 items-center py-1" onBlur={(e) => collapseOnFocusLeave(e, () => setExpanded(false))}>
-				<AddActionStrip
-					actions={blockAddActions(EditFrame.getNodeActions(props.stores, props.parentId).block, props.index)}
-					onSelected={() => setExpanded(false)}
+			<div className="flex min-w-0 items-center py-1">
+				<AddNodeComboBox
+					actions={EditFrame.getNodeActions(props.stores, props.parentId).block}
+					index={props.index}
+					autoOpen
+					onOpenChange={(open) => !open && setExpanded(false)}
+					trigger={
+						<Button size="icon" variant="outline" className="size-6 [&_svg]:size-3.5" aria-label={tr.text(F_Msgs.insertCondition())}>
+							<Plus />
+						</Button>
+					}
 				/>
 			</div>
 		)
@@ -507,16 +580,16 @@ function ChildNodeSeparator(props: {
 const NodeWrapper = ({
 	children,
 	className,
-	compact,
+	narrowGrip,
 	depth,
 	nodeId,
 	stores,
 }: {
 	children: React.ReactNode
 	className?: string
-	// a compact row is barely taller than the grip is wide, so the grip narrows to match rather than
-	// taking a third of the row
-	compact?: boolean
+	// a leaf node's compact row is barely taller than the full grip is wide, so leaf nodes take a narrow grip in
+	// both their compact and editing forms, which keeps the row from shifting as it opens
+	narrowGrip?: boolean
 	depth: number
 	nodeId: string
 	stores: EditFrame.KeyProp
@@ -547,7 +620,7 @@ const NodeWrapper = ({
 						className={cn(
 							Obj.deref('background', depthColors)[depth % depthColors.length],
 							'cursor-grab rounded',
-							compact && 'w-3 [&_svg]:size-3',
+							narrowGrip && 'w-3 [&_svg]:size-3',
 							depth === 0 && 'hidden',
 						)}
 					>
@@ -675,9 +748,6 @@ function DuplicateButton(props: { onClick: () => void }) {
 
 type ColConfig = LQY.EffectiveColumnAndTableConfig | undefined
 
-// how many of an `in` list's values fit before the rest becomes a count
-const SUMMARY_VALUE_LIMIT = 4
-
 function columnLabel(column: string | undefined, cfg: ColConfig) {
 	if (!column) return undefined
 	const def = LC.getColumnDef(column, cfg)
@@ -774,43 +844,41 @@ function ScalarSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig; 
 	return <Incomplete />
 }
 
+// every value of an `in` list, wrapping with the row rather than truncating
 function ValuesSummary(props: { arg: F.EditableArg | undefined; cfg: ColConfig; marks: Marks }) {
 	const items = (props.arg?.type === 'values' ? props.arg.values : undefined) ?? []
 	// keyed by what the item renders as, which also collapses the repeat a hand-written filter can carry
 	const parts = new Map<string, React.ReactNode>()
 	for (const item of items) {
 		if (F.isColumnListItem(item)) {
+			const key = `col:${item.column}`
 			parts.set(
-				`col:${item.column}`,
-				<ColumnWord invalid={!!props.marks?.columns.has(item.column)}>{columnLabel(item.column, props.cfg) ?? item.column}</ColumnWord>,
+				key,
+				<ColumnWord key={key} invalid={!!props.marks?.columns.has(item.column)}>
+					{columnLabel(item.column, props.cfg) ?? item.column}
+				</ColumnWord>,
 			)
 		} else {
-			parts.set(`val:${valueText(item)}`, <ValueChip invalid={valueMarked(item, props.marks)}>{valueText(item)}</ValueChip>)
+			const key = `val:${valueText(item)}`
+			parts.set(
+				key,
+				<ValueChip key={key} invalid={valueMarked(item, props.marks)}>
+					{valueText(item)}
+				</ValueChip>,
+			)
 		}
 	}
 	if (parts.size === 0) return <Incomplete />
-	const overflow = parts.size - SUMMARY_VALUE_LIMIT
-	const entries = Array.from(parts.entries())
-	// the limit never cuts off a marked part
-	if (overflow > 0) entries.sort(([a], [b]) => Number(markedPart(b, props.marks)) - Number(markedPart(a, props.marks)))
-	const shown = entries.slice(0, SUMMARY_VALUE_LIMIT).map(([, part]) => part)
-	return <ValueRun items={overflow > 0 ? [...shown, <OpWord key="more">{tr.text(F_Msgs.moreValues(overflow))}</OpWord>] : shown} />
-}
-
-function markedPart(key: string, marks: Marks) {
-	if (!marks) return false
-	return key.startsWith('col:') ? marks.columns.has(key.slice(4)) : marks.values.has(key.slice(4))
+	return <ValueRun items={Array.from(parts.values())} />
 }
 
 function CompSummary(props: { node: F.EditableCompNode; cfg: ColConfig; marks: Marks }) {
 	const node = props.node
 	const marks = props.marks
 	const subject = node.args[0] as F.EditableScalarArg | undefined
-	// `id` is reachable only through the "select layers" node, whose list is a set of layer ids: a count
-	// says more about it than four truncated ids would
+	// `id` is reachable only through the "select layers" node, whose values are the layers' stored text
 	if (subject?.type === 'column' && subject.column === 'id') {
-		const values = (node.args[1]?.type === 'values' ? node.args[1].values : undefined) ?? []
-		return trSummary.richText(F_Msgs.layerSetSummary(node.neg, values.length))
+		return trSummary.richText(F_Msgs.layerSetSummary(node.neg, <ValuesSummary arg={node.args[1]} cfg={props.cfg} marks={marks} />))
 	}
 	const readable = F_Msgs.compTypeReadableNames[node.type]
 	const op = node.neg ? readable.negated : readable.plain
@@ -989,7 +1057,7 @@ export function LeafFilterNode(props: NodeProps) {
 	if (!editing) {
 		return (
 			<NodeWrapper
-				compact
+				narrowGrip
 				depth={depth}
 				className="group/row flex flex-wrap items-center gap-1"
 				nodeId={props.nodeId}
@@ -1012,9 +1080,12 @@ export function LeafFilterNode(props: NodeProps) {
 		const subject = node.args[0]
 		const isSelectLayers = subject?.type === 'column' && subject.column === 'id'
 		return (
-			<NodeWrapper depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
+			<NodeWrapper narrowGrip depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
 				{isSelectLayers ? (
-					<SelectLayersNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
+					<>
+						<NodeKindPicker nodeId={props.nodeId} stores={props.stores} node={node} />
+						<SelectLayersNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} />
+					</>
 				) : (
 					<CompNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} marks={marks} />
 				)}
@@ -1026,7 +1097,8 @@ export function LeafFilterNode(props: NodeProps) {
 	}
 	if (F.isMatchupNode(node)) {
 		return (
-			<NodeWrapper depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
+			<NodeWrapper narrowGrip depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
+				<NodeKindPicker nodeId={props.nodeId} stores={props.stores} node={node} />
 				<MatchupNodeConfig nodeId={props.nodeId} stores={props.stores} node={node} marks={marks} />
 				{errorMark}
 				{opCluster}
@@ -1036,18 +1108,8 @@ export function LeafFilterNode(props: NodeProps) {
 	}
 	if (F.isApplyFilterNode(node)) {
 		return (
-			<NodeWrapper depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
-				<ComboBox
-					allowEmpty={false}
-					title={tr.text(F_Msgs.modePicker())}
-					value={node.type}
-					options={F.APPLY_FILTER_TYPES.map((type) => ({
-						value: type,
-						label: tr.text(F_Msgs.applyFilterTypeNames[type]),
-						description: tr.text(F_Msgs.applyFilterTypeDescriptions[type]),
-					}))}
-					onSelect={(v) => actions.applyFilter.setType(v as F.ApplyFilterType)}
-				/>
+			<NodeWrapper narrowGrip depth={depth} className="flex flex-wrap items-center gap-1" nodeId={props.nodeId} stores={props.stores}>
+				<NodeKindPicker nodeId={props.nodeId} stores={props.stores} node={node} />
 				<ApplyFilter
 					filterId={node.filterId}
 					editedFilterId={editedFilterId}
@@ -1080,19 +1142,9 @@ function ApplyFilterLink(props: { filterId: string | undefined }) {
 
 function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableCompNode; marks: EditFrame.NodeMarks }) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId)
-	const cfg = ConfigClient.useEffectiveColConfig()
 	const hint = Zus.useStore(props.stores.filterEditor, EditFrame.Sel.createHint(props.nodeId))
-	// scope the subject dropdown to the node's column group, re-derived from the chosen column so the
-	// restriction persists; the create-hint only supplies the group while the comparison is still blank.
+	const cfg = ConfigClient.useEffectiveColConfig()
 	const subject = props.node.args[0] as F.EditableScalarArg | undefined
-	const subjectColumn =
-		subject?.type === 'column'
-			? subject.column
-			: subject?.type === 'team-column' && subject.column
-				? F.resolveTeamColumn(subject.column, 1)
-				: undefined
-	const group = (subjectColumn ? F.subjectColumnGroup(subjectColumn, cfg ?? undefined) : undefined) ?? hint?.group
-	const allowedColumns = group ? F.columnsInGroup(group, cfg ?? undefined) : undefined
 	const marks = props.marks
 	const subjectColumns =
 		subject?.type === 'team-column' && subject.column
@@ -1108,11 +1160,16 @@ function CompNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node
 	}
 	return (
 		<Comparison
+			nodeKindOptions={nodeKindEntryOptions()}
+			onSelectNodeKind={(value) => {
+				const seed = seedForKind(value, cfg)
+				EditFrame.Actions.convertNode(props.stores, props.nodeId, seed.node, seed.hint)
+			}}
 			node={props.node}
 			setNode={(update) => actions.comp.setNode(update)}
 			invalid={invalid}
-			teamColumnsAvailable={group === 'team' || group === undefined}
-			allowedColumns={allowedColumns}
+			teamColumnsAvailable
+			defaultSubjectGroup={hint?.group}
 			defaultFocus={hint?.focus}
 			restrictValueSize={false}
 		/>
@@ -1155,6 +1212,85 @@ function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyPr
 
 export type ComparisonHandle = Clearable & Focusable
 
+const SUBJECT_GROUP_SELECTIONS: Record<string, Record<string, string>> = {
+	[BLOCK_GROUP]: { [SUBJECT_GROUPING]: BLOCK_GROUP },
+	layer: { [SUBJECT_GROUPING]: 'layer' },
+	faction: { [SUBJECT_GROUPING]: 'faction' },
+	vehicle: { [SUBJECT_GROUPING]: 'vehicle' },
+	scores: { [SUBJECT_GROUPING]: 'scores' },
+}
+
+let subjectGroupingsCache: { locale: string; groupings: ComboBoxGroupingDef[] } | undefined
+// cached per locale: ComboBox resolves its groupings on every change of the array's identity. The add menu's
+// block section is listed first; the subject picker has no block options, so that tab never shows there.
+function subjectGroupings(): ComboBoxGroupingDef[] {
+	if (subjectGroupingsCache?.locale !== tr.locale) {
+		subjectGroupingsCache = {
+			locale: tr.locale,
+			groupings: [
+				{
+					key: SUBJECT_GROUPING,
+					label: tr.text(F_Msgs.subjectGroupingLabel()),
+					groups: [
+						{ key: BLOCK_GROUP, label: tr.text(F_Msgs.blockGroupName()) },
+						...F.SUBJECT_COLUMN_GROUPS.map((group) => ({ key: group, label: tr.text(F_Msgs.subjectGroupNames[group]) })),
+					],
+					control: 'tabs',
+				},
+			],
+		}
+	}
+	return subjectGroupingsCache.groupings
+}
+
+// team-generic columns are encoded as `team:<quantifier>:<column>` so the either/both choice lives
+// directly in the column select rather than a separate dropdown
+const TEAM_PREFIX = 'team:'
+function teamColumnValue(column: F.TeamColumn, quantifier: F.TeamQuantifier) {
+	return `${TEAM_PREFIX}${quantifier}:${column}`
+}
+function parseSubjectValue(value: string): F.EditableScalarArg {
+	if (!value.startsWith(TEAM_PREFIX)) return { type: 'column', column: value }
+	const [quantifier, column] = value.slice(TEAM_PREFIX.length).split(':') as [F.TeamQuantifier, F.TeamColumn]
+	return { type: 'team-column', column, quantifier }
+}
+
+// The subject picker's options, sectioned by SUBJECT_GROUPING. Each team column family (Alliance/Faction/Unit/...)
+// is kept together in order (T1, T2, Both, Either) ahead of the alphabetical rest of its section. Because the
+// order is bespoke, a picker using these opts out of ComboBox's default label sort (sort={false}); the grouping
+// still orders the sections.
+function subjectColumnOptions(cfg: ColConfig, teamColumnsAvailable: boolean): ComboBoxOption<string>[] {
+	// `id` is reachable only through the dedicated "select layers" node
+	const baseCols = (cfg ? Object.keys(cfg.defs) : (LC.COLUMN_KEYS as string[])).filter((c) => c !== 'id')
+	const baseOption = (c: string): ComboBoxOption<string> & { label: string } => ({
+		value: c,
+		label: columnLabel(c, cfg) ?? c,
+		groups: { [SUBJECT_GROUPING]: F.subjectColumnGroup(c) },
+	})
+	const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label)
+	if (!teamColumnsAvailable) return baseCols.map(baseOption).sort(byLabel)
+
+	const teamBaseCols = new Set(F.TEAM_COLUMNS.flatMap((tc) => [F.resolveTeamColumn(tc, 1), F.resolveTeamColumn(tc, 2)]))
+	// label the concrete T1/T2 columns consistently within the family (some base display names, e.g.
+	// Faction's, omit the family prefix) so the four variants read uniformly
+	const teamOptions = F.TEAM_COLUMNS.flatMap((tc): ComboBoxOption<string>[] => {
+		const name = tr.text(F_Msgs.teamColumnNames[tc])
+		const groups = { [SUBJECT_GROUPING]: F.teamColumnGroup(tc) }
+		return [
+			...([1, 2] as const)
+				.filter((team) => baseCols.includes(F.resolveTeamColumn(tc, team)))
+				.map((team) => ({ value: F.resolveTeamColumn(tc, team), label: tr.text(F_Msgs.teamColumnForTeam(name, team)), groups })),
+			{ value: teamColumnValue(tc, 'both'), label: tr.text(F_Msgs.teamColumnBoth(name)), groups },
+			{ value: teamColumnValue(tc, 'either'), label: tr.text(F_Msgs.teamColumnEither(name)), groups },
+		]
+	})
+	const rest = baseCols
+		.filter((c) => !teamBaseCols.has(c))
+		.map(baseOption)
+		.sort(byLabel)
+	return [...teamOptions, ...rest]
+}
+
 // A team column's displayName is the layer table's compact header ('T1'), which names nothing on its own in a
 // value picker: "Selected T1s (0)". Every picker on a team dimension names itself by the dimension and, for a
 // concrete side, which side.
@@ -1169,7 +1305,11 @@ export function Comparison(props: {
 	setNode: React.Dispatch<React.SetStateAction<F.EditableCompNode>>
 	columnEditable?: boolean
 	teamColumnsAvailable?: boolean
-	allowedColumns?: string[]
+	// the subject picker's section to open on while the comparison has no subject
+	defaultSubjectGroup?: F.SubjectColumnGroup
+	// other kinds of node the column picker offers, each turning the comparison into that kind when picked
+	nodeKindOptions?: ComboBoxOption<string>[]
+	onSelectNodeKind?: (value: string) => void
 	restrictValueSize?: boolean
 	allowedEnumValues?: string[]
 	onSetAllValuesAllowed?: () => void
@@ -1272,46 +1412,10 @@ export function Comparison(props: {
 	// editor has mounted (see the effect below). The initial subject-open is handled separately on mount.
 	const [focusRequest, setFocusRequest] = React.useState<'advance' | 'operator' | null>(null)
 
-	// team-generic columns are encoded as `team:<quantifier>:<column>` so the either/both choice lives
-	// directly in the column select rather than a separate dropdown
-	const TEAM_PREFIX = 'team:'
-	const teamColumnValue = (column: F.TeamColumn, quantifier: F.TeamQuantifier) => `${TEAM_PREFIX}${quantifier}:${column}`
-	// `id` is reachable only through the dedicated "select layers" node
-	const baseCols = (cfg ? Object.keys(cfg.defs) : (LC.COLUMN_KEYS as string[])).filter((c) => c !== 'id')
-	const allowedBaseCols = props.allowedColumns ? props.allowedColumns.filter((c) => baseCols.includes(c)) : baseCols
-	const baseOption = (c: string): ComboBoxOption<string> & { label: string } => ({
-		value: c,
-		label: columnLabel(c, cfg) ?? c,
-	})
-	const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label)
-
-	// team columns are kept together at the top: each family (Alliance/Faction/Unit) in order
-	// (T1, T2, Both, Either). the concrete T1/T2 columns are pulled out of the alphabetical list into
-	// their family group. because the order is bespoke, the column select opts out of ComboBox's default
-	// label sort (sort={false}).
-	let columnOptions: ComboBoxOption<string>[]
-	if (props.teamColumnsAvailable) {
-		const teamBaseCols = new Set(F.TEAM_COLUMNS.flatMap((tc) => [F.resolveTeamColumn(tc, 1), F.resolveTeamColumn(tc, 2)]))
-		// label the concrete T1/T2 columns consistently within the group (some base display names, e.g.
-		// Faction's, omit the family prefix) so the four variants read uniformly
-		const teamGroup = F.TEAM_COLUMNS.flatMap((tc): ComboBoxOption<string>[] => [
-			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 1))
-				? [{ value: F.resolveTeamColumn(tc, 1), label: tr.text(F_Msgs.teamColumnForTeam(tr.text(F_Msgs.teamColumnNames[tc]), 1)) }]
-				: []),
-			...(allowedBaseCols.includes(F.resolveTeamColumn(tc, 2))
-				? [{ value: F.resolveTeamColumn(tc, 2), label: tr.text(F_Msgs.teamColumnForTeam(tr.text(F_Msgs.teamColumnNames[tc]), 2)) }]
-				: []),
-			{ value: teamColumnValue(tc, 'both'), label: tr.text(F_Msgs.teamColumnBoth(tr.text(F_Msgs.teamColumnNames[tc]))) },
-			{ value: teamColumnValue(tc, 'either'), label: tr.text(F_Msgs.teamColumnEither(tr.text(F_Msgs.teamColumnNames[tc]))) },
-		])
-		const rest = allowedBaseCols
-			.filter((c) => !teamBaseCols.has(c))
-			.map(baseOption)
-			.sort(byLabel)
-		columnOptions = [...teamGroup, ...rest]
-	} else {
-		columnOptions = allowedBaseCols.map(baseOption).sort(byLabel)
-	}
+	const subjectOptions = subjectColumnOptions(cfg, props.teamColumnsAvailable ?? false)
+	const columnOptions = props.nodeKindOptions ? [...props.nodeKindOptions, ...subjectOptions] : subjectOptions
+	const subjectGroup = F.subjectArgGroup(anchor) ?? props.defaultSubjectGroup
+	const subjectGroupSelection = subjectGroup ? SUBJECT_GROUP_SELECTIONS[subjectGroup] : undefined
 
 	const currentColumnValue = anchorTeamColumn ? teamColumnValue(anchorTeamColumn, anchorQuantifier) : anchorColumn
 
@@ -1343,14 +1447,19 @@ export function Comparison(props: {
 			options={columnOptions}
 			// options are pre-ordered (team families grouped, rest alphabetical); keep that order
 			sort={false}
+			groupings={subjectGroupings()}
+			defaultGroups={subjectGroupSelection}
+			renderGroupPrefix={false}
 			ref={columnBoxRef}
 			// selecting a column always resets and reopens the next argument, so hand focus onward on
 			// selection (ComboBox still restores focus on a plain dismiss)
 			preventCloseAutoFocus
 			onSelect={(value) => {
 				if (!value) return setNode(() => ({ type: 'eq', neg: false, args: [{ type: 'column' }, { type: 'value' }] }))
-				if (value.startsWith(TEAM_PREFIX)) {
-					const [quantifier, column] = value.slice(TEAM_PREFIX.length).split(':') as [F.TeamQuantifier, F.TeamColumn]
+				if (value.startsWith(NODE_KIND_PREFIX)) return props.onSelectNodeKind?.(value)
+				const parsed = parseSubjectValue(value)
+				if (parsed.type === 'team-column') {
+					const { quantifier, column } = parsed
 					// changing only the quantifier on the same column keeps the operator and value(s)
 					if (column === anchorTeamColumn) {
 						setNode(
@@ -1360,12 +1469,12 @@ export function Comparison(props: {
 						)
 						return
 					}
-					selectAnchor({ type: 'team-column', column, quantifier })
+					selectAnchor(parsed)
 					// team columns are enum-domained, so advance straight to the value
 					setFocusRequest('advance')
 					return
 				}
-				const newAnchor: F.EditableScalarArg = { type: 'column', column: value }
+				const newAnchor = parsed
 				selectAnchor(newAnchor)
 				// numeric subjects: the operator matters (eq/lt/gt/inrange), so send focus to the operator
 				// select; everything else advances straight to the value
@@ -1932,20 +2041,33 @@ export type MatchupActions = {
 }
 
 // the matchup editor proper, decoupled from the filter-editor frame so other hosts (the backburner request
-// dialog) can drive it against their own state
+// dialog) can drive it against their own state. Whether it allows or disallows is the host's to pick.
 export function MatchupConfig(props: {
 	node: F.EditableMatchupNode
 	actions: MatchupActions
 	// per-side, per-dimension option narrowing (the backburner request dialog); absent = full value lists
 	allowedTeamValues?: (side: 0 | 1, column: F.TeamColumn) => string[] | undefined
-	// hosts where the operator is fixed (a layer request is always allow-matchups) hide the select
-	showTypeSelect?: boolean
 	// the dimensions each side offers; defaults to all of them, including the vehicle columns
 	columns?: readonly F.TeamColumn[]
 	// values an error names, as String() renders them
 	invalidValues?: ReadonlySet<string>
+	// the dimensions shown before any is added or holds a value. The rest are offered by an add control.
+	// Absent, every offered dimension is shown.
+	defaultColumns?: readonly F.TeamColumn[]
 }) {
 	const { node, actions } = props
+	const [addedColumns, setAddedColumns] = React.useState<readonly F.TeamColumn[]>([])
+	const offeredColumns = props.columns ?? F.TEAM_COLUMNS
+	const defaultColumns = props.defaultColumns
+	const shownColumns = defaultColumns
+		? offeredColumns.filter(
+				(column) =>
+					defaultColumns.includes(column) ||
+					addedColumns.includes(column) ||
+					node.teams.some((spec) => (spec[column]?.length ?? 0) > 0),
+			)
+		: offeredColumns
+	const hiddenColumns = offeredColumns.filter((column) => !shownColumns.includes(column))
 	// unlocked, the specs are not pinned to the _1/_2 columns, so naming them "Team 1"/"Team 2" would
 	// misdescribe what the node matches. "Team A"/"Team B" are not available either: those already mean
 	// the normalized teams that persist across the team1/team2 swap (see MH.NormedTeamId and the
@@ -1956,20 +2078,10 @@ export function MatchupConfig(props: {
 		: [tr.text(F_Msgs.matchupSideLabels.first), tr.text(F_Msgs.matchupSideLabels.second)]
 	return (
 		<div className="flex flex-wrap items-center gap-2">
-			{(props.showTypeSelect ?? true) && (
-				<ComboBox
-					allowEmpty={false}
-					className="w-min"
-					title={tr.text(F_Msgs.operatorPicker())}
-					value={node.type}
-					options={F.MATCHUP_TYPES.map((type) => ({ value: type, label: tr.text(F_Msgs.matchupTypeNames[type]) }))}
-					onSelect={(v) => actions.setType(v as F.MatchupType)}
-				/>
-			)}
 			<TeamSpecConfig
 				label={firstLabel}
 				spec={node.teams[0]}
-				columns={props.columns}
+				columns={shownColumns}
 				invalidValues={props.invalidValues}
 				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(0, column))}
 				setValues={(col, values) => actions.setTeamValues(0, col, values)}
@@ -2001,18 +2113,30 @@ export function MatchupConfig(props: {
 			<TeamSpecConfig
 				label={secondLabel}
 				spec={node.teams[1]}
-				columns={props.columns}
+				columns={shownColumns}
 				invalidValues={props.invalidValues}
 				allowedValues={props.allowedTeamValues && ((column) => props.allowedTeamValues!(1, column))}
 				setValues={(col, values) => actions.setTeamValues(1, col, values)}
 			/>
+			{hiddenColumns.length > 0 && (
+				<ComboBox
+					title={tr.text(F_Msgs.teamDimensionPicker())}
+					placeholder={tr.text(F_Msgs.addTeamDimension())}
+					value={undefined}
+					options={hiddenColumns.map((column) => ({ value: column, label: tr.text(F_Msgs.teamColumnNames[column]) }))}
+					sort={false}
+					onSelect={(column) => column && setAddedColumns((prev) => [...prev, column as F.TeamColumn])}
+				/>
+			)}
 		</div>
 	)
 }
 
+const DEFAULT_MATCHUP_COLUMNS: readonly F.TeamColumn[] = ['Faction', 'Unit']
+
 function MatchupNodeConfig(props: { nodeId: string; stores: EditFrame.KeyProp; node: F.EditableMatchupNode; marks: EditFrame.NodeMarks }) {
 	const actions = EditFrame.getNodeActions(props.stores, props.nodeId).matchup
-	return <MatchupConfig node={props.node} actions={actions} invalidValues={props.marks.values} />
+	return <MatchupConfig node={props.node} actions={actions} invalidValues={props.marks.values} defaultColumns={DEFAULT_MATCHUP_COLUMNS} />
 }
 
 // value list for an `in` operator: a constant multi-select plus (in the editor) removable column references

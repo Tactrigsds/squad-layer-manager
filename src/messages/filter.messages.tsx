@@ -174,6 +174,22 @@ export const modePicker = def('mode')
 
 export const columnPicker = def('Column')
 
+export const subjectGroupingLabel = def('Category')
+export const blockGroupName = def('Block')
+export const applyFilterKindNames: Record<F.ApplyFilterType, TString> = {
+	'included-in': t('included in filter'),
+	'excluded-from': t('excluded from filter'),
+}
+export const nodeKindPicker = def('Condition type')
+export const teamDimensionPicker = def('Team dimension')
+export const addTeamDimension = def('+ dimension')
+export const subjectGroupNames: Record<F.SubjectColumnGroup, TString> = {
+	layer: t('Layer'),
+	faction: t('Faction'),
+	vehicle: t('Vehicle'),
+	scores: t('Scores'),
+}
+
 export const addColumnPlaceholder = def('+ column')
 
 export const valuePicker = def('value')
@@ -259,8 +275,6 @@ export const teamQuantifierNames: Record<F.TeamQuantifier, TString> = {
 // a matchup side with no dimension set matches anything
 export const anyTeam = def('any team')
 
-export const moreValues = def('+{count} more', (count: number) => ({ count }))
-
 // The compact node view's clauses. <op> marks the operator words and <value> a literal value, which the view
 // styles apart from the column and value slots around them.
 
@@ -273,11 +287,8 @@ export const rangeSummary = def((subject: React.ReactNode, op: TString, min: Rea
 )
 
 // the layer set behind a "select layers" node, which is a count rather than a list of ids
-export const layerSetSummary = def((neg: boolean, count: number) =>
-	rt('<op>{neg, select, yes {not in} other {in}}</op> <value>{count, plural, one {# layer} other {# layers}}</value>', {
-		neg: neg ? 'yes' : 'no',
-		count,
-	}),
+export const layerSetSummary = def((neg: boolean, layers: React.ReactNode) =>
+	rt('<op>{neg, select, yes {not in} other {in}}</op> {layers}', { neg: neg ? 'yes' : 'no', layers }),
 )
 
 export const matchupSummary = def((disallow: boolean, locked: boolean, first: React.ReactNode, second: React.ReactNode) =>

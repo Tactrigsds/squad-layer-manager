@@ -706,7 +706,6 @@ function RequestEditor(props: { stores: RequestFrame.KeyProp & Partial<SquadServ
 						node={matchup}
 						actions={matchupActions}
 						allowedTeamValues={allowedTeamValues}
-						showTypeSelect={false}
 						// the dialog's possible-value queries pin pair columns directly, which the vehicle pairs cannot do
 						columns={F.PHYSICAL_TEAM_COLUMNS}
 					/>

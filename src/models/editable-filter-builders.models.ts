@@ -58,6 +58,15 @@ export const inValues = (column?: string, values?: F.Value[]): F.EditableCompNod
 	args: [colArg(column), { type: 'values', values }],
 })
 
+// a blank comparison on `subject`, using the operator its value domain defaults to
+export function forSubject(subject: F.EditableScalarArg, domain: F.ValueDomain | undefined): F.EditableCompNode {
+	const type = F.defaultCompType(domain)
+	const args = F.COMP_TYPE_DEFS[type].argSlots.map((slot, i): F.EditableArg =>
+		i === 0 ? subject : slot === 'values' ? { type: 'values' } : { type: 'value' },
+	)
+	return { type, neg: false, args }
+}
+
 export const inValuesForTeamColumn = (
 	column: F.TeamColumn,
 	quantifier: F.TeamQuantifier = 'either',
@@ -98,4 +107,39 @@ export function nodeOfType(type: F.NodeType): F.EditableFilterNode {
 	if (F.isMatchupType(type)) return createMatchup(type)()
 	if (F.isBlockType(type)) return createBlock(type)()
 	assertNever(type)
+}
+
+// Carries the values a comparison on a team dimension and a matchup can share across a change from one kind of node
+// to the other, onto the fresh `to`. A comparison on Faction (Either) becomes "X vs any team", (Both) "X vs X", and a
+// T1 or T2 column a locked matchup with X on that side. Going back, the comparison collects the dimension's values
+// from the sides it reads. Any other pair of nodes shares nothing, and `to` is returned as it is.
+export function carryOver(from: F.EditableFilterNode, to: F.EditableFilterNode): F.EditableFilterNode {
+	if (F.isCompNode(from) && F.isMatchupNode(to)) {
+		const comp = from as F.EditableCompNode
+		const dimension = F.subjectTeamDimension(comp.args[0] as F.EditableScalarArg | undefined)
+		const values = compValues(comp)
+		if (!dimension || values.length === 0) return to
+		const spec = { [dimension.column]: values }
+		const teams: [F.MatchupTeamSpec, F.MatchupTeamSpec] =
+			dimension.sides === 'second' ? [{}, spec] : dimension.sides === 'both' ? [spec, { ...spec }] : [spec, {}]
+		return { ...(to as F.EditableMatchupNode), teams, locked: dimension.sides === 'first' || dimension.sides === 'second' }
+	}
+	if (F.isMatchupNode(from) && F.isCompNode(to)) {
+		const comp = to as F.EditableCompNode
+		const dimension = F.subjectTeamDimension(comp.args[0] as F.EditableScalarArg | undefined)
+		if (!dimension || comp.type !== 'in') return to
+		const [first, second] = (from as F.EditableMatchupNode).teams
+		const sides = dimension.sides === 'first' ? [first] : dimension.sides === 'second' ? [second] : [first, second]
+		const values = [...new Set(sides.flatMap((spec) => spec[dimension.column] ?? []))]
+		if (values.length === 0) return to
+		return { ...comp, args: [comp.args[0], { type: 'values', values }] }
+	}
+	return to
+}
+
+function compValues(comp: F.EditableCompNode): F.Value[] {
+	const arg = comp.args[1]
+	if (comp.type === 'in' && arg?.type === 'values') return (arg.values ?? []).filter((item) => !F.isColumnListItem(item)) as F.Value[]
+	if (comp.type === 'eq' && arg?.type === 'value' && arg.value !== undefined && arg.value !== null) return [arg.value]
+	return []
 }
