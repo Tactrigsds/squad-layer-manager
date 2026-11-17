@@ -1193,10 +1193,10 @@ function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyPr
 			}),
 		)
 	return (
-		<div className="flex items-center space-x-1">
+		<div className="flex min-w-0 items-start gap-1">
 			<ComboBox
 				allowEmpty={false}
-				className={operatorSelectClass}
+				className={cn(operatorSelectClass, 'shrink-0')}
 				title={tr.text(F_Msgs.modePicker())}
 				value={props.node.neg ? 'notin' : 'in'}
 				options={[
@@ -1205,7 +1205,7 @@ function SelectLayersNodeConfig(props: { nodeId: string; stores: EditFrame.KeyPr
 				]}
 				onSelect={(v) => actions.comp.setNode(Im.produce((c) => void (c.neg = v === 'notin')))}
 			/>
-			<LayersInConfig values={values} setValues={setValues} autoOpen={hint?.autoOpenLayers} />
+			<LayersInConfig className="min-w-0 flex-1" values={values} setValues={setValues} autoOpen={hint?.autoOpenLayers} />
 		</div>
 	)
 }
