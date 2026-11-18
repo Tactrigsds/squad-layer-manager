@@ -7,6 +7,7 @@ import type { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as FormSchema from '@/models/settings-form-schema.models'
 import { LOCAL_YAML_EDITOR_PATHS } from '@/models/settings-groups.models'
 import * as SETTINGS from '@/models/settings.models'
 import type * as RBAC from '@/rbac.models'
@@ -27,30 +28,6 @@ import { tr } from '@/systems/messages.client'
 // therefore runs the old projection against the new data: a union-shaped field reads the wrong variant, and a
 // projection indexed by row position reads an index that no longer exists. Guard the projection (return undefined
 // for a row that is gone) rather than deferring the pulse, which the uncontrolled inputs depend on being immediate.
-
-// The JSON Schema projection of a settings schema (z.toJSONSchema, io: 'input'), narrowed to the keys the form walks.
-// Annotations such as schema docs and plugin field controls are read through SDoc and PLG.
-export type SchemaType = 'object' | 'array' | 'string' | 'number' | 'integer' | 'boolean' | 'null'
-
-export type SchemaNode = {
-	[key: string]: unknown
-	// an array only for a nullable primitive, `["string", "null"]`, which stripNullable turns back into one type
-	type?: SchemaType | SchemaType[]
-	enum?: (string | number)[]
-	const?: string | number | boolean | null
-	default?: unknown
-	anyOf?: SchemaNode[]
-	oneOf?: SchemaNode[]
-	items?: SchemaNode
-	properties?: Record<string, SchemaNode>
-	// false for a strict object
-	additionalProperties?: SchemaNode | boolean
-	propertyNames?: SchemaNode
-}
-
-export type ObjectSchemaNode = SchemaNode & { properties: Record<string, SchemaNode> }
-
-export type Path = (string | number)[]
 
 // a BehaviorSubject-like handle: subscribable, plus a synchronous `.getValue()` for the current value
 export type ValueState<T = any> = Zus.ValueObservable<T>
@@ -92,53 +69,15 @@ export function useReset(reset$: Rx.Observable<void>, fn: () => void) {
 	}, [reset$])
 }
 
-// Zod writes a nullable primitive as `type: [T, "null"]`, and anything else that is nullable as `anyOf: [..., { type:
-// "null" }]`.
-export function stripNullable(node: SchemaNode): { inner: SchemaNode; nullable: boolean } {
-	if (Array.isArray(node?.type)) {
-		const others = node.type.filter((t) => t !== 'null')
-		const nullable = others.length < node.type.length
-		return { inner: { ...node, type: others.length === 1 ? others[0] : others }, nullable }
-	}
-	if (node?.anyOf) {
-		const nulls = node.anyOf.filter((b: SchemaNode) => b.type === 'null')
-		const others = node.anyOf.filter((b: SchemaNode) => b.type !== 'null')
-		if (nulls.length && others.length) {
-			return { inner: others.length === 1 ? others[0] : { anyOf: others }, nullable: true }
-		}
-	}
-	return { inner: node, nullable: false }
-}
-
-// HumanTime and similar accept `string | number`; we edit them as the string form
-export function isStringOrNumber(node: SchemaNode): boolean {
-	if (!node?.anyOf || node.anyOf.length !== 2) return false
-	const types = new Set(node.anyOf.map((b: SchemaNode) => b.type))
-	return types.has('string') && types.has('number')
-}
-
-// a discriminated union (Zod z.discriminatedUnion) projects to `oneOf`/`anyOf` of object branches that each pin one
-// property to a `const` (the discriminator). Returns those branches + the discriminator key so we can render a variant
-// picker instead of falling back to a raw-json editor.
-export function discriminatedUnion(node: SchemaNode): { branches: ObjectSchemaNode[]; discriminator: string } | null {
-	const branches = node?.oneOf ?? node?.anyOf
-	if (!branches || branches.length < 2) return null
-	if (!branches.every((b): b is ObjectSchemaNode => b?.type === 'object' && !!b.properties)) return null
-	const constKeys = Object.keys(branches[0].properties).filter((k) => branches[0].properties[k]?.const !== undefined)
-	const discriminator = constKeys.find((k) => branches.every((b) => b.properties[k]?.const !== undefined))
-	if (!discriminator) return null
-	return { branches, discriminator }
-}
-
-export function emptyValue(node: SchemaNode): unknown {
-	const { inner, nullable } = stripNullable(node)
+export function emptyValue(node: FormSchema.SchemaNode): unknown {
+	const { inner, nullable } = FormSchema.stripNullable(node)
 	if (nullable) return null
 	if (inner.const !== undefined) return inner.const
 	if (inner.default !== undefined) return structuredClone(inner.default)
 	if (inner.enum) return inner.enum[0]
-	const du = discriminatedUnion(inner)
+	const du = FormSchema.discriminatedUnion(inner)
 	if (du) return emptyValue(du.branches[0])
-	if (isStringOrNumber(inner)) return '0s'
+	if (FormSchema.isStringOrNumber(inner)) return '0s'
 	switch (inner.type) {
 		case 'string':
 			return ''
@@ -270,7 +209,7 @@ export namespace IssueSel {
 // per-keystroke edits don't churn it. `undefined` while the settings are still loading.
 export const SavedRootContext = React.createContext<{ saved: any }>({ saved: undefined })
 
-export function getAtPath(root: any, path: Path): unknown {
+export function getAtPath(root: any, path: FormSchema.Path): unknown {
 	let cur = root
 	for (const key of path) {
 		if (cur === null || cur === undefined) return undefined
@@ -279,10 +218,16 @@ export function getAtPath(root: any, path: Path): unknown {
 	return cur
 }
 
-export type OverrideProps = { value$: ValueState; reset$: Rx.Subject<void>; onChange: (v: any) => void; path: Path; root: FormRoot }
+export type OverrideProps = {
+	value$: ValueState
+	reset$: Rx.Subject<void>
+	onChange: (v: any) => void
+	path: FormSchema.Path
+	root: FormRoot
+}
 
 // copy-on-write set at a nested path (arrays stay arrays)
-export function setAtPath(root: any, path: Path, value: unknown): any {
+export function setAtPath(root: any, path: FormSchema.Path, value: unknown): any {
 	if (path.length === 0) return value
 	const [head, ...rest] = path
 	const base = root ?? (typeof head === 'number' ? [] : {})
@@ -293,10 +238,10 @@ export function setAtPath(root: any, path: Path, value: unknown): any {
 
 // placeholder for a text/number input: the schema default when there is one (doubles as a format hint, e.g. '5m'),
 // an example duration for HumanTime fields without one, otherwise the field's name
-export function placeholderFor(node: SchemaNode, inner: SchemaNode, path: Path): string | undefined {
+export function placeholderFor(node: FormSchema.SchemaNode, inner: FormSchema.SchemaNode, path: FormSchema.Path): string | undefined {
 	const def = effectiveDefault(node)
 	if (def.has && def.value !== '' && (typeof def.value === 'string' || typeof def.value === 'number')) return String(def.value)
-	if (isStringOrNumber(inner)) return tr.text(SETTINGS_Msgs.durationExample())
+	if (FormSchema.isStringOrNumber(inner)) return tr.text(SETTINGS_Msgs.durationExample())
 	const last = path[path.length - 1]
 	return typeof last === 'string' ? tr.text(SETTINGS_Msgs.settingLabel(node, last)) : undefined
 }
@@ -306,9 +251,9 @@ export function placeholderFor(node: SchemaNode, inner: SchemaNode, path: Path):
 // object's own default already provides wins over the child default (it's the more specific value, e.g. rbac's preset).
 const defaultCache = new WeakMap<object, { has: boolean; value: unknown }>()
 
-export function effectiveDefault(node: SchemaNode): { has: boolean; value: unknown } {
+export function effectiveDefault(node: FormSchema.SchemaNode): { has: boolean; value: unknown } {
 	if (node && typeof node === 'object' && defaultCache.has(node)) return defaultCache.get(node)!
-	const { inner } = stripNullable(node)
+	const { inner } = FormSchema.stripNullable(node)
 	const explicit = node?.default !== undefined ? node.default : inner?.default
 	let result: { has: boolean; value: unknown }
 	if (inner?.type === 'object' && inner.properties) {
@@ -341,9 +286,9 @@ export function formatDefaultValue(val: unknown): string {
 	return JSON.stringify(val)
 }
 
-export function isScalarNode(inner: SchemaNode): boolean {
+export function isScalarNode(inner: FormSchema.SchemaNode): boolean {
 	if (inner?.enum && inner.type !== 'array') return true
-	if (isStringOrNumber(inner)) return true
+	if (FormSchema.isStringOrNumber(inner)) return true
 	return inner?.type === 'string' || inner?.type === 'number' || inner?.type === 'integer' || inner?.type === 'boolean'
 }
 

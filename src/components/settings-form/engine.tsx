@@ -22,22 +22,16 @@ import {
 	LocalYamlField,
 	SettingComment,
 } from '@/components/settings-form/field-parts'
-import { overrideFor, sectionExtraFor } from '@/components/settings-form/overrides'
+import { OVERRIDE_COMPONENTS, sectionExtraFor } from '@/components/settings-form/overrides'
 import {
 	AdvancedPathsContext,
-	discriminatedUnion,
 	emptyValue,
 	type FieldMode,
 	FormOptionsContext,
 	type FormRoot,
 	isScalarNode,
-	isStringOrNumber,
-	type ObjectSchemaNode,
-	type Path,
 	placeholderFor,
-	type SchemaNode,
 	scopeValue,
-	stripNullable,
 	useCommentProps,
 	useFieldValue,
 	useLocalEditorSchema,
@@ -53,9 +47,11 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type * as Rx from '@/lib/rxjs'
+import { assertNever } from '@/lib/type-guards'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import * as FormSchema from '@/models/settings-form-schema.models'
 import type { SettingsGroup } from '@/models/settings-groups.models'
 import { HIDDEN_SETTINGS_KEYS, splitAdvanced, splitByGroups, TOC_ENTRY_PATHS } from '@/models/settings-groups.models'
 import * as RBAC from '@/rbac.models'
@@ -73,12 +69,12 @@ function DiscriminatedUnionField({
 	discriminator,
 	root,
 }: {
-	node: SchemaNode
-	path: Path
+	node: FormSchema.SchemaNode
+	path: FormSchema.Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
-	branches: ObjectSchemaNode[]
+	branches: FormSchema.ObjectSchemaNode[]
 	discriminator: string
 	root: FormRoot
 }) {
@@ -88,7 +84,7 @@ function DiscriminatedUnionField({
 	const branch = branchFor(String(active)) ?? branches[0]
 	// hide the discriminator from the rendered fields; it's set by the picker (and carried in the value)
 	const branchProps = Object.fromEntries(Object.entries(branch.properties).filter(([k]) => k !== discriminator))
-	const branchNode: SchemaNode = { ...branch, properties: branchProps }
+	const branchNode: FormSchema.SchemaNode = { ...branch, properties: branchProps }
 	return (
 		<div className="space-y-2">
 			<Select
@@ -123,7 +119,7 @@ function DiscriminatedUnionField({
 function wrapNullable(
 	nullable: boolean,
 	child: React.ReactNode,
-	inner: SchemaNode,
+	inner: FormSchema.SchemaNode,
 	value$: ValueState,
 	reset$: Rx.Subject<void>,
 	onChange: (v: any) => void,
@@ -144,115 +140,85 @@ function FieldControl({
 	onChange,
 	root,
 }: {
-	node: SchemaNode
-	path: Path
+	node: FormSchema.SchemaNode
+	path: FormSchema.Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	root: FormRoot
 }) {
-	const Override = overrideFor(path, node)
-	// oxlint-disable-next-line react/static-components -- a lookup over module-level components, not one built here
-	if (Override) return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} root={root} />
-
-	// the whole rbac subtree renders as one consolidated per-role editor (kept inside the standard section shell so its
-	// header + super-users callout + reset controls are preserved)
-	if (path.length === 1 && path[0] === 'rbac') return <RbacBody value$={value$} reset$={reset$} onChange={onChange} />
-
-	const { inner, nullable } = stripNullable(node)
-
-	// discriminated union -> variant picker + active branch fields
-	const du = discriminatedUnion(inner)
-	if (du) {
-		return (
-			<DiscriminatedUnionField
-				node={node}
-				path={path}
-				value$={value$}
-				reset$={reset$}
-				onChange={onChange}
-				branches={du.branches}
-				discriminator={du.discriminator}
-				root={root}
-			/>
-		)
-	}
-
-	// enum -> select
-	if (inner.enum && inner.type !== 'array') {
-		return wrapNullable(
-			nullable,
-			<SelectField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum} node={node} />,
-			inner,
-			value$,
-			reset$,
-			onChange,
-		)
-	}
-
-	// string | number (HumanTime etc.) -> text input
-	if (isStringOrNumber(inner)) {
-		return wrapNullable(
-			nullable,
-			<TextInputField
-				value$={value$}
-				reset$={reset$}
-				onChange={onChange}
-				numeric={false}
-				placeholder={placeholderFor(node, inner, path)}
-			/>,
-			inner,
-			value$,
-			reset$,
-			onChange,
-		)
-	}
-
-	if (inner.type === 'boolean') {
-		return <SwitchField value$={value$} reset$={reset$} onChange={onChange} />
-	}
-
-	if (inner.type === 'integer' || inner.type === 'number') {
-		return wrapNullable(
-			nullable,
-			<TextInputField value$={value$} reset$={reset$} onChange={onChange} numeric placeholder={placeholderFor(node, inner, path)} />,
-			inner,
-			value$,
-			reset$,
-			onChange,
-		)
-	}
-
-	if (inner.type === 'string') {
-		return wrapNullable(
-			nullable,
-			<TextInputField
-				value$={value$}
-				reset$={reset$}
-				onChange={onChange}
-				numeric={false}
-				placeholder={placeholderFor(node, inner, path)}
-			/>,
-			inner,
-			value$,
-			reset$,
-			onChange,
-		)
-	}
-
-	if (inner.type === 'array') {
-		return <ArrayField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
-	}
-
-	if (inner.type === 'object') {
-		if (inner.additionalProperties && typeof inner.additionalProperties === 'object') {
-			return <RecordField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
+	const control = FormSchema.controlFor(path, node)
+	switch (control.kind) {
+		case 'override': {
+			const Override = OVERRIDE_COMPONENTS[control.id]
+			// oxlint-disable-next-line react/static-components -- a lookup over module-level components, not one built here
+			return <Override value$={value$} reset$={reset$} onChange={onChange} path={path} root={root} />
 		}
-		return <ObjectField node={inner} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
+		// kept inside the standard section shell so its header, super-users callout and reset controls are preserved
+		case 'rbac':
+			return <RbacBody value$={value$} reset$={reset$} onChange={onChange} />
+		case 'discriminated-union':
+			return (
+				<DiscriminatedUnionField
+					node={node}
+					path={path}
+					value$={value$}
+					reset$={reset$}
+					onChange={onChange}
+					branches={control.branches}
+					discriminator={control.discriminator}
+					root={root}
+				/>
+			)
+		case 'enum':
+			return wrapNullable(
+				control.nullable,
+				<SelectField value$={value$} reset$={reset$} onChange={onChange} options={control.inner.enum!} node={node} />,
+				control.inner,
+				value$,
+				reset$,
+				onChange,
+			)
+		case 'string-or-number':
+		case 'string':
+		case 'number':
+			return wrapNullable(
+				control.nullable,
+				<TextInputField
+					value$={value$}
+					reset$={reset$}
+					onChange={onChange}
+					numeric={control.kind === 'number'}
+					placeholder={placeholderFor(node, control.inner, path)}
+				/>,
+				control.inner,
+				value$,
+				reset$,
+				onChange,
+			)
+		case 'boolean':
+			return <SwitchField value$={value$} reset$={reset$} onChange={onChange} />
+		case 'enum-array':
+			return (
+				<EnumArrayField
+					value$={value$}
+					reset$={reset$}
+					onChange={onChange}
+					options={control.options.map(String)}
+					node={control.items}
+				/>
+			)
+		case 'array':
+			return <ArrayField node={control.inner} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
+		case 'record':
+			return <RecordField node={control.inner} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
+		case 'object':
+			return <ObjectField node={control.inner} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
+		case 'json-fallback':
+			return <JsonFallback value$={value$} reset$={reset$} onChange={onChange} />
+		default:
+			assertNever(control)
 	}
-
-	// fallback for anything the walker can't render structurally
-	return <JsonFallback value$={value$} reset$={reset$} onChange={onChange} />
 }
 
 function ArrayField({
@@ -263,24 +229,19 @@ function ArrayField({
 	onChange,
 	root,
 }: {
-	node: SchemaNode
-	path: Path
+	node: FormSchema.SchemaNode
+	path: FormSchema.Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any[]) => void
 	root: FormRoot
 }) {
-	const items: SchemaNode = node.items ?? {}
-	const { inner } = stripNullable(items)
+	const items: FormSchema.SchemaNode = node.items ?? {}
+	const { inner } = FormSchema.stripNullable(items)
 
 	const value = (useFieldValue(value$) as any[]) ?? []
 
-	// array of enum -> multi-select
-	if (inner.enum && inner.type !== 'array' && inner.type !== 'object') {
-		return <EnumArrayField value$={value$} reset$={reset$} onChange={onChange} options={inner.enum.map(String)} node={items} />
-	}
-
-	const isPrimitive = inner.type === 'string' || inner.type === 'integer' || inner.type === 'number' || isStringOrNumber(inner)
+	const isPrimitive = inner.type === 'string' || inner.type === 'integer' || inner.type === 'number' || FormSchema.isStringOrNumber(inner)
 
 	// structural edits emit reset$ so uncontrolled item inputs re-read after re-indexing
 	function structural(next: any[]) {
@@ -331,8 +292,8 @@ function ArrayItem({
 	root,
 	onRemove,
 }: {
-	items: SchemaNode
-	path: Path
+	items: FormSchema.SchemaNode
+	path: FormSchema.Path
 	idx: number
 	parent$: ValueState
 	reset$: Rx.Subject<void>
@@ -378,14 +339,14 @@ function RecordField({
 	onChange,
 	root,
 }: {
-	node: SchemaNode
-	path: Path
+	node: FormSchema.SchemaNode
+	path: FormSchema.Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: Record<string, any>) => void
 	root: FormRoot
 }) {
-	const valueNode: SchemaNode = typeof node.additionalProperties === 'object' ? node.additionalProperties : {}
+	const valueNode: FormSchema.SchemaNode = typeof node.additionalProperties === 'object' ? node.additionalProperties : {}
 	// when the schema constrains keys to a known set (z.partialRecord / propertyNames enum), the key becomes a fixed picker
 	// rather than free text, so only known keys can be added
 	const keyEnum = node.propertyNames?.enum?.map(String)
@@ -491,8 +452,8 @@ function RecordEntry({
 	onRename,
 	onRemove,
 }: {
-	valueNode: SchemaNode
-	path: Path
+	valueNode: FormSchema.SchemaNode
+	path: FormSchema.Path
 	entryKey: string
 	fixedKey: boolean
 	parent$: ValueState
@@ -529,14 +490,14 @@ export function ObjectField({
 	onChange,
 	root,
 }: {
-	node: SchemaNode
-	path: Path
+	node: FormSchema.SchemaNode
+	path: FormSchema.Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: Record<string, any>) => void
 	root: FormRoot
 }) {
-	const props: Record<string, SchemaNode> = node.properties ?? {}
+	const props: Record<string, FormSchema.SchemaNode> = node.properties ?? {}
 	const { normal, advanced } = splitAdvanced(Object.keys(props), path.join('.'), React.useContext(AdvancedPathsContext))
 	const field = (key: string) => (
 		<Field
@@ -574,14 +535,14 @@ function SectionField({
 	root,
 }: {
 	name: string
-	node: SchemaNode
-	path: Path
+	node: FormSchema.SchemaNode
+	path: FormSchema.Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	root: FormRoot
 }) {
-	const { inner } = stripNullable(node)
+	const { inner } = FormSchema.stripNullable(node)
 	const descriptionMsg = SETTINGS_Msgs.settingDescription(node) ?? SETTINGS_Msgs.settingDescription(inner)
 	const description = descriptionMsg && tr.text(descriptionMsg)
 	const pathStr = path.join('.')
@@ -659,15 +620,15 @@ function LeafField({
 	root,
 }: {
 	name: string
-	node: SchemaNode
-	path: Path
+	node: FormSchema.SchemaNode
+	path: FormSchema.Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	hasOverride: boolean
 	root: FormRoot
 }) {
-	const { inner } = stripNullable(node)
+	const { inner } = FormSchema.stripNullable(node)
 	const descriptionMsg = SETTINGS_Msgs.settingDescription(node) ?? SETTINGS_Msgs.settingDescription(inner)
 	const description = descriptionMsg && tr.text(descriptionMsg)
 	const pathStr = path.join('.')
@@ -765,8 +726,8 @@ function Field({
 	root,
 }: {
 	name: string
-	node: SchemaNode
-	path: Path
+	node: FormSchema.SchemaNode
+	path: FormSchema.Path
 	parent$: ValueState
 	parentOnChange: (v: Record<string, any>) => void
 	reset$: Rx.Subject<void>
@@ -777,8 +738,8 @@ function Field({
 	// keys managed inline by a sibling editor render no field of their own (e.g. defaultPrefix, chosen via the
 	// "default" markers in the allowedPrefixes editor)
 	if (path.length === 1 && HIDDEN_SETTINGS_KEYS.has(name)) return null
-	const { inner } = stripNullable(node)
-	const hasOverride = !!overrideFor(path, node)
+	const { inner } = FormSchema.stripNullable(node)
+	const hasOverride = !!FormSchema.overrideFor(path, node)
 	const isSection =
 		!hasOverride &&
 		inner.type === 'object' &&
@@ -831,14 +792,14 @@ export function GroupedRootFields({
 	onChange,
 	root,
 }: {
-	node: SchemaNode
+	node: FormSchema.SchemaNode
 	groups: SettingsGroup[]
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: Record<string, any>) => void
 	root: FormRoot
 }) {
-	const props: Record<string, SchemaNode> = node.properties ?? {}
+	const props: Record<string, FormSchema.SchemaNode> = node.properties ?? {}
 	const { groups: grouped, ungrouped } = splitByGroups(Object.keys(props), groups)
 	const advancedPaths = React.useContext(AdvancedPathsContext)
 	const field = (key: string) => (

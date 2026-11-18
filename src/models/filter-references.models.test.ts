@@ -164,4 +164,24 @@ describe('configFieldValues', () => {
 		expect(PLG.configFieldValues(schema, { seedPool: '', extraPools: [] }, 'filter-id')).toEqual([])
 		expect(PLG.configFieldValues(schema, {}, 'filter-id')).toEqual([])
 	})
+
+	test('looks inside nullable objects, the active union branch and record entries', () => {
+		const unionSchema = z.toJSONSchema(
+			z.object({
+				maybe: z.object({ pool: PLG.Fields.filterId() }).nullable(),
+				mode: z.discriminatedUnion('type', [
+					z.object({ type: z.literal('a'), pool: PLG.Fields.filterId() }),
+					z.object({ type: z.literal('b'), other: PLG.Fields.filterId() }),
+				]),
+				byServer: z.record(z.string(), PLG.Fields.filterId()),
+			}),
+			{ io: 'input', unrepresentable: 'any' },
+		)
+		const config = { maybe: { pool: 'm' }, mode: { type: 'a', pool: 'p', other: 'stale' }, byServer: { s1: 'r' } }
+		expect(PLG.configFieldValues(unionSchema, config, 'filter-id')).toEqual([
+			{ path: 'maybe.pool', value: 'm' },
+			{ path: 'mode.pool', value: 'p' },
+			{ path: 'byServer.s1', value: 'r' },
+		])
+	})
 })

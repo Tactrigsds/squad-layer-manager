@@ -1,17 +1,16 @@
-import { type SchemaNode, stripNullable } from '@/components/settings-form/settings-form.helpers'
-import { z } from '@/lib/zod'
 import type * as PermRows from '@/models/rbac-perm-rows.models'
+import * as FormSchema from '@/models/settings-form-schema.models'
 import * as SETTINGS from '@/models/settings.models'
 
 // every dotted object path in a settings schema, in declaration order: the paths a settings grant may address.
 // Stops at arrays/records since grants target the static object tree, not indices or dynamic keys.
-function enumerateGrantPaths(node: SchemaNode, prefix = ''): string[] {
-	const { inner } = stripNullable(node)
+function enumerateGrantPaths(node: FormSchema.SchemaNode, prefix = ''): string[] {
+	const { inner } = FormSchema.stripNullable(node)
 	if (inner?.type !== 'object' || !inner.properties || (inner.additionalProperties && typeof inner.additionalProperties === 'object')) {
 		return []
 	}
 	const out: string[] = []
-	for (const [key, child] of Object.entries(inner.properties as Record<string, SchemaNode>)) {
+	for (const [key, child] of Object.entries(inner.properties as Record<string, FormSchema.SchemaNode>)) {
 		const p = prefix ? `${prefix}.${key}` : key
 		out.push(p, ...enumerateGrantPaths(child, p))
 	}
@@ -21,9 +20,9 @@ function enumerateGrantPaths(node: SchemaNode, prefix = ''): string[] {
 let cachedGlobalGrantPaths: string[] | undefined
 
 export function globalGrantPathOptions(): string[] {
-	cachedGlobalGrantPaths ??= enumerateGrantPaths(
-		z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as SchemaNode,
-	).filter((p) => p !== SETTINGS.COMMENTS_KEY)
+	cachedGlobalGrantPaths ??= enumerateGrantPaths(FormSchema.formSchema(SETTINGS.GlobalSettingsSchema)).filter(
+		(p) => p !== SETTINGS.COMMENTS_KEY,
+	)
 	return cachedGlobalGrantPaths
 }
 
@@ -31,9 +30,9 @@ export function globalGrantPathOptions(): string[] {
 let cachedServerGrantPaths: string[] | undefined
 
 export function serverGrantPathOptions(): string[] {
-	cachedServerGrantPaths ??= enumerateGrantPaths(
-		z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }) as SchemaNode,
-	).filter((p) => p !== 'connections' && !p.startsWith('connections.') && p !== SETTINGS.COMMENTS_KEY)
+	cachedServerGrantPaths ??= enumerateGrantPaths(FormSchema.formSchema(SETTINGS.ServerSettingsSchema)).filter(
+		(p) => p !== 'connections' && !p.startsWith('connections.') && p !== SETTINGS.COMMENTS_KEY,
+	)
 	return cachedServerGrantPaths
 }
 

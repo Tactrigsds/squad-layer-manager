@@ -27,17 +27,16 @@ import {
 import { AdminMessageShorthandsField, LayerTagsField } from '@/components/settings-form/editors/preset-tables'
 import { RbacSuperCallout } from '@/components/settings-form/editors/rbac'
 import { CounterbalanceGroupsField, CounterbalancePickFirstField } from '@/components/settings-form/editors/teamswap-counterbalance'
-import type { OverrideProps, Path, SchemaNode } from '@/components/settings-form/settings-form.helpers'
-import * as PLG from '@/models/plugins.models'
-import * as SDoc from '@/models/schema-docs.models'
+import type { OverrideProps } from '@/components/settings-form/settings-form.helpers'
+import type * as FormSchema from '@/models/settings-form-schema.models'
 
 // extra read-only content injected at the top of specific sections (below the description, above the fields)
-export function sectionExtraFor(path: Path): React.FC | undefined {
+export function sectionExtraFor(path: FormSchema.Path): React.FC | undefined {
 	if (path.length === 1 && path[0] === 'rbac') return RbacSuperCallout
 	return undefined
 }
 
-const DECLARED_CONTROLS: Record<PLG.FieldControl, React.FC<OverrideProps>> = {
+export const OVERRIDE_COMPONENTS: Record<FormSchema.OverrideId, React.FC<OverrideProps>> = {
 	'filter-id': PluginFilterField,
 	'filter-ids': PluginFilterMultiField,
 	'server-id': PluginServerField,
@@ -46,32 +45,22 @@ const DECLARED_CONTROLS: Record<PLG.FieldControl, React.FC<OverrideProps>> = {
 	'discord-channel-ids': PluginChannelMultiField,
 	'rotation-tag-id': PluginRotationTagField,
 	multiline: PluginMultilineField,
-}
-
-export function overrideFor(path: Path, _node: SchemaNode): React.FC<OverrideProps> | undefined {
-	const declared = PLG.fieldControl(_node)
-	if (declared) return DECLARED_CONTROLS[declared]
-	const last = path[path.length - 1]
-	// global settings define the lists (a record); a server picks from them (an array of names)
-	if (path.length === 1 && last === 'adminLists') return _node.type === 'array' ? ServerAdminListsField : AdminListsField
-	if (path.length === 1 && last === 'installedMods') return InstalledModsField
-	if (path.length === 1 && last === 'allowedPrefixes') return AllowedPrefixesField
-	if (path.length === 1 && last === 'locale') return LocaleField
-	if (path.length === 1 && last === 'color') return ServerColorField
-	// each command renders as one compact card (which itself renders the strings sub-editor), so there's no separate strings override
-	if (path.length === 2 && path[0] === 'commands') return CommandCard
-	if (path.length === 1 && last === 'adminMessageShorthands') return AdminMessageShorthandsField
-	if (path.length === 1 && last === 'layerTable') return LayerTableField
-	if (path.length === 1 && last === 'layerGeneration') return LayerGenerationField
-	if (path.length === 1 && last === 'layerTags') return LayerTagsField
-	if (path.length === 1 && last === 'playerFlagsRequiringNote') return FlagMultiSelectField
-	if (path.length === 1 && last === 'playerGroupings') return PlayerGroupingsField
-	// the entire `rbac` subtree is rendered by RbacBody (see FieldControl), so no per-field rbac overrides are needed here
-	// server settings: the pool configuration reuses the dashboard popover's panels; connection passwords are masked
-	if (path.length === 2 && path[0] === 'queue' && last === 'mainPool') return MainPoolField
-	if (path.length === 2 && path[0] === 'connections' && last === 'token') return ServerAgentTokenField
-	if (path.length === 2 && path[0] === 'teamswapCounterbalance' && last === 'neverPickGroups') return CounterbalanceGroupsField
-	if (path.length === 2 && path[0] === 'teamswapCounterbalance' && last === 'pickFirst') return CounterbalancePickFirstField
-	if (SDoc.read(_node)?.secret) return PasswordField
-	return undefined
+	'admin-lists': AdminListsField,
+	'server-admin-lists': ServerAdminListsField,
+	'installed-mods': InstalledModsField,
+	'allowed-prefixes': AllowedPrefixesField,
+	locale: LocaleField,
+	'server-color': ServerColorField,
+	command: CommandCard,
+	'admin-message-shorthands': AdminMessageShorthandsField,
+	'layer-table': LayerTableField,
+	'layer-generation': LayerGenerationField,
+	'layer-tags': LayerTagsField,
+	'flag-multi-select': FlagMultiSelectField,
+	'player-groupings': PlayerGroupingsField,
+	'main-pool': MainPoolField,
+	'server-agent-token': ServerAgentTokenField,
+	'counterbalance-groups': CounterbalanceGroupsField,
+	'counterbalance-pick-first': CounterbalancePickFirstField,
+	password: PasswordField,
 }

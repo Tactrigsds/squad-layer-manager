@@ -6,7 +6,6 @@ import {
 	DEBOUNCE_MS,
 	emptyValue,
 	type NormalizedIssue,
-	type SchemaNode,
 	useFieldValue,
 	useReset,
 	type ValueState,
@@ -20,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type * as Rx from '@/lib/rxjs'
 import { useDebounced } from '@/lib/use-debounce'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
+import type * as FormSchema from '@/models/settings-form-schema.models'
 import { tr } from '@/systems/messages.client'
 import * as SettingsNav from '@/systems/settings-nav.client'
 
@@ -137,7 +137,7 @@ export function SelectField({
 	onChange: (v: any) => void
 	// a numeric enum's options are numbers, which the select holds as strings and hands back as the option itself
 	options: (string | number)[]
-	node: SchemaNode
+	node: FormSchema.SchemaNode
 }) {
 	const value = useFieldValue(value$)
 	return (
@@ -175,7 +175,7 @@ export function EnumArrayField({
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	options: string[]
-	node: SchemaNode
+	node: FormSchema.SchemaNode
 }) {
 	const value = useFieldValue(value$) as any[]
 	return (
@@ -196,7 +196,7 @@ export function NullableField({
 	onChange,
 	children,
 }: {
-	inner: SchemaNode
+	inner: FormSchema.SchemaNode
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
