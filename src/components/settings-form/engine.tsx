@@ -17,6 +17,7 @@ import {
 	CommandsPageCrossLink,
 	CommentButton,
 	FieldNotice,
+	FieldHeaderActions,
 	FieldResetControls,
 	LocalModeToggle,
 	LocalYamlField,
@@ -29,7 +30,6 @@ import {
 	type FieldMode,
 	FormOptionsContext,
 	type FormRoot,
-	isScalarNode,
 	placeholderFor,
 	scopeValue,
 	useCommentProps,
@@ -566,23 +566,17 @@ function SectionField({
 			className={cn('border rounded-md px-3 pb-3 pt-0 space-y-3 scroll-mt-2', sectionIssues.length > 0 && 'border-destructive')}
 		>
 			<StickyGroup stickyRef={headerRef}>
-				<div ref={headerRef} className="group flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
+				<div ref={headerRef} className="group/field flex items-center gap-2 -mx-3 rounded-t-md border-b bg-card px-3 py-2">
 					<legend className="px-1 text-sm font-semibold">{tr.text(SETTINGS_Msgs.settingLabel(node, name))}</legend>
 					<code className="text-[10px] text-muted-foreground ltr-isolate">{pathStr}</code>
-					{/* a whole section's default is usually a bulky object, so omit the inline "default:" hint (tooltip carries it) */}
-					<span className="contents" inert={!writable}>
-						<FieldResetControls
-							value$={value$}
-							reset$={reset$}
-							onChange={onChange}
-							node={node}
-							path={path}
-							showDefaultLabel={false}
-						/>
-					</span>
-					<AnchorLink domId={domId} />
-					{writable && <CommentButton {...commentProps} />}
-					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
+					<FieldHeaderActions pinned={mode === 'yaml'}>
+						<AnchorLink domId={domId} />
+						{writable && <CommentButton {...commentProps} />}
+						<span className="contents" inert={!writable}>
+							<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} />
+						</span>
+						{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
+					</FieldHeaderActions>
 				</div>
 				<SettingComment {...commentProps} />
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
@@ -616,7 +610,6 @@ function LeafField({
 	value$,
 	reset$,
 	onChange,
-	hasOverride,
 	root,
 }: {
 	name: string
@@ -625,7 +618,6 @@ function LeafField({
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
-	hasOverride: boolean
 	root: FormRoot
 }) {
 	const { inner } = FormSchema.stripNullable(node)
@@ -644,20 +636,6 @@ function LeafField({
 	const jsonSchema = useLocalEditorSchema(pathStr)
 	const [mode, setMode] = React.useState<FieldMode>('gui')
 	const commentProps = useCommentProps(root, pathStr, writable)
-	// the inline "default: <value>" hint only reads well for scalars; complex/override fields still get the reset buttons
-	const showDefaultLabel = !hasOverride && isScalarNode(inner)
-	const controls = (
-		<span className="contents" inert={!writable}>
-			<FieldResetControls
-				value$={value$}
-				reset$={reset$}
-				onChange={onChange}
-				node={node}
-				path={path}
-				showDefaultLabel={showDefaultLabel}
-			/>
-		</span>
-	)
 	return (
 		<div
 			id={domId}
@@ -665,14 +643,14 @@ function LeafField({
 			className={cn(
 				// the -mx-2/px-2 gutter + vertical padding give the anchor-highlight ring consistent breathing room on
 				// every side without shifting the content column
-				'space-y-1 scroll-mt-2 rounded-md -mx-2 px-2 py-1.5',
+				'group/field space-y-1 scroll-mt-2 rounded-md -mx-2 px-2 py-1.5',
 				isBoolean && 'flex items-center justify-between space-y-0 gap-4',
 				hasError && 'border-s-2 border-destructive',
 				!writable && 'opacity-60',
 			)}
 		>
-			<div className={cn(isBoolean && 'min-w-0')}>
-				<div className="group flex items-center gap-1.5">
+			<div className={cn(isBoolean && 'min-w-0 flex-1')}>
+				<div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
 					<Label className={cn('text-sm', hasError && 'text-destructive')}>{tr.text(SETTINGS_Msgs.settingLabel(node, name))}</Label>
 					<code className="text-[10px] text-muted-foreground ltr-isolate">{pathStr}</code>
 					{!writable && (
@@ -683,11 +661,15 @@ function LeafField({
 							<TooltipContent>{tr.text(SETTINGS_Msgs.notPermittedToModifySetting())}</TooltipContent>
 						</Tooltip>
 					)}
-					{!isBoolean && controls}
-					<AnchorLink domId={domId} />
-					{writable && <CommentButton {...commentProps} />}
-					<CommandsPageCrossLink path={path} />
-					{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
+					<FieldHeaderActions pinned={mode === 'yaml'}>
+						<CommandsPageCrossLink path={path} />
+						<AnchorLink domId={domId} />
+						{writable && <CommentButton {...commentProps} />}
+						<span className="contents" inert={!writable}>
+							<FieldResetControls value$={value$} reset$={reset$} onChange={onChange} node={node} path={path} />
+						</span>
+						{jsonSchema && writable && <LocalModeToggle mode={mode} onSelect={setMode} />}
+					</FieldHeaderActions>
 				</div>
 				<SettingComment {...commentProps} />
 				{description && <p className="text-xs text-muted-foreground">{description}</p>}
@@ -695,7 +677,6 @@ function LeafField({
 				<FieldNotice path={path} />
 			</div>
 			<div className={cn(isBoolean && 'shrink-0 flex items-center gap-1')} inert={!writable}>
-				{isBoolean && controls}
 				{jsonSchema && mode === 'yaml' ? (
 					<LocalYamlField
 						schema={jsonSchema}
@@ -749,18 +730,7 @@ function Field({
 	if (isSection) {
 		return <SectionField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 	}
-	return (
-		<LeafField
-			name={name}
-			node={node}
-			path={path}
-			value$={value$}
-			reset$={reset$}
-			onChange={onChange}
-			hasOverride={hasOverride}
-			root={root}
-		/>
-	)
+	return <LeafField name={name} node={node} path={path} value$={value$} reset$={reset$} onChange={onChange} root={root} />
 }
 
 // a presentation-only grouping of top-level fields: a prominent sticky header + anchor, no value/reset semantics of
@@ -772,9 +742,11 @@ function GroupSection({ slug, label, children }: { slug: string; label: string; 
 	return (
 		<section id={domId} className="scroll-mt-2 rounded-md -mx-2 px-2 pb-2">
 			<StickyGroup stickyRef={headerRef}>
-				<div ref={headerRef} className="group flex items-center gap-2 border-b bg-background px-1 py-2">
+				<div ref={headerRef} className="group/field flex items-center gap-2 border-b bg-background px-1 py-2">
 					<h3 className="text-base font-semibold">{label}</h3>
-					<AnchorLink domId={domId} />
+					<FieldHeaderActions>
+						<AnchorLink domId={domId} />
+					</FieldHeaderActions>
 				</div>
 				<div className="space-y-3 pt-3">{children}</div>
 			</StickyGroup>

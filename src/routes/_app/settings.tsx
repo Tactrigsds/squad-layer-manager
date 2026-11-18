@@ -239,7 +239,9 @@ function RouteComponent() {
 					</aside>
 					<div id={SettingsNav.CONTENT_ID} className="flex-1 min-w-0">
 						{/* no top padding: sticky section headers pin flush to the top, otherwise scrolled content bleeds into the gap */}
-						<div className="mx-auto w-full max-w-[68rem] px-3 pb-2 space-y-4">
+						{/* min-w-fit: a wide editor (a fieldset never shrinks below its content) widens every panel around it and
+						    main scrolls sideways, instead of the editor overflowing panels that stay at the column width */}
+						<div className="mx-auto w-full min-w-fit max-w-[68rem] px-3 pb-2 space-y-4">
 							{/* Servers reads PublicSettingsStore, not globalSettings$, so it must not sit behind the global-settings Suspense */}
 							{(!manageServersDenied || servers.length > 0) && (
 								<div id="section:servers" className="scroll-mt-2 rounded-xl">

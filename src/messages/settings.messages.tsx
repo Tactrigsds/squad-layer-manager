@@ -498,7 +498,9 @@ export const unsavedChanges = def('You have unsaved settings changes. Are you su
 
 export const notPermittedToModifySetting = def('You are not permitted to modify this setting')
 
-export const linkToSetting = def('Link to this setting')
+export const linkToSetting = def('Copy a link to this setting')
+
+export const settingLinkNoun = def('link to this setting')
 
 export const settingComment = def('Setting comment')
 export const commentPlaceholder = def('Comment. Links are clickable.')
@@ -538,17 +540,15 @@ export const durationExample = def('e.g. 30m')
 
 // -------- per-field reset --------
 
-export const defaultHint = def('default: {value}', (value: string) => ({ value }))
+export const resetToSaved = def('Reset to saved value ({value})', (value: string) => ({ value }))
 
-export const resetToSaved = def('Reset to saved value')
-
-export const alreadySaved = def('Already matches the saved value')
+export const alreadySaved = def('Already matches the saved value ({value})', (value: string) => ({ value }))
 
 export const resetToDefault = def('Reset to default ({value})', (value: string) => ({ value }))
 
-export const alreadyDefault = def('Already matches the default')
+export const alreadyDefault = def('Already matches the default ({value})', (value: string) => ({ value }))
 
-// how a schema default is spelled in the hint and the reset tooltip, for the values that have no useful literal form
+// how a saved or default value is spelled in the reset tooltips, for the values that have no useful literal form
 export const defaultValueWords = { unset: 'unset', on: 'on', off: 'off', empty: '(empty)' }
 
 // -------- the server agent token --------

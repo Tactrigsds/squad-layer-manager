@@ -160,12 +160,10 @@ export const demoteCommander = def(() => ({
 	},
 }))
 
-export const copiedToClipboard = def((what: string, count: number = 1) => ({
-	toast: [
-		t('Copied'),
-		{ description: t('{count, plural, one {{what} copied to clipboard} other {# {what}s copied to clipboard}}', { count, what }) },
-	],
-}))
+// `what` is an id kind from idNames
+export const idsNoun = def((what: string, count: number) => t('{count, plural, one {{what}} other {# {what}s}}', { count, what }))
+
+export const teleportCommandNoun = def('teleport command')
 
 // actionName is the admin action's display name, so the prompt says which action is being blocked
 export const reasonRequired = def((actionName: string) => ({

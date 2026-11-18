@@ -32,10 +32,10 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { toast } from '@/lib/toast'
 import { useDebounced } from '@/lib/use-debounce'
 import { cn, STRETCHED_LINK } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as EIDX_Msgs from '@/messages/entity-index.messages'
 import * as LTag_Msgs from '@/messages/layer-tags.messages'
 import * as ROT_Msgs from '@/messages/rotations.messages'
@@ -44,6 +44,7 @@ import * as DH from '@/models/display-helpers.models'
 import type * as LTag from '@/models/layer-tags.models'
 import * as ROT from '@/models/rotations.models'
 import * as RBAC from '@/rbac.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -264,8 +265,7 @@ function RotationMenuItems(props: { rotation: ROT.Summary; slots: RotationMenuSl
 	const writeDenied = RbacClient.usePermsCheck(RBAC.getWritePermReqForRotation(rotation.id))
 	const manageDenied = RbacClient.usePermsCheck(RBAC.getManagePermReqForRotation(rotation.id))
 	const copyLink = () => {
-		void navigator.clipboard.writeText(new URL(`/rotations/${rotation.id}`, window.location.origin).toString())
-		toast(...tr.toast(EIDX_Msgs.linkCopied()))
+		void Clipboard.copy(new URL(`/rotations/${rotation.id}`, window.location.origin).toString(), tr.text(APP_Msgs.linkNoun()))
 	}
 	return (
 		<>

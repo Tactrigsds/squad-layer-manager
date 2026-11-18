@@ -7,7 +7,6 @@ import * as Typo from '@/components/typography'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { formatVersion } from '@/lib/versioning'
 import * as Zus from '@/lib/zustand'
@@ -15,6 +14,7 @@ import * as APP_Msgs from '@/messages/app.messages'
 import * as CL_Msgs from '@/messages/changelog.messages'
 import * as MsgFmt from '@/messages/format'
 import * as Project from '@/models/project.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
 import * as UsersClient from '@/systems/users.client'
@@ -116,8 +116,7 @@ export default function AboutPage() {
 							size="icon"
 							className="absolute top-1 inset-e-1 h-6 w-6"
 							onClick={async () => {
-								await navigator.clipboard.writeText(versionText)
-								toast(...tr.toast(APP_Msgs.copiedToClipboard(tr.text(APP_Msgs.versionInfoCopied()))))
+								await Clipboard.copy(versionText, tr.text(APP_Msgs.versionInfoNoun()))
 							}}
 						>
 							<Copy className="h-3 w-3" />

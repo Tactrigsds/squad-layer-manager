@@ -167,10 +167,6 @@ export const fixedArg = (fixed: { value: string; triggers: string[] }[]) =>
 		values: fixed.map((f) => (fixed.length > 1 ? `${f.value} (${f.triggers.join(', ')})` : f.value)).join(', '),
 	})
 
-export const copyFailed = def({
-	toast: [t('Failed to copy'), { description: t('Could not copy command to clipboard') }],
-})
-
 // -------- the prefixes editor --------
 
 export const prefixesBlurb = def(

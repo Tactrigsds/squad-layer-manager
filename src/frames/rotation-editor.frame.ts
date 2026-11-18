@@ -15,6 +15,7 @@ import type * as RFMT from '@/models/rotation-format.models'
 import * as ROT from '@/models/rotations.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as UP from '@/models/user-presence.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
 import { tr } from '@/systems/messages.client'
 import * as RotationClient from '@/systems/rotation.client'
@@ -449,8 +450,7 @@ export namespace Actions {
 	}
 
 	export async function copyText(key: StateKey, format: RFMT.Format) {
-		await navigator.clipboard.writeText(await exportText(key, format))
-		toast(tr.text(ROT_Msgs.copied()))
+		await Clipboard.copy(await exportText(key, format), tr.text(ROT_Msgs.rotationNoun()))
 	}
 
 	export async function downloadText(key: StateKey, format: RFMT.Format) {

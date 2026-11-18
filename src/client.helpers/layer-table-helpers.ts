@@ -1,6 +1,6 @@
-import { toast } from '@/lib/toast'
 import * as L_Msgs from '@/messages/layer.messages'
 import * as L from '@/models/layer.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import { tr } from '@/systems/messages.client'
 
 /** eslint-disable react-refresh/only-export-components */
@@ -10,6 +10,5 @@ export function copyAdminSetNextLayerCommand(selectedLayerIds: L.LayerId[]) {
 		if (text !== '') text += '\n'
 		text += L.getLayerCommand(layerId, 'set-next')
 	}
-	void navigator.clipboard.writeText(text)
-	toast(...tr.toast(L_Msgs.copiedSetNextCommand()))
+	void Clipboard.copy(text, tr.text(L_Msgs.setNextCommandsNoun(selectedLayerIds.length)))
 }

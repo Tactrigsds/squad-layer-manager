@@ -1,4 +1,4 @@
-import { def, join, raw, rt, t, type TString } from '@/models/messages.models'
+import { def, join, rt, t, type TString } from '@/models/messages.models'
 
 // App-level text belonging to no narrower domain, and the home for a message two domains share.
 
@@ -9,10 +9,12 @@ export const productName = def('Squad Layer Manager')
 // Part of the brand voice (docs/developers/brand.md): always the full sentence, "and other things also" included.
 export const tagline = def('A tool to manage the upcoming layers of a squad server, and other things also.')
 
-// what was copied goes in the description, since the title is the same wherever the app copies something
-export const copiedToClipboard = def((what: string) => ({
-	toast: [t('Copied to clipboard'), { description: raw(what) }],
-}))
+// the receipt for every copy (see Clipboard.copy). `what` is a noun phrase naming what was copied, or the copied text.
+export const copiedToClipboard = def((what: string) => ({ toast: [t('Copied {what}', { what })] }))
+
+export const copyFailed = def(() => ({ toast: [t('Could not copy to the clipboard')] }))
+
+export const linkNoun = def('link')
 
 // -------- the debug info page --------
 
@@ -43,7 +45,7 @@ export const versionInfo = def((info: { appVersion?: string; layersVersion?: str
 	),
 )
 
-export const versionInfoCopied = def('Version information has been copied')
+export const versionInfoNoun = def('version information')
 
 // -------- donations --------
 

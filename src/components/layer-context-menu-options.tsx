@@ -2,12 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import type * as React from 'react'
 
 import { copyAdminSetNextLayerCommand } from '@/client.helpers/layer-table-helpers'
-import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
 import * as L_Msgs from '@/messages/layer.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as LC from '@/models/layer-columns.models.ts'
 import * as L from '@/models/layer.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as ConfigClient from '@/systems/config.client'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import * as LayerQueriesClient from '@/systems/layer-queries.client'
@@ -38,13 +38,11 @@ const contextMenuSlots: LayerMenuSlots = {
 }
 
 function copyLayerIds(layerIds: L.LayerId[]) {
-	void navigator.clipboard.writeText(layerIds.join('\n'))
-	toast(...tr.toast(L_Msgs.copiedLayerIds()))
+	void Clipboard.copy(layerIds.join('\n'), tr.text(L_Msgs.layerIdsNoun(layerIds.length)))
 }
 
 function copyHistoryEntryIds(historyEntryIds: number[]) {
-	void navigator.clipboard.writeText(historyEntryIds.join('\n'))
-	toast(...tr.toast(L_Msgs.copiedHistoryEntryIds(historyEntryIds.length)))
+	void Clipboard.copy(historyEntryIds.join('\n'), tr.text(L_Msgs.historyEntryIdsNoun(historyEntryIds.length)))
 }
 
 // details, scores and squadcalc all address one layer, so they only appear when the selection resolves to one.
