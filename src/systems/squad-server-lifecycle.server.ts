@@ -798,12 +798,12 @@ const onNewGameDuringSync =
 // stays up until they have finished, as it marks the window in which the server's next layer is SLM's to set.
 const onNewGameDuringRoll =
 	(serverId: string): PendingEvents.State['hooks']['onNewGameDuringRoll'] =>
-	async (newLayerId, time) => {
+	async (newLayerId, time, replacedLayerId) => {
 		const ctx = SquadServer.resolveCtx(SquadServer.getBaseCtx(), serverId)
 		ctx.server.serverRolling$.next(Date.now())
 		let serverSyncs: (() => Promise<void>)[] = []
 		try {
-			const res = await recordRoll(ctx, newLayerId, time)
+			const res = await recordRoll(ctx, newLayerId, time, replacedLayerId)
 			serverSyncs = res.serverSyncs
 			return { match: res.match, nextLayerId: res.nextLayerId }
 		} finally {
@@ -830,7 +830,7 @@ const recordRoll = Instr.spanOp(
 		mutexes: (ctx) => [ctx.matchHistory.mtx, ctx.layerQueue.updateLayerMtx],
 		levels: { event: 'info' },
 	},
-	async (ctx: C.ManagedServer & C.Db & CS.AbortSignal, newLayerId: L.LayerId, time: number) => {
+	async (ctx: C.ManagedServer & C.Db & CS.AbortSignal, newLayerId: L.LayerId, time: number, replacedLayerId: L.LayerId | null) => {
 		ctx.layerQueue.deferredServerSyncs = []
 		try {
 			// The match and the queue shift each commit on their own: the shift dispatches an op, which awaits rcon. The
@@ -861,8 +861,13 @@ const recordRoll = Instr.spanOp(
 			if (currentMatchLqItem) {
 				await LayerQueue.dispatchOp(ctx, { op: 'shift-first-saved-layer', opId: SLL.createOpId() })
 			}
-			LayerQueue.schedulePostRollTasks(ctx, match.layerId)
 			const resyncHead = !currentMatchLqItem && !pickedByIngameVote
+			// AdminChangeLayer is logged, so the layer it loads is the one expected and never reaches here
+			const startedOffQueue =
+				resyncHead && replacedLayerId && ctx.serverSettings.settings.updatesToSquadServerDisabled?.type !== 'ingame-vote'
+					? { expectedLayerId: replacedLayerId }
+					: undefined
+			LayerQueue.schedulePostRollTasks(ctx, match.layerId, startedOffQueue)
 			const queue = LayerQueue.getSavedQueue(ctx)
 			const nextLayerId = LL.getNextLayerId(queue)
 			const serverSyncs = ctx.layerQueue.deferredServerSyncs

@@ -15,7 +15,7 @@ import * as SS_Msgs from '@/messages/server-state.messages'
 import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
 import * as CS from '@/models/context-shared.models'
-import * as DH from '@/models/display-helpers.models'
+import type * as DH from '@/models/display-helpers.models'
 import * as FPM from '@/models/filter-problems.models'
 import * as F from '@/models/filter.models'
 import * as LC from '@/models/layer-columns.models'
@@ -152,6 +152,12 @@ export const setupInstance = Instr.spanOp(
 		// -------- when SLM is not able to set a layer on the server, notify admins.
 		ctx.layerQueue.nextLayerSyncState$
 			.pipe(
+				// a retry passes through syncing on its way back to the same refusal, which would otherwise restart the
+				// interval and warn again on every retry
+				Rx.filter((syncState) => syncState.code !== 'syncing'),
+				Rx.distinctUntilChanged(
+					(a, b) => a.code === 'err:refused' && b.code === 'err:refused' && L.areLayersCompatible(a.actualLayerId, b.actualLayerId),
+				),
 				Rx.switchMap((syncState) => {
 					if (syncState.code === 'err:refused') {
 						return Rx.interval(ZodUtils.HumanTime.parse('2m')).pipe(
@@ -163,14 +169,9 @@ export const setupInstance = Instr.spanOp(
 				}),
 				Instr.durableSub('notify-unexpected-next-layer', { module }, async (unexpectedNextlayer, signal) => {
 					const ctx = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
-					const expectedNextLayer = LL.getNextLayerId(getSavedQueue(ctx))!
+					const expectedNextLayer = LL.getNextLayerId(getSavedQueue(ctx))
 					if (!expectedNextLayer) return
-					const expectedLayerName = DH.toFullLayerNameFromId(expectedNextLayer)
-					const actualLayerName = DH.toFullLayerNameFromId(unexpectedNextlayer)
-					await SquadRcon.warnAllAdmins(
-						ctx,
-						`Current next layer on the server is out-of-sync with queue. Got ${actualLayerName}, but expected ${expectedLayerName}`,
-					)
+					await SquadRcon.warnAllAdmins(ctx, LL_Msgs.nextLayerRefused(expectedNextLayer, unexpectedNextlayer))
 				}),
 			)
 			.subscribe()
@@ -244,6 +245,12 @@ export const setupInstance = Instr.spanOp(
 										overrode: external,
 										overrodeEventId: event.id,
 									})
+									await warnOverridden(
+										ctx,
+										event.source?.type === 'player' ? event.source.playerIds.username : undefined,
+										event.layerId,
+										savedNextLayerId,
+									)
 								} else {
 									const op: SLL.Operation = {
 										opId: SLL.createOpId(),
@@ -267,6 +274,59 @@ export const setupInstance = Instr.spanOp(
 					),
 				)
 				.subscribe()
+		}
+
+		// -------- put the server back on the queue head when nothing else does --------
+		// Every other write reacts to something: a save, a roll, a logged MAP_SET, a reconnect. This catches what they
+		// miss, such as a set-next the log never reports, one dropped during a transition map, or a refused write.
+		// It reads the status the existing poll produces, so it costs no rcon until it acts.
+		{
+			let offHeadSince: number | null = null
+			let attempts = 0
+			ctx.cleanup.push(
+				ctx.squadRcon.layersStatus
+					.observe(ctx)
+					.pipe(
+						Rx.filter((status) => {
+							if (status.code !== 'ok') {
+								offHeadSince = null
+								return false
+							}
+							const serverNext = status.data.nextLayer
+							const head = LL.getNextLayerId(getSavedQueue(ctx))
+							// no next layer at all is left to the in-game vote inference below
+							if (!serverNext || !head || L.areLayersCompatible(serverNext.id, head)) {
+								offHeadSince = null
+								attempts = 0
+								// the server can come back to the head without SLM's write, as when the head is adopted from an
+								// outside set, and a stale error would keep warning admins about a mismatch that is gone
+								const syncState$ = ctx.layerQueue.nextLayerSyncState$
+								const errored = syncState$.value.code === 'err:refused' || syncState$.value.code === 'err:rcon'
+								if (serverNext && head && errored) syncState$.next({ code: 'synced' })
+								return false
+							}
+							if (!headResyncAllowed(ctx)) {
+								offHeadSince = null
+								return false
+							}
+							const now = Date.now()
+							offHeadSince ??= now
+							if (now - offHeadSince < RESYNC_HEAD_GRACE_MS * 2 ** Math.min(attempts, RESYNC_HEAD_MAX_BACKOFF_EXP)) return false
+							offHeadSince = null
+							attempts++
+							return true
+						}),
+						Instr.durableSub(
+							'resync-next-layer-off-head',
+							{ module, levels: { event: 'info' }, taskScheduling: 'exhaust', mutexes: () => ctx.layerQueue.updateLayerMtx },
+							async (_, signal) => {
+								const ctxWithSignal = SquadServer.resolveCtx({ ...getBaseCtx(), signal }, serverId)
+								await resyncHeadIfOff(ctxWithSignal)
+							},
+						),
+					)
+					.subscribe(),
+			)
 		}
 
 		// -------- stand down while the Squad server runs its own vote --------
@@ -439,7 +499,12 @@ export const setupInstance = Instr.spanOp(
 // how long to leave between one post-roll announcement and the next
 const ANNOUNCEMENT_GAP_MS = 2000
 
-export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newLayerId: L.LayerId) {
+export function schedulePostRollTasks(
+	ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx,
+	newLayerId: L.LayerId,
+	// set when the server loaded a layer other than the next layer it last reported
+	startedOffQueue?: { expectedLayerId: L.LayerId },
+) {
 	const serverId = ctx.serverId
 
 	// -------- schedule post-roll events --------
@@ -459,10 +524,15 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 	}
 
 	// -------- schedule post-roll announcements --------
+	const announcements: (() => Promise<void>)[] = []
+	if (startedOffQueue) {
+		announcements.push(async () => {
+			const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
+			await SquadRcon.warnAllAdmins(ctx, LL_Msgs.matchStartedOffQueue(newLayerId, startedOffQueue.expectedLayerId))
+		})
+	}
 	if (SETTINGS.remindersEnabled(ctx.serverSettings.settings)) {
 		// what the registered providers have to say right now, then the standing announcements
-		const announcements: (() => Promise<void>)[] = []
-
 		announcements.push(async () => {
 			const ctx = SquadServer.resolveCtx(getBaseCtx(), serverId)
 			const messages = await Reminders.collect(ctx, log)
@@ -484,7 +554,9 @@ export function schedulePostRollTasks(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx, newL
 				await SquadRcon.warnAllAdmins(ctx, LL_Msgs.lowQueueItemCount(queue.length))
 			}
 		})
+	}
 
+	if (announcements.length > 0) {
 		// concat over the observables themselves, not over an observable *of* them: Rx.from(paced)
 		// emits each task as a value and never subscribes to it, so every post-roll announcement was
 		// silently skipped. A failing announcement must not take the rest of the chain with it.
@@ -698,7 +770,7 @@ export async function saveQueueAndUpdateServer(
 			log.error('No next layer to sync to server')
 		}
 		// after the sync, so the warn names the layer now set rather than the one it replaced. A change SLM overrides
-		// never gets here: the override sets the layer back directly instead of saving, so it announces nothing.
+		// never gets here: the override sets the layer back directly instead of saving, and warns through warnOverridden.
 		// gated on the same settings the sync read, so the warn fires only when the layer it names really was set.
 		if (ctx.serverSettings.settings.warnOnNextLayerChange && nextLayerChanged && !serverState.settings.updatesToSquadServerDisabled) {
 			await warnShowNext(ctx, 'all-admins', { updated: true })
@@ -1112,6 +1184,72 @@ async function nextLayerMissingWithNothingToBlame(ctx: C.Db & SQS.Ctx & LQ.Ctx &
 	const serverState = SquadServer.getServerState(ctx)
 	if (serverState.settings.updatesToSquadServerDisabled) return false
 	return !!getSavedQueue(ctx)[0]?.layerId
+}
+
+// How long the server's next layer may stay off the queue head before SLM puts it back. A logged set-next reaches the
+// MAP_SET handler within a few seconds, so this only fires for changes that path missed. Doubles after each attempt
+// that does not stick, up to 2^RESYNC_HEAD_MAX_BACKOFF_EXP times, so SLM does not fight something in a tight loop.
+const RESYNC_HEAD_GRACE_MS = 20_000
+const RESYNC_HEAD_MAX_BACKOFF_EXP = 5
+
+function headResyncAllowed(ctx: SQS.Ctx & LQ.Ctx & SETTINGS.Ctx) {
+	return (
+		!ctx.server.serverRolling$.value &&
+		!ctx.serverSettings.settings.updatesToSquadServerDisabled &&
+		!ctx.layerQueue.ingameVote$.getValue() &&
+		ctx.layerQueue.mapSetsAwaitingSync === 0 &&
+		ctx.layerQueue.nextLayerSyncState$.value.code !== 'syncing'
+	)
+}
+
+// Called under updateLayerMtx, so a write queued behind it has landed and the fresh read below sees it.
+async function resyncHeadIfOff(ctx: SideEffectCtx) {
+	if (!headResyncAllowed(ctx)) return
+	ctx.squadRcon.layersStatus.invalidate(ctx)
+	const status = await ctx.squadRcon.layersStatus.get(ctx)
+	if (status.code !== 'ok' || !status.data.nextLayer) return
+	const serverLayerId = status.data.nextLayer.id
+	const queue = getSavedQueue(ctx)
+	const head = LL.getNextLayerId(queue)
+	if (!head || L.areLayersCompatible(serverLayerId, head)) return
+
+	const settings = SquadServer.getServerState(ctx).settings
+	// a refused write left the server on a layer SLM failed to replace, not one somebody chose, so it is retried
+	// rather than adopted
+	const refused = ctx.layerQueue.nextLayerSyncState$.value.code === 'err:refused'
+	if (refused) {
+		log.info('retrying the refused write of %s as the next layer', head)
+		await syncNextLayerToServer(ctx, settings, head, queue[0].itemId)
+		return
+	}
+	if (settings.overrideAdminSetNextLayer) {
+		log.info('server next layer %s is off the queue head %s, setting it back', serverLayerId, head)
+		await syncNextLayerToServer(ctx, settings, head, queue[0].itemId, { reason: 'override', overrode: { type: 'unknown' } })
+		await warnOverridden(ctx, undefined, serverLayerId, head)
+		return
+	}
+	log.info('server next layer %s is off the queue head %s, adopting it into the queue', serverLayerId, head)
+	await dispatchOp(ctx, {
+		opId: SLL.createOpId(),
+		op: 'unshift-first-saved-layer',
+		itemId: LL.createItemId(),
+		itemSource: { type: 'unknown' },
+		layerId: serverLayerId,
+		externalSource: { type: 'unknown' },
+	})
+}
+
+// Every admin is told, not only the one who set the layer: a console or RCON set-next is invisible to the others, who
+// otherwise see the next layer change twice with no explanation. Sent only once the override has landed, so the warn
+// never names a layer the server does not have.
+async function warnOverridden(
+	ctx: SQS.Ctx & SR.Ctx.Rcon & LQ.Ctx & CS.AbortSignal & Msgs.Ctx,
+	setBy: string | undefined,
+	setLayerId: L.LayerId,
+	queueLayerId: L.LayerId,
+) {
+	if (ctx.layerQueue.nextLayerSyncState$.value.code !== 'synced') return
+	await SquadRcon.warnAllAdmins(ctx, LL_Msgs.nextLayerOverridden(setLayerId, queueLayerId, setBy))
 }
 
 export async function toggleUpdatesToSquadServer({

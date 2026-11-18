@@ -9,11 +9,20 @@ The _Next Layer_ tab holds two settings, both off by default. They decide how SL
 layer changes underneath it.
 
 _Override the next layer when it is set outside SLM_ covers the case where something other than SLM sets the next
-layer, such as an in-game admin or another RCON tool. On, SLM sets it straight back to the next layer in the queue.
-Off, SLM adopts the change instead, and puts that layer at the front of the queue.
+layer, such as an in-game admin or another RCON tool. On, SLM sets it straight back to the next layer in the queue and
+warns every in-game admin, naming the admin who set it when the server log does. Off, SLM adopts the change instead, and
+puts that layer at the front of the queue.
+
+The setting also applies when the server changes its next layer without logging the change. SLM checks the server's
+next layer every few seconds, and acts on a mismatch with the queue that lasts longer than 20 seconds.
 
 _Warn admins when the next layer changes_ sends every in-game admin the new next layer whenever it changes. A change
-SLM overrides is not announced, so turning both on warns admins only about changes SLM accepted.
+SLM overrides gets its own warning instead, so turning both on sends one warning per change.
+
+SLM also warns every in-game admin when one of the following happens, regardless of these settings:
+
+- a match starts on a layer other than the next layer the server last reported, and no in-game vote picked it.
+- the server refuses the next layer SLM sets. SLM repeats this warning every 2 minutes and keeps retrying the layer.
 
 ![the Next Layer tab of the pool configuration window](../../images/configuring/pool_configuration_next_layer.png)
 

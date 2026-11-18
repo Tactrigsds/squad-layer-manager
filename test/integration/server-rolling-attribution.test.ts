@@ -4,7 +4,7 @@ import { makePlayer } from '@/emulator'
 import * as L from '@/models/layer.models'
 
 import { cmd, LAYERS, queue } from '../harness/arrange'
-import { savedQueue } from '../harness/inspect'
+import { savedQueue, warnsTo } from '../harness/inspect'
 import { rearrange } from '../harness/rearrange'
 import { createRollingFixture, ROLL_ADMIN_STEAM_ID, type RollingFixture } from '../harness/rolling'
 
@@ -13,6 +13,8 @@ import { createRollingFixture, ROLL_ADMIN_STEAM_ID, type RollingFixture } from '
 // server-rolling.test.ts for what the roster does across it.
 
 let app: RollingFixture
+// connected by the in-game vote scenario and left connected, so the scenarios after it can check what admins are warned
+const admin = makePlayer({ name: ' vote_reason_admin', steam: ROLL_ADMIN_STEAM_ID, teamId: 1 })
 
 beforeAll(async () => {
 	app = await createRollingFixture()
@@ -110,7 +112,6 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 		const headBefore = savedQueue(app)[0]
 
 		// an admin had already stopped SLM writing the rotation, for their own reasons
-		const admin = makePlayer({ name: ' vote_reason_admin', steam: ROLL_ADMIN_STEAM_ID, teamId: 1 })
 		app.emu.world.connectPlayer(admin)
 		await app.waitForRosterSync()
 		app.emu.world.chat(admin, 'ChatAdmin', cmd('disableslm'))
@@ -187,6 +188,25 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 		})
 		expect(L.layerMatchesIngameLayerClassname(headLayerId, app.emu.world.nextLayer!.layer)).toBe(true)
 		expect(savedQueue(app)[0]?.itemId).toBe(head!.itemId)
+		// the log names no player for an rcon set, so every admin is told
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('outside SLM')) || undefined, {
+			label: 'admins warned that the outside set-next was overridden',
+		})
+	})
+
+	it('names the in-game admin whose set-next it overrode', async () => {
+		await app.waitForNextLayerSync()
+		const headSetNext = L.getLayerCommand(L.readStoredLayerId(savedQueue(app)[0]!.layerId!), 'set-next')
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.setNextLayerAsAdmin(admin, L.getLayerCommand(LAYERS.narvaRaas, 'none'))
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === headSetNext) || undefined, {
+			label: "the head set back over the admin's set-next",
+			timeoutMs: 30_000,
+		})
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('vote_reason_admin set')) || undefined, {
+			label: 'admins warned with the name of the admin who set the layer',
+		})
 	})
 
 	it('overrides a next layer set outside SLM while the roll that started the match is still settling', async () => {
@@ -220,12 +240,70 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 			timeoutMs: 30_000,
 		})
 		expect(L.layerMatchesIngameLayerClassname(headLayerId, app.emu.world.nextLayer!.layer)).toBe(true)
+	})
+
+	it('sets the head back over a next layer the server replaced without logging it', async () => {
+		// the scenario before can leave a write recorded as refused, which this one must not retry
+		await rearrange(app, { layerQueue: queue(LAYERS.skorpoRaas, LAYERS.sumariSeed) })
+		await app.waitForNextLayerSync()
+		const head = savedQueue(app)[0]
+		const headSetNext = L.getLayerCommand(L.readStoredLayerId(head!.layerId!), 'set-next')
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.replaceNextLayerUnlogged(L.getLayerCommand(LAYERS.narvaRaas, 'none'))
+
+		// the resync waits out its grace period, which is the server's own timer
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === headSetNext) || undefined, {
+			label: 'the head set back over the unlogged next layer',
+			timeoutMs: 60_000,
+		})
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('outside SLM')) || undefined, {
+			label: 'admins warned that the unlogged next layer was overridden',
+		})
+		expect(savedQueue(app)[0]?.itemId).toBe(head!.itemId)
+	})
+
+	it('warns admins when a match starts on a layer the server picked without logging it, and writes the head back', async () => {
+		await app.waitForNextLayerSync()
+		const oldMatch = app.latestMatch()
+		const head = savedQueue(app)[0]
+		const headSetNext = L.getLayerCommand(L.readStoredLayerId(head!.layerId!), 'set-next')
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.replaceNextLayerUnlogged(L.getLayerCommand(LAYERS.narvaRaas, 'none'))
+		app.roll()
+		const newMatch = await app.waitForNewMatch(oldMatch.id)
+		expect(L.layerMatchesIngameLayerClassname(L.readStoredLayerId(newMatch.layerId), 'Narva_RAAS_v1')).toBe(true)
+
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('last reported')) || undefined, {
+			label: 'admins warned that the match started off the queue',
+			timeoutMs: 30_000,
+		})
+		await app.waitFor(() => app.emu.rcon.commandLog.some((c) => c.body === headSetNext) || undefined, {
+			label: 'the unplayed head written back as the next layer',
+			timeoutMs: 30_000,
+		})
+		expect(savedQueue(app)[0]?.itemId).toBe(head!.itemId)
 
 		await rearrange(app, {
 			serverSettings: (settings) => {
 				settings.overrideAdminSetNextLayer = false
 			},
 		})
+	})
+
+	it('adopts a next layer the server replaced without logging it when outside sets are not overridden', async () => {
+		await app.waitForNextLayerSync()
+		app.emu.world.replaceNextLayerUnlogged(L.getLayerCommand(LAYERS.narvaRaas, 'none'))
+
+		const adopted = await app.waitFor(
+			() => {
+				const first = savedQueue(app)[0]
+				return first?.layerId && L.areLayersCompatible(L.readStoredLayerId(first.layerId), LAYERS.narvaRaas) ? first : undefined
+			},
+			{ label: 'the unlogged next layer adopted as the queue head', timeoutMs: 60_000 },
+		)
+		expect(adopted.source.type).toBe('unknown')
 	})
 
 	it('reads the server losing its next layer as voting having been enabled, and marks that reason a guess', async () => {
