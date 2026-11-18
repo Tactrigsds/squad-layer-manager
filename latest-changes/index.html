@@ -71,6 +71,10 @@ and end, and the joins and leaves during the round.</p>
 <p><strong>Fixed:</strong> Dropdowns and menus open and close faster, most of all on the settings page, where a dropdown took about 300 ms to open.</p>
 </li>
 <li>
+<p><strong>Fixed:</strong> SLM puts the server&#x27;s next layer back in line with the queue when the server changes it without logging the change, and warns in-game admins when the next layer leaves the queue.</p>
+<p>With <em>Override the next layer when it is set outside SLM</em> on, SLM sets the queue&#x27;s next layer back and warns every admin, naming the admin who changed it when the server log does. With the setting off, SLM adopts the server&#x27;s layer into the queue. Admins are also warned when a match starts on a layer the server picked itself. A next layer the server refuses is retried.</p>
+</li>
+<li>
 <p><strong>Fixed:</strong> Comments on a plugin&#x27;s settings are saved. Before, editing a plugin setting&#x27;s comment did not bring up the Save button, and saving the plugin&#x27;s settings dropped the comment.</p>
 <p>The Save dialog lists the first comment added to a settings section, and the last comment removed from one, under the setting the comment annotates. Before, the dialog listed it as a change to every comment at once.</p>
 </li>

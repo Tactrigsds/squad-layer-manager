@@ -5,10 +5,18 @@ SLM picks layers at random.</p>
 <p>The <em>Next Layer</em> tab holds two settings, both off by default. They decide how SLM reacts when the server&#x27;s next
 layer changes underneath it.</p>
 <p><em>Override the next layer when it is set outside SLM</em> covers the case where something other than SLM sets the next
-layer, such as an in-game admin or another RCON tool. On, SLM sets it straight back to the next layer in the queue.
-Off, SLM adopts the change instead, and puts that layer at the front of the queue.</p>
+layer, such as an in-game admin or another RCON tool. On, SLM sets it straight back to the next layer in the queue and
+warns every in-game admin, naming the admin who set it when the server log does. Off, SLM adopts the change instead, and
+puts that layer at the front of the queue.</p>
+<p>The setting also applies when the server changes its next layer without logging the change. SLM checks the server&#x27;s
+next layer every few seconds, and acts on a mismatch with the queue that lasts longer than 20 seconds.</p>
 <p><em>Warn admins when the next layer changes</em> sends every in-game admin the new next layer whenever it changes. A change
-SLM overrides is not announced, so turning both on warns admins only about changes SLM accepted.</p>
+SLM overrides gets its own warning instead, so turning both on sends one warning per change.</p>
+<p>SLM also warns every in-game admin when one of the following happens, regardless of these settings:</p>
+<ul>
+<li>a match starts on a layer other than the next layer the server last reported, and no in-game vote picked it.</li>
+<li>the server refuses the next layer SLM sets. SLM repeats this warning every 2 minutes and keeps retrying the layer.</li>
+</ul>
 <figure class="docs-figure"><a href="/squad-layer-manager/latest/assets/docs/images/configuring/pool_configuration_next_layer.png" class="docs-zoom" data-lightbox="" aria-label="View full screen: The Next Layer tab of the pool configuration window"><img src="/squad-layer-manager/latest/assets/docs/images/configuring/pool_configuration_next_layer.png" alt="the Next Layer tab of the pool configuration window" loading="lazy" decoding="async" width="1049" height="128"/><span class="docs-zoom-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-maximize2 size-4"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" x2="14" y1="3" y2="10"></line><line x1="3" x2="10" y1="21" y2="14"></line></svg></span></a><figcaption aria-hidden="true">The Next Layer tab of the pool configuration window</figcaption></figure>
 <h2 id="generated-and-automatic-votes" class="docs-heading">Generated and automatic votes<a href="#generated-and-automatic-votes" class="docs-heading-link" aria-label="Link to this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link size-3.5" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a><a href="https://github.com/Tactrigsds/squad-layer-manager/blob/main/docs/guide/configuring/layer_rotation.md#generated-and-automatic-votes" class="docs-heading-src" aria-label="View the source of this section" data-pagefind-ignore=""><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code size-3.5" aria-hidden="true"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>source</a></h2>
 <p>Use the <em>Generation &amp; Votes</em> tab to set whether SLM generates layers or votes when the queue runs out, and when votes
