@@ -277,19 +277,13 @@ export function effectiveDefault(node: FormSchema.SchemaNode): { has: boolean; v
 	return result
 }
 
-export function formatDefaultValue(val: unknown): string {
+export function formatSettingValue(val: unknown): string {
 	const words = SETTINGS_Msgs.defaultValueWords
 	if (val === null) return words.unset
 	if (typeof val === 'boolean') return val ? words.on : words.off
 	if (typeof val === 'string') return val === '' ? words.empty : val
 	if (typeof val === 'number') return String(val)
 	return JSON.stringify(val)
-}
-
-export function isScalarNode(inner: FormSchema.SchemaNode): boolean {
-	if (inner?.enum && inner.type !== 'array') return true
-	if (FormSchema.isStringOrNumber(inner)) return true
-	return inner?.type === 'string' || inner?.type === 'number' || inner?.type === 'integer' || inner?.type === 'boolean'
 }
 
 // the comment on the setting at `pathStr`, read off the root document (see SETTINGS.COMMENTS_KEY)

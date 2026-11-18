@@ -1,20 +1,14 @@
 import * as Icons from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { toast } from '@/lib/toast'
-import * as APP_Msgs from '@/messages/app.messages'
 import * as CMD_Msgs from '@/messages/command.messages'
+import * as Clipboard from '@/systems/clipboard.client'
 import { tr } from '@/systems/messages.client'
 
 export function CopyableCommand({ cmdString, chatCommand }: { cmdString: string; chatCommand: 'ChatToAdmin' | 'ChatToAll' }) {
 	const copy = async () => {
 		const consoleCommand = `${chatCommand} ${cmdString}`
-		try {
-			await navigator.clipboard.writeText(consoleCommand)
-			toast(...tr.toast(APP_Msgs.copiedToClipboard(consoleCommand)))
-		} catch {
-			toast.error(...tr.toast(CMD_Msgs.copyFailed()))
-		}
+		await Clipboard.copy(consoleCommand, consoleCommand)
 	}
 	return (
 		<div className="flex items-center gap-1">

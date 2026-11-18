@@ -9,6 +9,7 @@ import * as UI_Msgs from '@/messages/ui.messages'
 import * as USR_Msgs from '@/messages/users.messages'
 import * as CMD from '@/models/command.models'
 import type * as USR from '@/models/users.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsClient from '@/systems/settings.client'
 import * as UsersClient from '@/systems/users.client'
@@ -156,10 +157,12 @@ function CodePanel({ command, code, remaining, onCancel }: { command: string; co
 	)
 
 	function handleCopy() {
-		void navigator.clipboard.writeText(line)
-		setCopied(true)
-		if (timeoutRef.current) clearTimeout(timeoutRef.current)
-		timeoutRef.current = setTimeout(() => setCopied(false), 1500)
+		void Clipboard.copy(line).then((ok) => {
+			if (!ok) return
+			setCopied(true)
+			if (timeoutRef.current) clearTimeout(timeoutRef.current)
+			timeoutRef.current = setTimeout(() => setCopied(false), 1500)
+		})
 	}
 
 	return (

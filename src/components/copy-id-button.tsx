@@ -4,6 +4,7 @@ import React from 'react'
 import { cn } from '@/lib/utils'
 import * as SM_Msgs from '@/messages/squad.messages'
 import { useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import { tr } from '@/systems/messages.client'
 
 // A labeled player id ("steam: 7656...") that copies itself on click.
@@ -20,10 +21,12 @@ export function CopyIdButton({ kind, id, hideLabel }: { kind: SM_Msgs.IdKind; id
 	const zIndex = useZIndex(ZI_OFFSETS.MINOR_CEILING)
 
 	const handleClick = () => {
-		void navigator.clipboard.writeText(id)
-		setCopied(true)
-		if (timeoutRef.current) clearTimeout(timeoutRef.current)
-		timeoutRef.current = setTimeout(() => setCopied(false), 1500)
+		void Clipboard.copy(id).then((ok) => {
+			if (!ok) return
+			setCopied(true)
+			if (timeoutRef.current) clearTimeout(timeoutRef.current)
+			timeoutRef.current = setTimeout(() => setCopied(false), 1500)
+		})
 	}
 
 	React.useEffect(

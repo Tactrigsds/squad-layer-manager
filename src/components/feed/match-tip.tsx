@@ -2,7 +2,6 @@ import * as Icons from 'lucide-react'
 
 import * as Atoms from '@/components/feed/atoms'
 import * as MatchSummary from '@/components/feed/match-summary'
-import { toast } from '@/lib/toast'
 import * as MsgFmt from '@/messages/format'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as L_Msgs from '@/messages/layer.messages'
@@ -10,6 +9,7 @@ import * as MH_Msgs from '@/messages/match-history.messages'
 import { WINDOW_ID } from '@/models/draggable-windows.models'
 import * as L from '@/models/layer.models'
 import type * as MH from '@/models/match-history.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import { useOpenOrFocusWindow } from '@/systems/draggable-window.client'
 import { tr } from '@/systems/messages.client'
 
@@ -33,8 +33,7 @@ export default function MatchTip(props: { details: MH.MatchDetails; displayTeams
 		tr.text(HistoryMsgs.matchTipSetBy(details.layerSource.type)),
 	]
 	const copyMatchId = () => {
-		void navigator.clipboard.writeText(String(details.historyEntryId))
-		toast(...tr.toast(HistoryMsgs.matchIdCopied()))
+		void Clipboard.copy(String(details.historyEntryId), tr.text(HistoryMsgs.matchIdNoun()))
 	}
 
 	return (

@@ -10,9 +10,10 @@ import type * as Flt from '@/lib/floating'
 import * as TZ from '@/lib/time-zones'
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
-import * as CHAT_Msgs from '@/messages/chat.messages'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as HistoryMsgs from '@/messages/history.messages'
 import * as SM_Msgs from '@/messages/squad.messages'
+import * as Clipboard from '@/systems/clipboard.client'
 import { DraggableWindowStore } from '@/systems/draggable-window.client'
 import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
@@ -111,8 +112,7 @@ function onClick(event: MouseEvent) {
 	if (tip) {
 		const matchId = tip.getAttribute(RC.TIP_MATCH_ATTR)
 		if (matchId) {
-			void navigator.clipboard.writeText(matchId)
-			toast(...tr.toast(HistoryMsgs.matchIdCopied()))
+			void Clipboard.copy(matchId, tr.text(HistoryMsgs.matchIdNoun()))
 		}
 		// a second click on the trigger dismisses, the same way the constraint indicators behave
 		if (pinnedElement === tip) closeTip()
@@ -134,8 +134,8 @@ function onClick(event: MouseEvent) {
 	if (copy) {
 		const id = copy.getAttribute(RC.COPY_ATTR)
 		if (id) {
-			void navigator.clipboard.writeText(id)
-			showCopied(copy, { x: event.clientX, y: event.clientY })
+			const at = { x: event.clientX, y: event.clientY }
+			void Clipboard.copy(id).then((ok) => ok && showCopied(copy, at))
 		}
 		return
 	}
@@ -374,7 +374,11 @@ function copyRowLink(_e: KeyboardEvent, host: Element) {
 	const selection = selectionOf(host)
 	const link = selection && RC.scopeOf(host)?.linkToRows?.(selection, Selection.selectedRows(host, selection), Selection.groupOf(host))
 	if (!link) return false
-	void navigator.clipboard.writeText(link.url).then(() => toast(tr.text(CHAT_Msgs.linkToRowsCopied()), { description: link.caveat }))
+	void Clipboard.copy(link.url).then((ok) => {
+		if (!ok) return
+		const [receipt] = tr.toast(APP_Msgs.copiedToClipboard(tr.text(APP_Msgs.linkNoun())))
+		toast(receipt, { description: link.caveat })
+	})
 }
 
 // -------- tooltip --------

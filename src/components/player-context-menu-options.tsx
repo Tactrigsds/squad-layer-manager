@@ -16,6 +16,7 @@ import * as TeamsPanelModels from '@/models/teams-panel.models'
 import * as RPC from '@/orpc.client'
 import * as RBAC from '@/rbac.models'
 import * as BattlemetricsClient from '@/systems/battlemetrics.client'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
@@ -232,8 +233,7 @@ function CopyIdsSubView({ players, slots }: { players: PlayerLinkIds[]; slots: M
 		{ label: SM_Msgs.idNames.epic, values: pickAll((p) => p.epic) },
 	]
 	const copyAll = (label: string, values: string[]) => {
-		void navigator.clipboard.writeText(values.join('\n'))
-		toast(...tr.toast(SM_Msgs.copiedToClipboard(label, values.length)))
+		void Clipboard.copy(values.join('\n'), tr.text(SM_Msgs.idsNoun(label, values.length)))
 	}
 	const available = ids.filter(({ values }) => values.length > 0)
 	if (available.length === 0) return null
@@ -617,8 +617,7 @@ function FramedPlayerMenuItems({
 	}
 
 	function copyTeleportCommand() {
-		void navigator.clipboard.writeText(`AdminTeleportToPlayer ${playerId}`)
-		toast(...tr.toast(SM_Msgs.copiedToClipboard('Teleport command')))
+		void Clipboard.copy(`AdminTeleportToPlayer ${playerId}`, tr.text(SM_Msgs.teleportCommandNoun()))
 	}
 
 	async function removeFromSquad() {

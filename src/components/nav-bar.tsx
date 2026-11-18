@@ -50,6 +50,7 @@ import * as Project from '@/models/project.models'
 import * as RPC from '@/orpc.client'
 import * as ChangelogClient from '@/systems/changelog.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as FeatureFlags from '@/systems/feature-flags.client'
 import * as MessagesClient from '@/systems/messages.client'
@@ -371,7 +372,7 @@ export default function NavBar() {
 				</div>
 			)}
 			{flags.displayWsClientId && config && (
-				<span className="text-xs cursor-pointer" onClick={() => navigator.clipboard.writeText(config.wsClientId)}>
+				<span className="text-xs cursor-pointer" onClick={() => void Clipboard.copy(config.wsClientId, config.wsClientId)}>
 					{config.wsClientId}
 				</span>
 			)}

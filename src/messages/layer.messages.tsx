@@ -3,19 +3,16 @@ import * as React from 'react'
 
 import { def, rt, t } from '@/models/messages.models'
 
-// The layer table's clipboard receipts. Unlike SM_Msgs.copiedToClipboard these put what was copied in the
-// toast itself rather than in a description, and only the history-entry one pluralizes.
-export const copiedSetNextCommand = def(() => ({
-	toast: [t('Copied AdminSetNextLayer Command')],
-}))
+// what the layer table copies, named in the receipt (see Clipboard.copy)
+export const setNextCommandsNoun = def((count: number) =>
+	t('{count, plural, one {AdminSetNextLayer command} other {# AdminSetNextLayer commands}}', { count }),
+)
 
-export const copiedLayerIds = def(() => ({
-	toast: [t('Copied Layer ID')],
-}))
+export const layerIdsNoun = def((count: number) => t('{count, plural, one {layer ID} other {# layer IDs}}', { count }))
 
-export const copiedHistoryEntryIds = def((count: number) => ({
-	toast: [t('{count, plural, one {Copied History Entry ID} other {Copied History Entry IDs}}', { count })],
-}))
+export const historyEntryIdsNoun = def((count: number) =>
+	t('{count, plural, one {history entry ID} other {# history entry IDs}}', { count }),
+)
 
 // -------- the layer table --------
 

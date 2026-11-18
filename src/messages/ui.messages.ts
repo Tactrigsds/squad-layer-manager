@@ -186,10 +186,7 @@ export const noProblems = def('No problems found.')
 
 export const copyProblems = def('Copy the problems')
 
-export const problemsCopied = def(
-	'{count, plural, one {Copied # problem to the clipboard} other {Copied # problems to the clipboard}}',
-	(count: number) => ({ count }),
-)
+export const problemsNoun = def('{count, plural, one {# problem} other {# problems}}', (count: number) => ({ count }))
 
 // -------- what a schema found wrong in a text editor's value --------
 

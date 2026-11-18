@@ -12,12 +12,13 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import * as ChangelogFrame from '@/frames/changelog.frame'
 import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-manager'
-import { toast } from '@/lib/toast'
 import { useDebounced } from '@/lib/use-debounce'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as CL_Msgs from '@/messages/changelog.messages'
 import * as CL from '@/models/changelog.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import { tr } from '@/systems/messages.client'
 
 // The What's new page: every release this build ships, newest first, with the changes not yet in a release on top.
@@ -295,8 +296,7 @@ async function copyEntryLink(id: string) {
 	const url = new URL(window.location.href)
 	url.search = ''
 	url.hash = id
-	await navigator.clipboard.writeText(url.toString())
-	toast(tr.text(CL_Msgs.linkCopied()))
+	await Clipboard.copy(url.toString(), tr.text(APP_Msgs.linkNoun()))
 }
 
 function releaseLabel(release: ChangelogFrame.VisibleRelease) {

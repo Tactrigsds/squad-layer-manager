@@ -27,6 +27,7 @@ import * as Zus from '@/lib/zustand'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as LC from '@/models/layer-columns.models'
 import * as L from '@/models/layer.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as ConfigClient from '@/systems/config.client'
 import * as MessagesClient from '@/systems/messages.client'
 import { tr } from '@/systems/messages.client'
@@ -114,10 +115,12 @@ export function ServerAgentTokenField({ value$, reset$, onChange }: OverrideProp
 	function copy() {
 		const cur = ref.current?.value ?? ''
 		if (!cur) return
-		void navigator.clipboard.writeText(cur)
-		setCopied(true)
-		if (copiedTimeout.current) clearTimeout(copiedTimeout.current)
-		copiedTimeout.current = setTimeout(() => setCopied(false), 1500)
+		void Clipboard.copy(cur).then((ok) => {
+			if (!ok) return
+			setCopied(true)
+			if (copiedTimeout.current) clearTimeout(copiedTimeout.current)
+			copiedTimeout.current = setTimeout(() => setCopied(false), 1500)
+		})
 	}
 	React.useEffect(
 		() => () => {

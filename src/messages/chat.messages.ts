@@ -414,16 +414,14 @@ export const rconFirstConnected = def('Application started, RCON connection esta
 export const rconDisconnected = def('RCON disconnected')
 
 export const copyTimestampIso = def('Copy timestamp (ISO 8601)')
-export const timestampCopied = def('Timestamp copied')
+export const timestampNoun = def('timestamp')
 export const copyLinkToSelection = def('Copy link to selection')
 export const copyLinkToRow = def('Copy link to this event')
-export const linkToRowsCopied = def('Link copied')
 export const copySelectionAsText = def('Copy selection as text')
 export const copyRowAsText = def('Copy event as text')
 
 // the keys a row selection copies with, which take ⌘ and ⌥ in place of Ctrl and Alt on a Mac
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 export const selectionShortcuts = IS_MAC ? { copyText: '⌘+C', copyLink: '⌥+⌘+C' } : { copyText: 'Ctrl+C', copyLink: 'Ctrl+Alt+C' }
-export const rowsCopied = def((n: number) => t('{n, plural, one {Copied # event} other {Copied # events}}', { n }))
-export const rowsCopyFailed = def('Could not copy the events')
+export const rowsNoun = def((n: number) => t('{n, plural, one {# event} other {# events}}', { n }))
 export const linkOmitsSelectedOnly = def('Selected Only is not included')

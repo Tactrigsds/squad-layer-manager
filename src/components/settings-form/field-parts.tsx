@@ -12,7 +12,7 @@ import {
 	effectiveDefault,
 	type FieldMode,
 	flattenWhitespace,
-	formatDefaultValue,
+	formatSettingValue,
 	FormOptionsContext,
 	type FormRoot,
 	getAtPath,
@@ -43,27 +43,26 @@ import * as CMDH from '@/models/command-help.models'
 import type * as CMD from '@/models/command.models'
 import type * as FormSchema from '@/models/settings-form-schema.models'
 import * as SETTINGS from '@/models/settings.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
 import * as SettingsNav from '@/systems/settings-nav.client'
 
 // the per-field reset affordances: reset-to-saved (undo local edits back to the persisted baseline) and, when the field
-// has a schema default, a "default: <value>" hint plus reset-to-default. Both buttons stay mounted and disable when the
-// current value already matches their target, so the affordance is discoverable and its tooltip explains the state.
+// has a schema default, reset-to-default, whose tooltip names the default. Both buttons stay mounted and disable when
+// the current value already matches their target, so the tooltip still explains the state.
 export function FieldResetControls({
 	value$,
 	reset$,
 	onChange,
 	node,
 	path,
-	showDefaultLabel,
 }: {
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
 	node: FormSchema.SchemaNode
 	path: FormSchema.Path
-	showDefaultLabel: boolean
 }) {
 	const value = useFieldValue(value$)
 	const { saved } = React.useContext(SavedRootContext)
@@ -81,46 +80,59 @@ export function FieldResetControls({
 		<div className="flex items-center gap-1 shrink-0">
 			<TooltipButton
 				disabled={!canResetSaved}
-				tooltip={canResetSaved ? tr.text(SETTINGS_Msgs.resetToSaved()) : tr.text(SETTINGS_Msgs.alreadySaved())}
+				tooltip={
+					canResetSaved
+						? tr.text(SETTINGS_Msgs.resetToSaved(formatSettingValue(savedValue ?? null)))
+						: tr.text(SETTINGS_Msgs.alreadySaved(formatSettingValue(savedValue ?? null)))
+				}
 				onClick={() => resetTo(savedValue)}
 			>
 				<Icons.RotateCcw className="h-3.5 w-3.5" />
 			</TooltipButton>
 			{def.has && (
-				<>
-					{showDefaultLabel && (
-						<span className="text-xs text-muted-foreground max-w-[12rem] truncate" title={formatDefaultValue(def.value)}>
-							{tr.text(SETTINGS_Msgs.defaultHint(formatDefaultValue(def.value)))}
-						</span>
-					)}
-					<TooltipButton
-						disabled={!canResetDefault}
-						tooltip={
-							canResetDefault
-								? tr.text(SETTINGS_Msgs.resetToDefault(formatDefaultValue(def.value)))
-								: tr.text(SETTINGS_Msgs.alreadyDefault())
-						}
-						onClick={() => resetTo(def.value)}
-					>
-						<Icons.CornerDownLeft className="h-3.5 w-3.5 rtl:-scale-x-100" />
-					</TooltipButton>
-				</>
+				<TooltipButton
+					disabled={!canResetDefault}
+					tooltip={
+						canResetDefault
+							? tr.text(SETTINGS_Msgs.resetToDefault(formatSettingValue(def.value)))
+							: tr.text(SETTINGS_Msgs.alreadyDefault(formatSettingValue(def.value)))
+					}
+					onClick={() => resetTo(def.value)}
+				>
+					<Icons.CornerDownLeft className="h-3.5 w-3.5 rtl:-scale-x-100" />
+				</TooltipButton>
 			)}
 		</div>
 	)
 }
 
-// an anchor to this field's fragment; shown on hover of its labeled row (the row carries `group`)
+// The controls at the end of a field's header row. They stay hidden until the enclosing `group/field` is hovered or
+// holds focus, and always show on touch screens, which cannot hover. `pinned` keeps them showing regardless.
+export function FieldHeaderActions({ pinned, children }: { pinned?: boolean; children: React.ReactNode }) {
+	return (
+		<div
+			className={cn(
+				'ms-auto flex shrink-0 items-center gap-1.5',
+				!pinned && 'opacity-0 group-hover/field:opacity-100 group-focus-within/field:opacity-100 pointer-coarse:opacity-100',
+			)}
+		>
+			{children}
+		</div>
+	)
+}
+
+// an anchor to this field's fragment. Clicking it navigates there and copies the link.
 export function AnchorLink({ domId }: { domId: string }) {
 	return (
 		<a
 			href={`#${domId}`}
-			className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+			className="shrink-0 text-muted-foreground hover:text-foreground"
 			title={tr.text(SETTINGS_Msgs.linkToSetting())}
 			aria-label={tr.text(SETTINGS_Msgs.linkToSetting())}
 			onClick={(e) => {
 				e.preventDefault()
 				SettingsNav.navigateToAnchor(domId)
+				void Clipboard.copy(e.currentTarget.href, tr.text(SETTINGS_Msgs.settingLinkNoun()))
 			}}
 		>
 			<Icons.Link className="h-3 w-3" />
@@ -129,14 +141,14 @@ export function AnchorLink({ domId }: { domId: string }) {
 }
 
 // A link from a command's configuration to its listing on the commands page, where its arguments and examples are
-// written down. Renders nothing for any other field. Revealed on hover of its row, like the anchor icon it sits beside.
+// written down. Renders nothing for any other field.
 export function CommandsPageCrossLink({ path }: { path: FormSchema.Path }) {
 	if (path.length !== 2 || path[0] !== 'commands') return null
 	return (
 		<TSR.Link
 			to="/commands"
 			hash={CMDH.commandsPageAnchor(path[1] as CMD.CommandId)}
-			className="shrink-0 text-xs text-muted-foreground underline-offset-2 opacity-0 transition-opacity hover:text-foreground hover:underline group-hover:opacity-100 focus-visible:opacity-100"
+			className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
 			title={tr.text(CMD_Msgs.commandsCrossLinkTitle())}
 		>
 			{tr.text(CMD_Msgs.commandsCrossLink())}
@@ -238,8 +250,7 @@ export function SettingComment({ root, pathStr, writable, editing, setEditing, c
 	)
 }
 
-// sits in the field's hover-revealed icon row beside AnchorLink. A field that has a comment keeps the icon showing, so
-// the comment reads as something that can be edited.
+// sits in the field's header actions beside AnchorLink. A field that has a comment colors the icon.
 export function CommentButton({ root, pathStr, editing, setEditing, caretRef }: CommentProps) {
 	const hasComment = !!useSettingComment(root.value$, pathStr)
 	const label = hasComment ? tr.text(UI_Msgs.editComment()) : tr.text(UI_Msgs.addComment())
@@ -250,10 +261,7 @@ export function CommentButton({ root, pathStr, editing, setEditing, caretRef }: 
 					type="button"
 					aria-label={label}
 					aria-pressed={editing}
-					className={cn(
-						'shrink-0 transition-opacity focus-visible:opacity-100',
-						hasComment ? 'text-primary' : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100',
-					)}
+					className={cn('shrink-0', hasComment ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}
 					onClick={() => {
 						caretRef.current = null
 						setEditing(!editing)
@@ -311,11 +319,10 @@ const SchemaYamlEditor = React.lazy(
 	() => import('@/components/schema-yaml-editor') as unknown as Promise<{ default: React.FC<any> }>,
 ) as unknown as typeof SchemaYamlEditorComponent
 
-// the GUI/YAML segmented control the settings-page section headers use, scaled down to sit in a field's header row.
-// `ms-auto` pins it to the right end of that row, where the page-level control sits in its own header.
+// the GUI/YAML segmented control the settings-page section headers use, scaled down to sit in a field's header row
 export function LocalModeToggle({ mode, onSelect }: { mode: FieldMode; onSelect: (next: FieldMode) => void }) {
 	return (
-		<div className="ms-auto flex items-center rounded-md border p-0.5">
+		<div className="flex items-center rounded-md border p-0.5">
 			{(['gui', 'yaml'] as const).map((option) => (
 				<Button
 					key={option}

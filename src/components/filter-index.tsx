@@ -30,12 +30,14 @@ import { Input } from '@/components/ui/input'
 import { toast } from '@/lib/toast'
 import { useDebounced } from '@/lib/use-debounce'
 import { cn, STRETCHED_LINK } from '@/lib/utils'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as EIDX_Msgs from '@/messages/entity-index.messages'
 import * as F_Msgs from '@/messages/filter.messages'
 import * as FIDX from '@/models/filter-index.models'
 import * as FR from '@/models/filter-references.models'
 import * as F from '@/models/filter.models'
 import * as RBAC from '@/rbac.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as FilterEntityClient from '@/systems/filter-entity.client'
 import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
@@ -64,8 +66,7 @@ function FilterMenuItems(props: { filter: F.FilterEntity; slots: MenuSlots; onCl
 	const createDenied = RbacClient.useAccess('filters.createFilter')
 	const referenced = (FilterEntityClient.useFilterReferences().get(props.filter.id)?.length ?? 0) > 0
 	const copyLink = () => {
-		void navigator.clipboard.writeText(new URL(`/filters/${props.filter.id}`, window.location.origin).toString())
-		toast(...tr.toast(EIDX_Msgs.linkCopied()))
+		void Clipboard.copy(new URL(`/filters/${props.filter.id}`, window.location.origin).toString(), tr.text(APP_Msgs.linkNoun()))
 	}
 	return (
 		<>

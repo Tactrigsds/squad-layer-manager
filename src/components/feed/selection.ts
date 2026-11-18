@@ -6,6 +6,7 @@
 
 import { toast } from '@/lib/toast'
 import * as Zus from '@/lib/zustand'
+import * as APP_Msgs from '@/messages/app.messages'
 import * as CHAT_Msgs from '@/messages/chat.messages'
 import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
@@ -251,7 +252,7 @@ export function copySelection(host: Element, selection: RC.RowSelection) {
 				])
 			: found.then((res) => navigator.clipboard.writeText(res.text))
 	void Promise.all([found, write]).then(
-		([res]) => toast(...tr.toast(CHAT_Msgs.rowsCopied(res.count))),
-		() => toast.error(...tr.toast(CHAT_Msgs.rowsCopyFailed())),
+		([res]) => toast(...tr.toast(APP_Msgs.copiedToClipboard(tr.text(CHAT_Msgs.rowsNoun(res.count))))),
+		() => toast.error(...tr.toast(APP_Msgs.copyFailed())),
 	)
 }

@@ -52,8 +52,6 @@ export const archivedBadge = def('Archived')
 
 export const clone = def('Clone')
 
-export const linkCopied = def(() => ({ toast: [t('Link copied')] }))
-
 export const archive = def('Archive')
 
 export const unarchive = def('Unarchive')
@@ -178,7 +176,7 @@ export const downloadText = def('Download .cfg')
 
 export const downloadYaml = def('Download .yaml')
 
-export const copied = def('Copied to the clipboard')
+export const rotationNoun = def('rotation')
 
 export const openFile = def('Open File...')
 

@@ -1,6 +1,6 @@
-import { toast } from '@/lib/toast'
 import * as UI_Msgs from '@/messages/ui.messages'
 import type * as EP from '@/models/editor-problems.models'
+import * as Clipboard from '@/systems/clipboard.client'
 import { tr } from '@/systems/messages.client'
 
 // -------- errors pane width --------
@@ -47,7 +47,6 @@ export function describe(problem: EP.Problem) {
 
 export namespace Actions {
 	export async function copy(problems: readonly EP.Problem[]) {
-		await navigator.clipboard.writeText(problems.map(describe).join('\n'))
-		toast(tr.text(UI_Msgs.problemsCopied(problems.length)))
+		await Clipboard.copy(problems.map(describe).join('\n'), tr.text(UI_Msgs.problemsNoun(problems.length)))
 	}
 }

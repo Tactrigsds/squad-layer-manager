@@ -69,7 +69,7 @@ export const fieldChannel = def('Chat channel')
 export const fieldMatchId = def('Match id')
 export const fieldItem = def('Queue item')
 export const copyMatchId = def('Copy match id')
-export const matchIdCopied = def('Match id copied')
+export const matchIdNoun = def('match ID')
 export const fieldTicketDiff = def('Ticket difference')
 export const fieldDuration = def('Match length')
 

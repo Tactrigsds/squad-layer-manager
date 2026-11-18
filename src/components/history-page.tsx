@@ -28,6 +28,7 @@ import * as HQ from '@/models/history.models'
 import type * as MH from '@/models/match-history.models'
 import * as RPC from '@/orpc.client'
 import { GlobalSettingsStore } from '@/systems/client-only-settings.client'
+import * as Clipboard from '@/systems/clipboard.client'
 import * as HistoryClient from '@/systems/history.client'
 import * as KBClient from '@/systems/keybinds.client'
 import * as MessagesClient from '@/systems/messages.client'
@@ -294,7 +295,7 @@ function CopyLinkButton() {
 			className="h-8 w-8"
 			title={tr.text(copied ? HistoryMsgs.linkCopied() : HistoryMsgs.copyLink())}
 			onClick={() => {
-				void navigator.clipboard.writeText(window.location.href).then(() => setCopied(true))
+				void Clipboard.copy(window.location.href).then((ok) => ok && setCopied(true))
 			}}
 		>
 			{copied ? <Icons.Check className="h-4 w-4" /> : <Icons.Link className="h-4 w-4" />}
