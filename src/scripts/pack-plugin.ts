@@ -9,6 +9,7 @@ import * as semver from 'semver'
 
 import * as SHIM from '@/models/plugin-api-shim.models'
 import * as PLG from '@/models/plugins.models'
+import * as FormSchema from '@/models/settings-form-schema.models'
 
 // Builds a plugin source directory into a package SLM can install: plugin.json plus one esm bundle
 // per entry, and a stylesheet for the client. Everything the host provides stays external -- `slm/*`
@@ -42,6 +43,9 @@ const ENTRIES = [
 const manifestModule = (await import(pathToFileURL(path.join(srcDir, 'plugin.ts')).href)) as { default?: PLG.Manifest }
 const manifest = manifestModule.default
 if (!manifest?.id) throw new Error(`${srcDir}/plugin.ts must default-export the manifest definePlugin() returned`)
+for (const field of FormSchema.jsonFallbackPaths(FormSchema.formSchema(manifest.configSchema))) {
+	console.warn(`warning: the settings form has no control for config field ${field}, so it renders the field as raw JSON`)
+}
 
 fs.rmSync(outDir, { recursive: true, force: true })
 fs.mkdirSync(outDir, { recursive: true })

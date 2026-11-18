@@ -88,7 +88,8 @@ export default definePlugin({
 `id` is lowercase kebab-case. It namespaces your tables and your telemetry, so changing it later orphans both.
 
 `configSchema` must be a `z.object`. SLM renders it as a form on the settings page, taking each field's help text
-from `.describe()` and its default from `.prefault()`. Read the values with `PluginConfig.get(ctx)`, which always
+from `.describe()` and its default from `.prefault()`. A field whose schema the form has no control for, such as a
+`z.bigint()`, renders as a raw JSON editor, and `pnpm plugin:pack` names each such field. Read the values with `PluginConfig.get(ctx)`, which always
 returns the latest saved config, so a config change needs no restart.
 
 `apiVersion` is the range of slm API versions the plugin is built against. See [API versions](#api-versions).

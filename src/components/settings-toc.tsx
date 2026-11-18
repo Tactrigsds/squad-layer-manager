@@ -7,12 +7,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import * as RSel from '@/lib/reselect'
 import { cn } from '@/lib/utils'
-import { z } from '@/lib/zod'
 import * as Zus from '@/lib/zustand'
 import * as AppEvents_Msgs from '@/messages/app-events.messages'
 import * as PLUGINS_Msgs from '@/messages/plugins.messages'
 import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
+import * as FormSchema from '@/models/settings-form-schema.models'
 import type { SettingsGroup } from '@/models/settings-groups.models'
 import {
 	GLOBAL_SETTINGS_GROUPS,
@@ -31,7 +31,6 @@ import * as SettingsNav from '@/systems/settings-nav.client'
 // A tree-of-contents for the settings page. Nodes mirror the global-settings schema tree; clicking one scrolls the
 // matching field (anchored by `setting:<path>` ids emitted by SettingsForm) into view within the main scroll column.
 
-type Node = any
 // `writable`: the user's write grant overlaps this node's subtree. Rendered as a pencil marker (only when some
 // restriction exists on the page), so a path-restricted user can drill down to their editable settings even from a
 // fully collapsed tree.
@@ -55,31 +54,11 @@ function selectMessageVariables(...states: Parameters<typeof SettingsEditorFrame
 	return SettingsEditorFrame.Sel.globalDraft(...states)?.messageVariables
 }
 
-const pluginJsonSchemas = new WeakMap<object, Node>()
-function pluginJsonSchema(configSchema: z.ZodType): Node {
-	let jsonSchema = pluginJsonSchemas.get(configSchema)
-	if (!jsonSchema) {
-		jsonSchema = z.toJSONSchema(configSchema, { io: 'input', unrepresentable: 'any' }) as Node
-		pluginJsonSchemas.set(configSchema, jsonSchema)
-	}
-	return jsonSchema
-}
-
 const WRITE_ALL: RBAC.SettingsWriteAccess = { kind: 'all' }
 const WRITE_NONE: RBAC.SettingsWriteAccess = { kind: 'none' }
 
-// the trees are rebuilt whenever a mode or a write grant changes, but the schemas behind them never change, so both
-// conversions are done once for the module rather than inside those memos
-const serverJsonSchema = z.toJSONSchema(SETTINGS.ServerSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node
-const globalJsonSchema = z.toJSONSchema(SETTINGS.GlobalSettingsSchema, { io: 'input', unrepresentable: 'any' }) as Node
-
-function stripNullable(node: Node): Node {
-	if (node?.anyOf) {
-		const others = node.anyOf.filter((b: Node) => b.type !== 'null')
-		if (others.length === 1) return others[0]
-	}
-	return node
-}
+const serverJsonSchema = FormSchema.formSchema(SETTINGS.ServerSettingsSchema)
+const globalJsonSchema = FormSchema.formSchema(SETTINGS.GlobalSettingsSchema)
 
 // the TOC rows for one TOC_ENTRY_PATHS list setting. Draft entries are unvalidated input, so every field is optional.
 function tocEntries(path: string, value: unknown): TocEntry[] {
@@ -100,19 +79,19 @@ function tocEntries(path: string, value: unknown): TocEntry[] {
 // idPrefix scopes anchor ids so per-server subtrees (`setting:server:<id>:*`) don't collide with global (`setting:*`);
 // it must match what SettingsForm emits for the same schema.
 function buildChildren(
-	node: Node,
+	node: FormSchema.SchemaNode,
 	path: (string | number)[],
 	idPrefix: string,
 	access: RBAC.SettingsWriteAccess,
 	entries?: EntriesByPath,
 ): TocNode[] {
-	const props: Record<string, Node> | undefined = node?.properties
+	const props = node.properties
 	if (!props) return []
 	// top-level keys that render no field (see HIDDEN_SETTINGS_KEYS) get no TOC anchor either
 	return Object.keys(props)
 		.filter((key) => !(path.length === 0 && HIDDEN_SETTINGS_KEYS.has(key)))
 		.map((key): TocNode => {
-			const inner = stripNullable(props[key])
+			const { inner } = FormSchema.stripNullable(props[key])
 			const childPath = [...path, key]
 			const pathStr = childPath.join('.')
 			const label = SETTINGS_Msgs.settingLabel(props[key], key)
@@ -447,8 +426,6 @@ export default function SettingsToc({
 		[globalMode, globalWrite, globalEntries],
 	)
 
-	// unlike the global/server schemas these are only known at runtime, so the json-schema conversion happens here
-	// rather than once for the module
 	const pluginInfos = Zus.useStore(PluginsClient.Store, (s) => s.plugins)
 	const pluginManifests = Zus.useStore(PluginsClient.Store, (s) => s.manifests)
 	const pluginNodes = React.useMemo(() => {
@@ -456,7 +433,7 @@ export default function SettingsToc({
 		return pluginInfos.map((info): TocNode => {
 			// as for global/server sections, the field anchors only exist in the gui editor
 			const configSchema = (pluginModes[info.id] ?? 'gui') === 'yaml' ? undefined : pluginManifests[info.id]?.configSchema
-			const jsonSchema = configSchema && pluginJsonSchema(configSchema)
+			const jsonSchema = configSchema && FormSchema.formSchema(configSchema)
 			return {
 				id: `section:plugin:${info.id}`,
 				label: info.name,

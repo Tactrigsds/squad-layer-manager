@@ -16,9 +16,7 @@ import {
 	FormOptionsContext,
 	type FormRoot,
 	getAtPath,
-	type Path,
 	SavedRootContext,
-	type SchemaNode,
 	setAtPath,
 	textOffsetAtPoint,
 	toInputShape,
@@ -43,6 +41,7 @@ import * as SETTINGS_Msgs from '@/messages/settings.messages'
 import * as UI_Msgs from '@/messages/ui.messages'
 import * as CMDH from '@/models/command-help.models'
 import type * as CMD from '@/models/command.models'
+import type * as FormSchema from '@/models/settings-form-schema.models'
 import * as SETTINGS from '@/models/settings.models'
 import * as ConfigClient from '@/systems/config.client'
 import { tr } from '@/systems/messages.client'
@@ -62,8 +61,8 @@ export function FieldResetControls({
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void
-	node: SchemaNode
-	path: Path
+	node: FormSchema.SchemaNode
+	path: FormSchema.Path
 	showDefaultLabel: boolean
 }) {
 	const value = useFieldValue(value$)
@@ -131,7 +130,7 @@ export function AnchorLink({ domId }: { domId: string }) {
 
 // A link from a command's configuration to its listing on the commands page, where its arguments and examples are
 // written down. Renders nothing for any other field. Revealed on hover of its row, like the anchor icon it sits beside.
-export function CommandsPageCrossLink({ path }: { path: Path }) {
+export function CommandsPageCrossLink({ path }: { path: FormSchema.Path }) {
 	if (path.length !== 2 || path[0] !== 'commands') return null
 	return (
 		<TSR.Link
@@ -147,7 +146,7 @@ export function CommandsPageCrossLink({ path }: { path: Path }) {
 
 // What the running install says about one setting, under its description: a setting that cannot take effect as
 // configured says so where it is set. Keyed on the path before anything subscribes, so the other fields pay nothing.
-export function FieldNotice({ path }: { path: Path }) {
+export function FieldNotice({ path }: { path: FormSchema.Path }) {
 	if (path.join('.') === 'discord.expandHistoryLinks') return <MessageContentNotice />
 	return null
 }
@@ -352,7 +351,7 @@ export function LocalYamlField({
 	label: string
 	// the field's own anchor, which the editor renders inside: the scroll target once the editor is up
 	domId: string
-	path: Path
+	path: FormSchema.Path
 	value$: ValueState
 	reset$: Rx.Subject<void>
 	onChange: (v: any) => void

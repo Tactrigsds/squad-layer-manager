@@ -12,17 +12,16 @@ import {
 	NO_ADVANCED_PATHS,
 	NO_ISSUES$,
 	normalizeIssues,
-	type Path,
 	RootSchemaContext,
 	SavedRootContext,
-	type SchemaNode,
 	useMessageVars,
 	type ValueState,
 	WRITE_ACCESS_ALL,
 	WriteAccessContext,
 } from '@/components/settings-form/settings-form.helpers'
 import type * as Rx from '@/lib/rxjs'
-import { z } from '@/lib/zod'
+import type { z } from '@/lib/zod'
+import * as FormSchema from '@/models/settings-form-schema.models'
 import type { SettingsGroup } from '@/models/settings-groups.models'
 import type * as RBAC from '@/rbac.models'
 
@@ -60,17 +59,17 @@ export default function SettingsForm({
 	// the user's write grant; fields with no overlap render read-only. Defaults to unrestricted.
 	writeAccess?: RBAC.SettingsWriteAccess
 }) {
-	const rawJsonSchema = React.useMemo(() => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as SchemaNode, [schema])
+	const rawJsonSchema = FormSchema.formSchema(schema)
 	// float any priorityKeys to the front of the root object's properties (insertion order drives render + reset order)
 	const jsonSchema = React.useMemo(() => {
-		const props: Record<string, SchemaNode> | undefined = rawJsonSchema?.properties
+		const props: Record<string, FormSchema.SchemaNode> | undefined = rawJsonSchema?.properties
 		if (!priorityKeys?.length || !props) return rawJsonSchema
-		const ordered: Record<string, SchemaNode> = {}
+		const ordered: Record<string, FormSchema.SchemaNode> = {}
 		for (const k of priorityKeys) if (k in props) ordered[k] = props[k]
 		for (const k of Object.keys(props)) if (!(k in ordered)) ordered[k] = props[k]
 		return { ...rawJsonSchema, properties: ordered }
 	}, [rawJsonSchema, priorityKeys])
-	const rootPath = React.useMemo<Path>(() => [], [])
+	const rootPath = React.useMemo<FormSchema.Path>(() => [], [])
 	const root = React.useMemo<FormRoot>(() => ({ value$, onChange }), [value$, onChange])
 	const formOptions = React.useMemo(() => ({ idPrefix }), [idPrefix])
 	const savedCtx = React.useMemo(() => ({ saved }), [saved])

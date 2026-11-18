@@ -322,16 +322,33 @@ export function configFieldValues(schema: unknown, config: unknown, control: Fie
 			}
 			return
 		}
+		for (const branch of [...((obj.anyOf as unknown[]) ?? []), ...((obj.oneOf as unknown[]) ?? [])]) {
+			if (branchMatches(branch, value)) walk(branch, value, path)
+		}
+		const isRecord = value !== null && typeof value === 'object' && !Array.isArray(value)
 		const properties = obj.properties as Record<string, unknown> | undefined
-		if (properties && value !== null && typeof value === 'object' && !Array.isArray(value)) {
+		if (properties && isRecord) {
 			for (const [key, child] of Object.entries(properties)) {
 				walk(child, (value as Record<string, unknown>)[key], path ? `${path}.${key}` : key)
 			}
-			return
+		}
+		const rest = obj.additionalProperties
+		if (rest && typeof rest === 'object' && isRecord) {
+			for (const [key, entry] of Object.entries(value)) {
+				if (!properties || !Object.hasOwn(properties, key)) walk(rest, entry, path ? `${path}.${key}` : key)
+			}
 		}
 		if (obj.items && Array.isArray(value)) {
 			value.forEach((entry, i) => walk(obj.items, entry, `${path}[${i}]`))
 		}
+	}
+	// a discriminated union's branches pin the discriminator to a const; only the branch the value carries applies
+	const branchMatches = (branch: unknown, value: unknown) => {
+		const properties = (branch as { properties?: Record<string, { const?: unknown }> } | null)?.properties
+		if (!properties) return true
+		return Object.entries(properties).every(
+			([key, child]) => child?.const === undefined || (value as Record<string, unknown> | null)?.[key] === child.const,
+		)
 	}
 	walk(schema, config, '')
 	return out
