@@ -289,7 +289,12 @@ export type State = {
 	}
 	log: CS.Logger
 	hooks: {
-		onNewGameDuringRoll: (newLayerId: L.LayerId, time: number) => Promise<{ match: MH.MatchDetails; nextLayerId: L.LayerId | null }>
+		// replacedLayerId is the next layer the server last reported, when the server loaded a different one instead
+		onNewGameDuringRoll: (
+			newLayerId: L.LayerId,
+			time: number,
+			replacedLayerId: L.LayerId | null,
+		) => Promise<{ match: MH.MatchDetails; nextLayerId: L.LayerId | null }>
 		onNewGameDuringSync: (newLayerId: L.LayerId, time: number) => Promise<{ match: MH.MatchDetails; isNewMatch: boolean }>
 		fetchLayersStatus: () => Promise<SM.LayersStatus | null>
 		// the usernameNoTag an earlier join log recorded for each player, where the username still matches
@@ -1066,6 +1071,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 			const expectedNewLayer = state.expectedNewLayer
 			state.expectedNewLayer = null
 			let newLayerId = expectedNewLayer?.layerId ?? null
+			let replacedLayerId: L.LayerId | null = null
 			if (!newLayerId || !L.layerMatchesIngameLayerClassname(newLayerId, pendingEvent.layerClassname)) {
 				if (!expectedNewLayer) {
 					log.info(
@@ -1075,6 +1081,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 					log.warn(`${pendingEvent.layerClassname} loaded while the next layer was unknown. Resolving the layer over RCON`)
 				} else {
 					log.error(`layerClassname mismatch: expected ${newLayerId}, got ${pendingEvent.layerClassname}`)
+					replacedLayerId = newLayerId
 				}
 				const layersStatus = await state.hooks.fetchLayersStatus()
 				if (!layersStatus) {
@@ -1087,7 +1094,7 @@ async function processPendingEvent(state: State, pass: Pass, time: number, pendi
 				newLayerId = layersStatus.currentLayer.id
 			}
 
-			const { match, nextLayerId } = await state.hooks.onNewGameDuringRoll(newLayerId, pendingEvent.time)
+			const { match, nextLayerId } = await state.hooks.onNewGameDuringRoll(newLayerId, pendingEvent.time, replacedLayerId)
 			state.currentMatch = {
 				historyEntryId: match.historyEntryId,
 				layerId: match.layerId,

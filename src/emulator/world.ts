@@ -472,6 +472,18 @@ export class World {
 		if (stage === 'layer' && choices[0]) this.nextLayer = this.#toLayerLike(choices[0])
 	}
 
+	// Replaces the next layer and writes no map-set line, as a real server sometimes does when it falls back on its own
+	// rotation. `layerText` is the argument AdminSetNextLayer would take.
+	replaceNextLayerUnlogged(layerText: string) {
+		this.nextLayer = this.#toLayerLike(layerText)
+	}
+
+	// AdminSetNextLayer run from an in-game admin's console, which logs the admin as the command's source
+	setNextLayerAsAdmin(admin: EmuPlayer, layerText: string) {
+		this.nextLayer = this.#toLayerLike(layerText)
+		this.#log(Fmt.logMapSet(layerText, Fmt.playerSource(admin)))
+	}
+
 	startNewGame(layer?: Fmt.LayerLike) {
 		if (layer) this.nextLayer = layer
 		const target = this.nextLayer ?? this.currentLayer

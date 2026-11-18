@@ -450,3 +450,30 @@ export const undoTooltip = def(
 export const undoableDone = def((kind: 'delete' | 'clear' | 'reset-to-saved') => ({
 	toast: [t('{kind, select, delete {Layer deleted} clear {Queue cleared} other {Edits discarded}}', { kind })],
 }))
+
+// Warns in-game admins when the server's next layer leaves the queue. Sent whether or not warnOnNextLayerChange is on.
+export const nextLayerOverridden = def(
+	'{named, select, yes {{setBy} set {setLayer} as the next layer outside SLM.} other {{setLayer} was set as the next layer outside SLM.}} SLM set the next layer back to {queueLayer}, the head of its queue. Queue a layer in SLM to play it next.',
+	(setLayerId: L.LayerId, queueLayerId: L.LayerId, setBy: string | undefined) => ({
+		named: setBy ? 'yes' : 'no',
+		setBy,
+		setLayer: DH.toFullLayerNameFromId(setLayerId),
+		queueLayer: DH.toFullLayerNameFromId(queueLayerId),
+	}),
+)
+
+export const matchStartedOffQueue = def(
+	'This match started on {playingLayer}, not on {expectedLayer}, the next layer the server last reported. The server replaced its next layer without logging the change.',
+	(playingLayerId: L.LayerId, expectedLayerId: L.LayerId) => ({
+		playingLayer: DH.toFullLayerNameFromId(playingLayerId),
+		expectedLayer: DH.toFullLayerNameFromId(expectedLayerId),
+	}),
+)
+
+export const nextLayerRefused = def(
+	'SLM cannot set the next layer to {queueLayer}, the head of its queue. The server kept {serverLayer}.',
+	(queueLayerId: L.LayerId, serverLayerId: L.LayerId) => ({
+		queueLayer: DH.toFullLayerNameFromId(queueLayerId),
+		serverLayer: DH.toFullLayerNameFromId(serverLayerId),
+	}),
+)
