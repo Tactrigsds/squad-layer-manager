@@ -141,6 +141,9 @@ and end, and the joins and leaves during the round.</p>
 <li>
 <p><strong>Added:</strong> Plugin API 0.22.3 lets a plugin link to a rotation from outside SLM, such as in a Discord message. <code>pageUrl</code> in <code>slm/systems/rotation</code> returns the rotation page&#x27;s address, built from <code>ORIGIN</code>. Plugins built for 0.22.2 keep working.</p>
 </li>
+<li>
+<p><strong>Fixed:</strong> A server agent whose connection was dropped by a proxy reconnects within a few seconds. SLM used to reject the reconnecting agent as a duplicate for up to 30 seconds, and RCON and log streaming stopped for that time.</p>
+</li>
 </ul>
 <details><summary>Smaller fixes and tweaks</summary>
 <ul>
