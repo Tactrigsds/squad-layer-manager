@@ -13,13 +13,13 @@ import { tr } from '@/systems/messages.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 
 import BackburnerPanel from './backburner-panel.tsx'
+import ChartsScreen from './charts-screen.tsx'
 import { ConfigProblemsAlert, IngameVoteAlert, QueuePanelContent, SlmUpdatesDisabledAlert } from './layer-queue-panel.tsx'
 import { MatchHistoryPanelContent } from './match-history-panel'
 import PhoneTabBar from './phone-tab-bar.tsx'
 import { PluginSlot } from './plugin-slot.tsx'
 import ServerActivityPanel from './server-activity-panel.tsx'
 import ShortLayerName from './short-layer-name.tsx'
-import StatsPanel from './stats-panel.tsx'
 import TeamsPanel from './teams-panel/teams-panel.tsx'
 import { Timer } from './timer.tsx'
 import UserPresencePanel, { sortEditingPresence } from './user-presence-panel.tsx'
@@ -54,9 +54,6 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 								<MatchHistoryPanelContent stores={props.stores} />
 							</Card>
 							<PluginSlot anchor="server-dashboard:alerts" anchorProps={{ serverId }} />
-							<React.Suspense fallback={null}>
-								<StatsPanel stores={props.stores} />
-							</React.Suspense>
 						</div>
 					</ScrollArea>
 				)}
@@ -103,6 +100,11 @@ export default function PhoneDashboard(props: { stores: SquadServerFrame.KeyProp
 						<ScrollArea orientation="vertical" className="flex-1 min-h-0">
 							<TeamsPanel stores={props.stores} />
 						</ScrollArea>
+					</div>
+				)}
+				{visited.includes('charts') && (
+					<div className="flex flex-1 min-h-0" style={show('charts')}>
+						<ChartsScreen stores={props.stores} />
 					</div>
 				)}
 				{visited.includes('activity') && (

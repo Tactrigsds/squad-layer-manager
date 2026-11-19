@@ -19,13 +19,15 @@ export type PopulationMark = 'active' | 'idle' | 'matchStart' | 'roundEnd'
 const NO_POPULATION_MARKS: readonly PopulationMark[] = []
 // mirrors the primary panel codes in models/user-presence.ts (kept as a literal union so this module stays dependency-free)
 export type PrimaryPanelTab = 'VIEWING_QUEUE' | 'VIEWING_TEAMS'
-// the phone dashboard's screens; on the single-column layout `activity` is the Server Activity side and the rest the layers side
-export type DashboardTab = 'matches' | 'queue' | 'teams' | 'activity'
-export const DASHBOARD_TABS: readonly DashboardTab[] = ['matches', 'queue', 'teams', 'activity']
+// the phone dashboard's screens; the single-column layout folds `matches`, `queue` and `teams` onto its layers screen
+export type DashboardTab = 'matches' | 'queue' | 'teams' | 'charts' | 'activity'
+export const DASHBOARD_TABS: readonly DashboardTab[] = ['matches', 'queue', 'teams', 'charts', 'activity']
 
 export type ClientOnlySettingsStore = {
 	displayTeamsNormalized: boolean
 	chartsTab: ChartsTab
+	// the Charts panel shows every chart at once instead of one behind tabs
+	chartsShowAll: boolean
 	scorelineMetric: ScorelineMetric
 	populationRange: PopulationRange
 	populationSplit: PopulationSplit
@@ -47,6 +49,7 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(
 		() => ({
 			displayTeamsNormalized: true,
 			chartsTab: 'teams',
+			chartsShowAll: false,
 			scorelineMetric: 'tickets',
 			populationRange: 'match',
 			populationSplit: 'activity',
@@ -76,6 +79,9 @@ export namespace Sel {
 	export function chartsTab(s: ClientOnlySettingsStore): ChartsTab {
 		return CHARTS_TABS.includes(s.chartsTab) ? s.chartsTab : CHARTS_TABS[0]
 	}
+	export function chartsShowAll(s: ClientOnlySettingsStore): boolean {
+		return s.chartsShowAll ?? false
+	}
 	export function scorelineMetric(s: ClientOnlySettingsStore): ScorelineMetric {
 		return SCORELINE_METRICS.includes(s.scorelineMetric) ? s.scorelineMetric : SCORELINE_METRICS[0]
 	}
@@ -102,6 +108,9 @@ export namespace Actions {
 	}
 	export function setChartsTab(value: ChartsTab) {
 		Store.setState({ chartsTab: value })
+	}
+	export function toggleChartsShowAll() {
+		Store.setState({ chartsShowAll: !Store.getState().chartsShowAll })
 	}
 	export function setScorelineMetric(value: ScorelineMetric) {
 		Store.setState({ scorelineMetric: value })

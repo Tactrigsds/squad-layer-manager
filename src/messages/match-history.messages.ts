@@ -72,6 +72,10 @@ export const chartWindowTitle = def(
 export const openChartInWindow = def('Open in a window')
 
 // in the panel while its chart is open in a window of its own
+export const showAllCharts = def('Show all charts')
+
+export const showChartsAsTabs = def('Show one chart at a time')
+
 export const chartPoppedOut = def('This chart is open in its own window.')
 
 export const returnChartToPanel = def('Return to panel')

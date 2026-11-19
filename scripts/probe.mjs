@@ -46,7 +46,7 @@ const base = new URL(
 	execFileSync('pnpm', ['-s', 'dev', '--url'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(),
 )
 const url = new URL(positionals[0] ?? '/', base)
-url.search = base.search
+for (const [key, value] of base.searchParams) url.searchParams.set(key, value)
 
 const { chromium } = createRequire(path.join(repoRoot, 'package.json'))('@playwright/test')
 const browser = await chromium.launch()

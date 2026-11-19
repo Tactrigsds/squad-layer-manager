@@ -224,11 +224,21 @@ export namespace SelectedServerActions {
 }
 
 export type DashboardTab = ClientOnlySettings.DashboardTab
-// the single-column layout shows one of two sides; the phone's four tabs fold onto them
-export type DashboardSide = 'layers' | 'secondary'
+// the single-column layout's screens; the phone's matches, queue and teams tabs fold onto `layers`
+export type DashboardSide = 'layers' | 'activity' | 'charts'
 
 export function dashboardSide(tab: DashboardTab): DashboardSide {
-	return tab === 'activity' ? 'secondary' : 'layers'
+	switch (tab) {
+		case 'matches':
+		case 'queue':
+		case 'teams':
+			return 'layers'
+		case 'activity':
+		case 'charts':
+			return tab
+		default:
+			assertNever(tab)
+	}
 }
 
 // The dashboard's tab is the route's `?tab=` search param, so a switch is a history entry and back returns to the
@@ -252,7 +262,7 @@ export namespace DashboardTabActions {
 	// the layers side of the single-column layout is the queue unless the last pick was teams
 	export function setSide(side: DashboardSide) {
 		const last = ClientOnlySettings.Store.getState().dashboardTab
-		setTab(side === 'secondary' ? 'activity' : last === 'teams' ? 'teams' : 'queue')
+		setTab(side === 'layers' ? (last === 'teams' ? 'teams' : 'queue') : side)
 	}
 }
 

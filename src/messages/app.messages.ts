@@ -139,6 +139,7 @@ export const switchServer = def('Switch server')
 export const phoneMatches = def('Matches')
 export const phoneQueue = def('Queue')
 export const phoneTeams = def('Teams')
+export const phoneCharts = def('Charts')
 export const phoneActivity = def('Activity')
 export const phoneHere = def('Here')
 export const switchToDesktopSite = def('Switch to desktop site')
@@ -240,3 +241,5 @@ export const pageTitle = def('SLM - {page}', (page: string) => ({ page }))
 export const dashboardLayersTab = def('Layers & Teams')
 
 export const dashboardActivityTab = def('Server Activity')
+
+export const dashboardChartsTab = def('Charts')
