@@ -2,6 +2,7 @@ import * as TSR from '@tanstack/react-router'
 
 import { RouteErrorComponent, RoutePendingComponent } from '@/components/state-boundary'
 import * as Rx from '@/lib/rxjs'
+import * as OverlayHistory from '@/systems/overlay-history.client'
 
 import { routeTree } from './routeTree.gen.ts'
 
@@ -18,6 +19,7 @@ declare module '@tanstack/react-router' {
 
 export const rootRouter = TSR.createRouter({
 	routeTree,
+	history: OverlayHistory.createRouterHistory(),
 	defaultPreload: 'intent',
 	scrollRestoration: true,
 	// the settings page manages hash scrolling itself (custom scroll container + sticky-header offset, see settings-nav.ts),

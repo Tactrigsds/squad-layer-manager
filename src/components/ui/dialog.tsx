@@ -10,11 +10,23 @@ import type * as KEYS from '@/models/keybinds.models'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
+import * as OverlayHistory from '@/systems/overlay-history.client'
 import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 import { DraggableWindowOutlet } from './draggable-window'
 
-const Dialog = DialogPrimitive.Root
+// controlled here whether or not the caller controls it, so a back press can close an uncontrolled dialog too
+function Dialog(props: React.ComponentProps<typeof DialogPrimitive.Root>) {
+	const { open: openProp, defaultOpen, onOpenChange: onOpenChangeProp } = props
+	const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen ?? false)
+	const open = openProp ?? uncontrolledOpen
+	const onOpenChange = (next: boolean) => {
+		if (openProp === undefined) setUncontrolledOpen(next)
+		onOpenChangeProp?.(next)
+	}
+	OverlayHistory.useBackDismiss(open, () => onOpenChange(false))
+	return <DialogPrimitive.Root {...props} open={open} onOpenChange={onOpenChange} />
+}
 
 const DialogTrigger = DialogPrimitive.Trigger
 

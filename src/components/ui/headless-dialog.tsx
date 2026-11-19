@@ -8,6 +8,7 @@ import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
+import * as OverlayHistory from '@/systems/overlay-history.client'
 import * as SubmitChordClient from '@/systems/submit-chord.client'
 
 import { DraggableWindowOutlet } from './draggable-window'
@@ -21,6 +22,7 @@ interface DialogProps {
 
 const HeadlessDialog = ({ open, onOpenChange, children, unmount }: DialogProps) => {
 	const kbScope = KBClient.useScope('dialog', {})
+	OverlayHistory.useBackDismiss(open, () => onOpenChange(false))
 	return (
 		// the keybinding scope is the root rather than the panel: a click on dead space in the panel focuses the root
 		<Dialog ref={kbScope.ref} open={open} onClose={() => onOpenChange(false)} className="relative" unmount={unmount}>
