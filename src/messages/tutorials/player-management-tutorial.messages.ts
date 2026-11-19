@@ -273,7 +273,7 @@ export const showSpoilers = {
 	title: def('Hidden columns'),
 	body: def(
 		rt(
-			"Role, kills, wounds and deaths, and the live match's scoreline and tickets, are hidden by default, since they can give an in-game advantage. Turn on <em>Show Spoilers</em>, or click any hidden value, to show them all.",
+			"Role, kills, wounds and deaths, and the live match's scoreline and tickets, are hidden by default, since they can give an in-game advantage. Turn on <em>Show Spoilers</em>, or click any hidden value, to show them all. When the header is too narrow, <em>Show Spoilers</em> moves into the <em>More</em> menu.",
 		),
 	),
 }
@@ -423,7 +423,7 @@ export namespace Timeouts {
 	}
 	export const openList = {
 		title: def('Active timeouts'),
-		body: def(rt('Click <em>Timeouts</em> to see every active timeout.')),
+		body: def(rt('Open the <em>More</em> menu and click <em>Timeouts</em> to see every active timeout.')),
 	}
 	export const list = {
 		title: def('Timeouts'),
@@ -540,7 +540,7 @@ export namespace SwitchQueue {
 	}
 	export const openWindow = {
 		title: def('The switch queue'),
-		body: def(rt('Click <em>Switch requests</em> to see who is waiting.')),
+		body: def(rt('Open the <em>More</em> menu and click <em>Switch requests</em> to see who is waiting.')),
 	}
 	export const window = {
 		title: def('The switch queue'),

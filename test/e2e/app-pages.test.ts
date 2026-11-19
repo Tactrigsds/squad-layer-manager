@@ -293,10 +293,9 @@ test.describe('teams panel', () => {
 	test('the team tables merge into one when they no longer fit side by side', async ({ page }) => {
 		const restore = page.viewportSize()!
 		const combined = page.getByRole('table', { name: 'All players' })
-		const showSpoilers = page.getByRole('switch', { name: 'Show Spoilers' })
 
 		await page.setViewportSize({ width: 1100, height: 900 })
-		await showSpoilers.click()
+		await Dash.clickTeamsHeaderToggle(page, 'Show Spoilers')
 		await expect(combined).toBeVisible()
 		await expect(teamTable(page, 'A')).toBeHidden()
 		await expect(playerRow(combined, ALPHA_LEAD)).toBeVisible()
@@ -307,7 +306,7 @@ test.describe('teams panel', () => {
 		await expect(playerRow(teamTable(page, 'B'), BRAVO_ONE)).toBeVisible()
 		await expect(combined).toBeHidden()
 
-		await showSpoilers.click()
+		await Dash.clickTeamsHeaderToggle(page, 'Show Spoilers')
 		await page.setViewportSize(restore)
 	})
 })
