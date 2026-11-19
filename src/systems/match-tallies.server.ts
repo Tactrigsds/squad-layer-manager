@@ -11,6 +11,7 @@ import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import * as Sql from '@/server/sql'
+import * as WorkerThreads from '@/server/worker-threads'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as MatchPopulation from '@/systems/match-population.server'
 import * as MatchTalliesShared from '@/systems/match-tallies.shared'
@@ -58,6 +59,7 @@ function ensureWorker(): Worker | undefined {
 		const isTs = import.meta.url.endsWith('.ts')
 		const url = new URL(isTs ? './match-tallies.worker.ts' : './match-tallies.worker.js', import.meta.url)
 		const w = new Worker(url, { workerData: { dbPath: ENV.DB_PATH }, execArgv: isTs ? ['--import', 'tsx'] : undefined })
+		WorkerThreads.track('match-tallies', w)
 		w.on('message', (msg: MatchTalliesWorker.Response) => {
 			const p = pending.get(msg.seq)
 			if (!p) return

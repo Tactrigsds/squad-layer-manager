@@ -21,6 +21,7 @@ import type * as MaintenanceWorker from './db-maintenance.worker.ts'
 import * as DbMeta from './db-meta.ts'
 import * as Env from './env.ts'
 import * as Migrate from './migrate.ts'
+import * as WorkerThreads from './worker-threads.ts'
 
 const module = initModule('db')
 // a stand-in until setup(), for connections a test opens itself
@@ -172,6 +173,7 @@ function bootMaintenanceWorker() {
 			} satisfies MaintenanceWorker.WorkerData,
 			execArgv: isTs ? ['--import', 'tsx'] : undefined,
 		})
+		WorkerThreads.track('db-maintenance', w)
 	} catch (err) {
 		log.error(err, 'db maintenance worker failed to boot; checkpoints run on the main connection until it does')
 		scheduleMaintenanceReboot()

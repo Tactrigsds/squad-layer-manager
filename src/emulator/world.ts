@@ -446,6 +446,16 @@ export class World {
 		)
 	}
 
+	// a player spawning in, as they do at the start of a match and after each death
+	restartPlayer(p: EmuPlayer) {
+		this.#log(Fmt.logPlayerRestarted(p))
+	}
+
+	// lines no parser rule matches, which a real server writes far more of than events
+	logUnparsed(...lines: string[]) {
+		this.#log(...lines)
+	}
+
 	reportTickRate(rate: number) {
 		this.#log(Fmt.logTickRate(rate))
 	}

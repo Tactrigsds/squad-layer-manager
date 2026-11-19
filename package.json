@@ -36,6 +36,8 @@
 		"worktree": "node scripts/worktree.mjs",
 		"dev": "tsx --tsconfig tsconfig.node.json src/scripts/dev.ts",
 		"dev:open": "tsx --tsconfig tsconfig.node.json src/scripts/dev.ts --open",
+		"load": "tsx --tsconfig tsconfig.node.json src/scripts/load.ts",
+		"load:seed": "tsx --tsconfig tsconfig.node.json src/scripts/load-seed.ts",
 		"emuctl": "tsx --tsconfig tsconfig.node.json src/scripts/dev-emuctl.ts",
 		"__run-script:comment__": "run a script, just specify the script path as the last arg aka pnpm script ./src/scripts/my-script.ts",
 		"script": "tsx --tsconfig tsconfig.node.json",

@@ -1,6 +1,9 @@
 import * as fs from 'node:fs'
 import * as net from 'node:net'
+import * as os from 'node:os'
 import * as path from 'node:path'
+import * as PerfHooks from 'node:perf_hooks'
+import * as V8 from 'node:v8'
 
 import * as Prom from '@/lib/promise-utils'
 import * as ZodUtils from '@/lib/zod-utils'
@@ -10,9 +13,11 @@ import * as SM from '@/models/squad.models'
 import * as DB from '@/server/db'
 import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
+import * as WorkerThreads from '@/server/worker-threads'
 import * as Announcements from '@/systems/announcements.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as EventArchive from '@/systems/event-archive.server'
+import * as LayerEngine from '@/systems/layer-engine.server'
 import * as MatchLayers from '@/systems/match-layers.server'
 import * as PluginsSys from '@/systems/plugins.server'
 import * as SquadServer from '@/systems/squad-server.server'
@@ -45,6 +50,9 @@ const archiveEnvBuilder = Env.getEnvBuilder({ ...Env.groups.backups })
 
 const DEFAULT_ANNOUNCEMENT_DURATION = '15m'
 const MAX_ANNOUNCEMENT_DURATION_MS = 24 * 60 * 60 * 1000
+
+let eventLoopDelay: PerfHooks.IntervalHistogram | null = null
+let eventLoopUtilization = PerfHooks.performance.eventLoopUtilization()
 
 const SYNC_ROSTER_TIMEOUT_MS = 15_000
 const QUEUE_SETTLED_TIMEOUT_MS = 15_000
@@ -177,6 +185,67 @@ async function handle(req: Request): Promise<Response> {
 				nextLayerSyncState: ctx.layerQueue.nextLayerSyncState$.value.code,
 				updatesDisabled: ctx.serverSettings.settings.updatesToSquadServerDisabled ?? null,
 			}
+		}
+		// process figures for the load harness (src/load), covering the time since the previous call. The first call
+		// starts the event loop delay histogram and so reports none.
+		case 'runtime-stats': {
+			if (!eventLoopDelay) {
+				// 1ms resolution, as the load harness judges the p99 in milliseconds
+				eventLoopDelay = PerfHooks.monitorEventLoopDelay({ resolution: 1 })
+				eventLoopDelay.enable()
+			}
+			const delay = eventLoopDelay
+			const serverIds = Array.isArray(req.args?.serverIds)
+				? (req.args.serverIds as unknown[]).filter((id) => typeof id === 'string')
+				: []
+			const nsToMs = (v: number) => (Number.isFinite(v) ? v / 1e6 : null)
+			const elu = PerfHooks.performance.eventLoopUtilization(eventLoopUtilization)
+			eventLoopUtilization = PerfHooks.performance.eventLoopUtilization()
+			const res = {
+				code: 'ok',
+				eventLoopDelayMs: {
+					p50: nsToMs(delay.percentile(50)),
+					p99: nsToMs(delay.percentile(99)),
+					max: nsToMs(delay.max),
+					count: delay.count,
+				},
+				eventLoopUtilization: elu.utilization,
+				memory: process.memoryUsage(),
+				// microseconds since boot, across every thread
+				cpuUsage: process.cpuUsage(),
+				servers: serverIds.map((serverId) => {
+					const ctx = managedServerCtx(serverId)
+					return {
+						serverId,
+						lastLogEventTime: ctx?.server.eventState.lastKnownLogEventTime ?? null,
+						rconConnected: ctx?.rcon.connected ?? false,
+					}
+				}),
+			}
+			delay.reset()
+			return res
+		}
+		// what the process holds, by owner, for the load harness's memory breakdown. RSS that none of these cover is native
+		// allocation: sqlite's page caches, libuv, and the allocators' own overhead.
+		case 'memory-breakdown': {
+			const conn = DB.withDb(CS.init()).db.driver
+			const pragma = (name: string) => conn.pragma(name, { simple: true }) as number
+			return {
+				code: 'ok',
+				memory: process.memoryUsage(),
+				heap: V8.getHeapStatistics(),
+				heapSpaces: V8.getHeapSpaceStatistics(),
+				workers: await WorkerThreads.heapStatistics(),
+				layerEngineBytes: LayerEngine.peekEngine()?.memoryBytes ?? null,
+				// cache_size is in pages when positive and in KiB when negative
+				sqlite: { cacheSize: pragma('cache_size'), pageSize: pragma('page_size'), mmapSize: pragma('mmap_size') },
+			}
+		}
+		// Writes a snapshot of the main thread's heap to the system temp directory and answers with its path. The heap is
+		// frozen while it is written, for seconds on a large one, so this is for a load run and never production.
+		case 'heap-snapshot': {
+			const file = path.join(os.tmpdir(), `slm-${process.pid}-${Date.now()}.heapsnapshot`)
+			return { code: 'ok', path: V8.writeHeapSnapshot(file) }
 		}
 		default:
 			return { code: 'err:unknown-command', command: req.command }
