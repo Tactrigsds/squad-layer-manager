@@ -1,5 +1,4 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useBlocker } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import { useState } from 'react'
@@ -18,6 +17,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import * as EditFrame from '@/frames/filter-editor.frame.ts'
+import * as PageLeave from '@/lib/page-leave'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards'
 import * as Zus from '@/lib/zustand'
@@ -89,14 +89,10 @@ export function FilterEdit(props: { entity: F.FilterEntity; owner: USR.User | un
 		Zus.useShallow((state) => [state.valid, state.modified]),
 	)
 
-	useBlocker({
+	PageLeave.useBlocker({
 		enableBeforeUnload: filterModified,
-		shouldBlockFn: () => {
-			if (!filterModified) return false
-
-			const shouldLeave = confirm(tr.text(F_Msgs.unsavedChangesConfirm()))
-			return !shouldLeave
-		},
+		unsaved: () => filterModified,
+		message: () => tr.text(F_Msgs.unsavedChangesConfirm()),
 	})
 
 	const saveBtn = React.useMemo(

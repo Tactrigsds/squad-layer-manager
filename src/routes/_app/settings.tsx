@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { createFileRoute, useBlocker } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -24,6 +24,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { frameManager } from '@/frames/frame-manager'
 import * as SettingsEditorFrame from '@/frames/settings-editor.frame'
 import { createId } from '@/lib/id'
+import * as PageLeave from '@/lib/page-leave'
 import { useRefConstructor } from '@/lib/react'
 import * as ReactRx from '@/lib/react-rxjs'
 import { assertNever } from '@/lib/type-guards'
@@ -157,18 +158,15 @@ function RouteComponent() {
 	const anyDirty = Zus.useStore(...sectionKeys, SettingsEditorFrame.Sel.anyDirty)
 	const creating = creatingNonce !== null && !newServerCreated
 
-	// block in-app navigation and tab close while any section holds unsaved edits (same pattern as filter-edit)
-	useBlocker({
+	// asks before leaving the page or closing the tab while any section holds unsaved edits
+	PageLeave.useBlocker({
 		enableBeforeUnload: anyDirty,
-		shouldBlockFn: () => {
-			const dirty = sectionKeys.some((k) => {
+		unsaved: () =>
+			sectionKeys.some((k) => {
 				const s = frameManager.getState(k)
 				return !!s && SettingsEditorFrame.Sel.dirty(s)
-			})
-			if (!dirty) return false
-			const shouldLeave = confirm(tr.text(SETTINGS_Msgs.unsavedChanges()))
-			return !shouldLeave
-		},
+			}),
+		message: () => tr.text(SETTINGS_Msgs.unsavedChanges()),
 	})
 
 	// the fragment to scroll to on load, captured once. Handled lazily below once its owning section has rendered, since
