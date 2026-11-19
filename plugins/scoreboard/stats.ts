@@ -21,7 +21,14 @@ export type PlayerTally = {
 	currentStreak: number
 }
 
-export type SquadTally = { uniqueId: number; name: string; teamId: SM.TeamId; kills: number }
+export type SquadTally = {
+	uniqueId: number
+	squadId: number
+	teamId: SM.TeamId
+	// null when the feed never recorded the squad's creation
+	creatorName: string | null
+	kills: number
+}
 
 export type TicketSample = { time: number; tickets: [number, number] }
 
@@ -38,11 +45,15 @@ export function tally(events: readonly MatchHistory.MatchEvent[]): MatchTally {
 	const squads = new Map<number, SquadTally>()
 	// the squad instance each (team, squad id) slot currently holds, since squad ids are reused within a match
 	const squadSlots = new Map<string, number>()
+	const squadCreators = new Map<number, SM.PlayerId>()
+	const playerNames = new Map<SM.PlayerId, string>()
+	const nameOf = (player: SM.Player) => playerNames.set(player.ids.eos, player.ids.username)
 	const killTimes: MatchTally['killTimes'] = [[], []]
 	const tickets: TicketSample[] = []
 
 	const playerOf = (player: SM.Player): PlayerTally => {
 		const id = player.ids.eos
+		nameOf(player)
 		let entry = players.get(id)
 		if (!entry) {
 			entry = {
@@ -67,14 +78,21 @@ export function tally(events: readonly MatchHistory.MatchEvent[]): MatchTally {
 		return entry
 	}
 
-	const trackSquad = (squad: { uniqueId: number; squadId: number; squadName: string; teamId: SM.TeamId }) => {
+	const trackSquad = (squad: { uniqueId: number; squadId: number; teamId: SM.TeamId; creator: SM.PlayerId }) => {
 		squadSlots.set(`${squad.teamId}:${squad.squadId}`, squad.uniqueId)
-		const existing = squads.get(squad.uniqueId)
-		if (existing) existing.name = squad.squadName
-		else squads.set(squad.uniqueId, { uniqueId: squad.uniqueId, name: squad.squadName, teamId: squad.teamId, kills: 0 })
+		squadCreators.set(squad.uniqueId, squad.creator)
+		if (!squads.has(squad.uniqueId)) {
+			squads.set(squad.uniqueId, {
+				uniqueId: squad.uniqueId,
+				squadId: squad.squadId,
+				teamId: squad.teamId,
+				creatorName: null,
+				kills: 0,
+			})
+		}
 	}
 
-	// a squad the feed never named, such as one formed before SLM started, is keyed below every real uniqueId
+	// a squad the feed never recorded, such as one formed before SLM started, is keyed below every real uniqueId
 	let unnamedSquads = 0
 	const squadOf = (player: SM.Player): SquadTally | undefined => {
 		if (player.teamId === null || player.squadId === null) return undefined
@@ -83,7 +101,7 @@ export function tally(events: readonly MatchHistory.MatchEvent[]): MatchTally {
 		if (uniqueId === undefined) {
 			uniqueId = -++unnamedSquads
 			squadSlots.set(slot, uniqueId)
-			squads.set(uniqueId, { uniqueId, name: `Squad ${player.squadId}`, teamId: player.teamId, kills: 0 })
+			squads.set(uniqueId, { uniqueId, squadId: player.squadId, teamId: player.teamId, creatorName: null, kills: 0 })
 		}
 		return squads.get(uniqueId)
 	}
@@ -91,12 +109,23 @@ export function tally(events: readonly MatchHistory.MatchEvent[]): MatchTally {
 	for (const event of events) {
 		switch (event.type) {
 			case 'RESET':
+				for (const player of event.state.players) nameOf(player)
 				for (const squad of event.state.squads) trackSquad(squad)
 				break
+			case 'PLAYER_CONNECTED':
+			case 'PLAYER_RECONCILED':
+				nameOf(event.player)
+				break
 			case 'SQUAD_CREATED':
-			case 'SQUAD_RENAMED':
+				nameOf(event.creator)
+				trackSquad(event.squad)
+				break
 			case 'PLAYER_JOINED_SQUAD':
 			case 'PLAYER_PROMOTED_TO_LEADER':
+				nameOf(event.player)
+				trackSquad(event.squad)
+				break
+			case 'SQUAD_RENAMED':
 				trackSquad(event.squad)
 				break
 			case 'TICKETS_CHANGED':
@@ -145,6 +174,11 @@ export function tally(events: readonly MatchHistory.MatchEvent[]): MatchTally {
 				if (event.attacker && event.bottomedOut && creditsAttacker(event.variant)) playerOf(event.attacker).deployableKills++
 				break
 		}
+	}
+
+	for (const [uniqueId, creator] of squadCreators) {
+		const squad = squads.get(uniqueId)!
+		squad.creatorName = playerNames.get(creator) ?? null
 	}
 
 	return { players, squads, killTimes, tickets }

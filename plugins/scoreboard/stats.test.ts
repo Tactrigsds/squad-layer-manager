@@ -16,13 +16,13 @@ function events(...partials: Record<string, unknown>[]): MatchHistory.MatchEvent
 	return partials.map((e) => ({ id: ++time, time: ++time, matchId: 1, ...e }) as unknown as MatchHistory.MatchEvent)
 }
 
-const squad = (uniqueId: number, squadId: number, squadName: string, teamId: SM.TeamId) => ({
+const squad = (uniqueId: number, squadId: number, squadName: string, creator: SM.Player) => ({
 	uniqueId,
 	squadId,
 	squadName,
-	teamId,
+	teamId: creator.teamId,
 	locked: false,
-	creator: 'x',
+	creator: creator.ids.eos,
 })
 
 describe('tally', () => {
@@ -31,20 +31,21 @@ describe('tally', () => {
 	const c = player('c', 1)
 
 	it('credits kills to the squad instance that held the squad id at the time', () => {
+		const e = player('e', 1, 1)
 		const t = Stats.tally(
 			events(
-				{ type: 'SQUAD_CREATED', squad: squad(10, 1, 'ARMOR', 1) },
+				{ type: 'SQUAD_CREATED', creator: a, squad: squad(10, 1, 'ARMOR', a) },
 				{ type: 'PLAYER_DIED', variant: 'normal', attacker: a, victim: b },
-				{ type: 'SQUAD_DISBANDED', uniqueId: 10, squad: squad(10, 1, 'ARMOR', 1) },
-				{ type: 'SQUAD_CREATED', squad: squad(11, 1, 'INF', 1) },
+				{ type: 'SQUAD_DISBANDED', uniqueId: 10, squad: squad(10, 1, 'ARMOR', a) },
+				{ type: 'SQUAD_CREATED', creator: e, squad: squad(11, 1, 'INF', e) },
 				{ type: 'PLAYER_DIED', variant: 'normal', attacker: a, victim: b },
 				{ type: 'PLAYER_DIED', variant: 'normal', attacker: player('d', 2, 4), victim: c },
 			),
 		)
-		expect([...t.squads.values()].map((s) => [s.name, s.kills])).toEqual([
-			['ARMOR', 1],
-			['INF', 1],
-			['Squad 4', 1],
+		expect([...t.squads.values()].map((s) => [s.squadId, s.creatorName, s.kills])).toEqual([
+			[1, 'a', 1],
+			[1, 'e', 1],
+			[4, null, 1],
 		])
 	})
 

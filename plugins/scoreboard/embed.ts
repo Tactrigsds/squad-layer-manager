@@ -159,15 +159,16 @@ function leaderboards(opts: {
 }): Fields {
 	const { cfg, tally, playerList, size, teamName } = opts
 	const fields: Fields = []
-	const board = <T extends { name: string }>(
+	const board = <T>(
 		name: string,
 		ranked: Stats.Ranked<T>[],
+		label: (item: T) => string,
 		format: (ranked: Stats.Ranked<T>) => string = (r) => String(r.value),
 	) => {
 		if (ranked.length === 0) return
 		fields.push({
 			name,
-			value: ranked.map((r, i) => `${i + 1}. ${escapeMarkdown(truncate(r.item.name))} - ${format(r)}`).join('\n'),
+			value: ranked.map((r, i) => `${i + 1}. ${label(r.item)} - ${format(r)}`).join('\n'),
 			inline: true,
 		})
 	}
@@ -179,18 +180,21 @@ function leaderboards(opts: {
 			.sort((a, b) => b.kills - a.kills || b.downs - a.downs)
 			.slice(0, size)
 			.map((p) => ({ item: p, value: p.kills })),
+		playerLabel,
 		(r) => `${plural(r.value, 'kill')}, ${plural(r.item.downs, 'down')}`,
 	)
 	board(
 		'Squad Kills',
-		Stats.top(tally.squads.values(), (s) => s.kills, size).map((r) => ({
-			...r,
-			item: { name: `${r.item.name} (${teamName(r.item.teamId)})` },
-		})),
+		Stats.top(tally.squads.values(), (s) => s.kills, size),
+		(squad) => {
+			const creator = squad.creatorName === null ? '' : `${escapeMarkdown(truncate(squad.creatorName))}, `
+			return `Squad ${squad.squadId} (${creator}${escapeMarkdown(teamName(squad.teamId))})`
+		},
 	)
 	board(
 		'Combat Medic',
 		Stats.top(playerList, (p) => p.revives, size),
+		playerLabel,
 	)
 	board(
 		'Vehicles',
@@ -199,15 +203,18 @@ function leaderboards(opts: {
 			.sort((a, b) => b.vehicleDamage - a.vehicleDamage || b.vehicleKills - a.vehicleKills)
 			.slice(0, size)
 			.map((p) => ({ item: p, value: p.vehicleDamage })),
+		playerLabel,
 		(r) => `${Math.round(r.value)} dmg, ${plural(r.item.vehicleKills, 'kill')}`,
 	)
 	board(
 		'FOB/HAB Destroyer',
 		Stats.top(playerList, (p) => p.deployableKills, size),
+		playerLabel,
 	)
 	board(
 		'Longest Kill Streak',
 		Stats.top(playerList, (p) => p.longestStreak, size),
+		playerLabel,
 	)
 	board(
 		'Best K/D',
@@ -216,15 +223,18 @@ function leaderboards(opts: {
 			Stats.kd,
 			size,
 		),
+		playerLabel,
 		(r) => r.value.toFixed(2),
 	)
 	board(
 		'Most Deaths',
 		Stats.top(playerList, (p) => p.deaths, size),
+		playerLabel,
 	)
 	board(
 		'Most Teamkills',
 		Stats.top(playerList, (p) => p.teamkills, size),
+		playerLabel,
 	)
 	return fields
 }
@@ -237,6 +247,10 @@ function textLength(header: string, fields: Fields): number {
 
 function plural(count: number, noun: string): string {
 	return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
+function playerLabel(player: Stats.PlayerTally): string {
+	return escapeMarkdown(truncate(player.name))
 }
 
 function truncate(name: string): string {
