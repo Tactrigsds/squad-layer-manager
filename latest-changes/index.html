@@ -81,6 +81,10 @@ and end, and the joins and leaves during the round.</p>
 <li>
 <p><strong>Fixed:</strong> The repeat ruleset picker no longer warns that a ruleset does not exist when the ruleset does. The warning could appear after a rotation or another server&#x27;s settings had been open earlier in the same session.</p>
 </li>
+<li>
+<p><strong>Fixed:</strong> Saved teamswaps no longer fail with a &quot;NOT NULL constraint failed&quot; error when they run at the start of a new match, are swapped now, or are cleared.</p>
+<p>At the start of a new match, the players were still swapped, but the toast reported the swap as failed.</p>
+</li>
 </ul>
 <details><summary>Smaller fixes and tweaks</summary>
 <ul>
