@@ -151,10 +151,16 @@ export function formatList(items: readonly string[], options?: { locale?: string
 }
 
 export function voteChoicesLines(choices: L.LayerId[], locale: string, you?: 1 | 2, displayProps?: DH.LayerDisplayProp[]) {
-	const tr = I18n.translatorFor(locale)
-	const lines = choices.map((c, index) =>
-		tr.text(t('{position}. {layer}', { position: index + 1, layer: DH.toShortLayerNameFromId(c, you, displayProps) })),
+	return numberedChoiceLines(
+		choices.map((c) => DH.toShortLayerNameFromId(c, you, displayProps)),
+		locale,
 	)
+}
+
+// choices numbered as they are voted for, on one line when they fit
+export function numberedChoiceLines(labels: string[], locale: string) {
+	const tr = I18n.translatorFor(locale)
+	const lines = labels.map((label, index) => tr.text(t('{position}. {layer}', { position: index + 1, layer: label })))
 
 	if (lines.join(' ').length < 50) {
 		return [lines.join(' ')]

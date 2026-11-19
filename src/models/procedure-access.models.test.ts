@@ -46,6 +46,7 @@ const SAMPLES: { [P in TakesInput]: SampleInput<P> } = {
 	'vote.abortVote': S,
 	'vote.cancelVoteAutostart': S,
 	'vote.watchUpdates': S,
+	'vote.watchSimpleVote': S,
 	'settings.server.watchSettings': S,
 	'settings.server.updateSettings': S,
 	'settings.admin.createServer': { id: 's2' },

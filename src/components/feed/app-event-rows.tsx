@@ -30,6 +30,7 @@ import * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
 import { tr } from '@/systems/messages.client'
 
+import VoteTallyBars, { type VoteTallyRow } from '../vote-tally-bars'
 import * as Atoms from './atoms'
 import { Icon, type IconName } from './icons'
 import type * as RC from './render-context'
@@ -73,34 +74,49 @@ function LayerNames(props: { ctx: RC.RenderCtx; layerIds: L.LayerId[] }) {
 	)
 }
 
-// the final count per choice, each as a bar of its share of the votes cast
+// the final count per choice, each as a bar of its share of the votes cast, with the winner drawn out
 function VoteTally(props: { ctx: RC.RenderCtx; appEvent: AppEvents.VoteEnded }) {
 	const { ctx, appEvent } = props
-	const tally = appEvent.tally ?? []
-	const total = appEvent.totalVotes ?? tally.reduce((sum, choice) => sum + choice.votes, 0)
+	const vote = appEvent.vote
+	const rows: VoteTallyRow[] =
+		vote.kind === 'layer'
+			? (vote.tally ?? []).map((choice) => ({
+					key: choice.layerId,
+					label: <Atoms.ShortLayerName teamSides={false} normalized={ctx.displayTeamsNormalized} layerId={choice.layerId} />,
+					votes: choice.votes,
+					won: choice.layerId === vote.winnerLayerId,
+				}))
+			: vote.tally.map((choice) => ({
+					key: choice.choice,
+					label: choice.choice,
+					votes: choice.votes,
+					won: choice.choice === vote.winner,
+				}))
+	const total = appEvent.totalVotes ?? rows.reduce((sum, row) => sum + row.votes, 0)
+	if (rows.length === 0 || total === 0) return null
 	return (
-		<div className="mt-1 flex max-w-md flex-col gap-1.5 rounded-md bg-muted/50 px-2.5 py-2">
-			{tally.map((choice) => {
-				const won = choice.layerId === appEvent.winnerLayerId
-				const share = total > 0 ? (choice.votes / total) * 100 : 0
-				return (
-					<div key={choice.layerId}>
-						<div className="flex items-baseline gap-2">
-							{/* the layer name wraps rather than running under the count */}
-							<span className={cn('min-w-0 flex-1 wrap-anywhere', won ? 'font-semibold text-foreground' : undefined)}>
-								<Atoms.ShortLayerName teamSides={false} normalized={ctx.displayTeamsNormalized} layerId={choice.layerId} />
-							</span>
-							<span className={cn('shrink-0 tabular-nums', won ? 'font-semibold text-primary' : undefined)}>{choice.votes}</span>
-						</div>
-						<div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-background">
-							<div className={cn('h-full', won ? 'bg-primary' : 'bg-muted-foreground/50')} style={{ width: `${share}%` }} />
-						</div>
-					</div>
-				)
-			})}
-			<div className="text-[11px]">{tr.text(AppEvents_Msgs.voteTallyFooter(total, appEvent.turnoutPercentage ?? null))}</div>
-		</div>
+		<VoteTallyBars
+			className="mt-1 max-w-md"
+			total={total}
+			rows={rows}
+			footer={tr.text(AppEvents_Msgs.voteTallyFooter(total, appEvent.turnoutPercentage ?? null))}
+		/>
 	)
+}
+
+// the winning choice: a layer vote's layer, or a simple vote's text
+function VoteWinner(props: { ctx: RC.RenderCtx; vote: AppEvents.VoteEnded['vote'] }) {
+	const { ctx, vote } = props
+	if (vote.kind === 'simple') {
+		return vote.winner !== null ? tr.richText(AppEvents_Msgs.voteWinner(vote.winner)) : tr.text(AppEvents_Msgs.voteNoWinner())
+	}
+	return vote.winnerLayerId
+		? tr.richText(
+				AppEvents_Msgs.voteWinner(
+					<Atoms.ShortLayerName teamSides={false} normalized={ctx.displayTeamsNormalized} layerId={vote.winnerLayerId} />,
+				),
+			)
+		: tr.text(AppEvents_Msgs.voteNoWinner())
 }
 
 type ServerMapSet = Extract<CHAT.EventEnriched, { type: 'MAP_SET' }>
@@ -676,9 +692,11 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 				<EventIcon name="Ban" className="text-danger" />
 			)
 		const line =
-			appEvent.type === 'VOTE_STARTED'
-				? tr.richText(AppEvents_Msgs.voteStarted(actorLabel, appEvent.choiceCount))
-				: tr.richText(AppEvents_Msgs.voteAborted(actorLabel))
+			appEvent.type === 'VOTE_ABORTED'
+				? tr.richText(AppEvents_Msgs.voteAborted(actorLabel))
+				: appEvent.vote.kind === 'simple'
+					? tr.richText(AppEvents_Msgs.simpleVoteStarted(actorLabel, appEvent.vote.choices))
+					: tr.richText(AppEvents_Msgs.voteStarted(actorLabel, appEvent.choiceCount))
 		const broadcasts = sentBroadcasts(event)
 		if (broadcasts.length === 0) {
 			return (
@@ -707,14 +725,8 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 				{appEvent.reason === 'ended-early'
 					? tr.richText(AppEvents_Msgs.voteEndedEarly(actorLabel))
 					: tr.text(AppEvents_Msgs.voteEnded())}
-				{appEvent.winnerLayerId
-					? tr.richText(
-							AppEvents_Msgs.voteWinner(
-								<Atoms.ShortLayerName teamSides={false} normalized={ctx.displayTeamsNormalized} layerId={appEvent.winnerLayerId} />,
-							),
-						)
-					: tr.text(AppEvents_Msgs.voteNoWinner())}
-				{appEvent.tally && appEvent.tally.length > 0 && <VoteTally ctx={ctx} appEvent={appEvent} />}
+				<VoteWinner ctx={ctx} vote={appEvent.vote} />
+				<VoteTally ctx={ctx} appEvent={appEvent} />
 				{broadcasts.length > 0 && (
 					<details className="mt-1">
 						<summary className="cursor-pointer">{tr.text(AppEvents_Msgs.voteBroadcastsShown(broadcasts.length))}</summary>

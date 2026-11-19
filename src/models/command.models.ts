@@ -141,13 +141,38 @@ export type ArgDef =
 
 const REST_KINDS: ArgDef['kind'][] = ['text', 'reason']
 
+// A named option, typed anywhere after the trigger as `--name`, or as `-n` when it has a `short` letter. A flag takes
+// no value. Every other kind takes one, written `--name value`, `--name=value`, `-n value` or `-n=value`. A lone `--`
+// ends the options, so the words after it are positional arguments even when they start with a dash.
+type OptionCommon = { name: string; short?: string; describe?: TString; sample?: string }
+export type OptionDef =
+	| (OptionCommon & { kind: 'flag' })
+	| (OptionCommon & { kind: 'string' })
+	| (OptionCommon & { kind: 'int' })
+	| (OptionCommon & { kind: 'duration' })
+
+const OPTION_NAME = /^[a-z][a-z0-9-]*$/
+const OPTION_SHORT = /^[a-z]$/
+
 // structural rules the token-assignment logic depends on; violations are programmer errors caught at module load
-function assertValidArgDefs(id: string, args: readonly ArgDef[]) {
+function assertValidArgDefs(id: string, args: readonly ArgDef[], options: readonly OptionDef[]) {
 	args.forEach((def, i) => {
 		if (REST_KINDS.includes(def.kind) && i !== args.length - 1) {
 			throw new Error(`command ${id}: rest arg "${def.name}" must be last`)
 		}
 	})
+	// options share the args' namespace, since a handler receives both on one object
+	const names = new Set(args.map((def) => def.name))
+	const shorts = new Set<string>()
+	for (const def of options) {
+		if (!OPTION_NAME.test(def.name)) throw new Error(`command ${id}: option "${def.name}" must be lowercase letters, digits and dashes`)
+		if (names.has(def.name)) throw new Error(`command ${id}: option "${def.name}" repeats a name`)
+		names.add(def.name)
+		if (def.short === undefined) continue
+		if (!OPTION_SHORT.test(def.short)) throw new Error(`command ${id}: option "${def.name}" needs a single lowercase letter as its short`)
+		if (shorts.has(def.short)) throw new Error(`command ${id}: short option "-${def.short}" is used twice`)
+		shorts.add(def.short)
+	}
 }
 
 // What the dispatcher requires before running a command, evaluated against the server it runs on. Required on purpose: a
@@ -165,11 +190,12 @@ const TIMEOUT_ACCESS = Access.inHandler("the duration is checked against the cal
 	RBAC.Req.timeout(i.serverId),
 )
 
-function declareCommand<Id extends string, const Args extends readonly ArgDef[]>(
+function declareCommand<Id extends string, const Args extends readonly ArgDef[], const Options extends readonly OptionDef[] = readonly []>(
 	id: Id,
-	opts: { label: TString; section: CommandSection; access: CommandAccess; args: Args; defaults: CommandConfig },
+	opts: { label: TString; section: CommandSection; access: CommandAccess; args: Args; options?: Options; defaults: CommandConfig },
 ) {
-	assertValidArgDefs(id, opts.args)
+	const options = opts.options ?? ([] as readonly OptionDef[] as Options)
+	assertValidArgDefs(id, opts.args, options)
 	return {
 		[id]: {
 			id,
@@ -178,9 +204,28 @@ function declareCommand<Id extends string, const Args extends readonly ArgDef[]>
 			access: opts.access,
 			defaults: opts.defaults,
 			args: opts.args,
+			options,
 		},
-	} as { [K in Id]: { id: Id; label: TString; section: CommandSection; access: CommandAccess; defaults: CommandConfig; args: Args } }
+	} as {
+		[K in Id]: {
+			id: Id
+			label: TString
+			section: CommandSection
+			access: CommandAccess
+			defaults: CommandConfig
+			args: Args
+			options: Options
+		}
+	}
 }
+
+// the voters a vote starts with, for every command that starts one
+const INTERNAL_VOTE_OPTION = {
+	kind: 'flag',
+	name: 'internal',
+	short: 'i',
+	describe: t('Only the admins in game vote, in admin chat.'),
+} as const satisfies OptionDef
 
 const SWAP_DESTINATION_HELP = t(
 	'Where to send them. The other team when omitted. Name it to avoid accidental duplicate swaps: anyone already on that team is left alone.',
@@ -249,6 +294,16 @@ export const COMMAND_DECLARATIONS = {
 		section: 'votes',
 		access: onServer('vote:manage'),
 		args: [],
+		options: [
+			INTERNAL_VOTE_OPTION,
+			{
+				kind: 'duration',
+				name: 'duration',
+				short: 'd',
+				sample: '2m',
+				describe: t("How long the vote runs. The vote's own duration when left out, and then the server's."),
+			},
+		],
 		defaults: {
 			allowedChats: ['admin'],
 			triggers: ['startvote', 'sv'],
@@ -269,6 +324,46 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('vote:manage'),
 		args: [],
 		defaults: { allowedChats: ['admin'], triggers: ['endvote', 'ev'], enabled: true, quickReference: false },
+	}),
+	...declareCommand('vote', {
+		label: t('Vote', undefined, { context: 'command' }),
+		section: 'votes',
+		access: onServer('queue:write'),
+		args: [
+			{
+				kind: 'text',
+				name: 'choices',
+				sample: 'goro:Night_ops yeho narva',
+				describe: t(
+					'One choice per word, all of them maps, all layers, all gamemodes or all sizes. Text after a colon is what players see for that choice, with underscores for spaces. Filter names apply to every choice. Map and filter names match loosely; everything else must match exactly.',
+				),
+			},
+		],
+		defaults: { allowedChats: ['admin'], triggers: ['vote'], enabled: true, quickReference: false },
+	}),
+	...declareCommand('simpleVote', {
+		label: t('Simple Vote', undefined, { context: 'command' }),
+		section: 'votes',
+		access: onServer('vote:manage'),
+		args: [
+			{
+				kind: 'text',
+				name: 'choices',
+				sample: 'yes, no, not sure',
+				describe: t('Choices separated by commas. Without a comma, each word is a choice, and an underscore stands for a space.'),
+			},
+		],
+		options: [
+			INTERNAL_VOTE_OPTION,
+			{
+				kind: 'duration',
+				name: 'duration',
+				short: 'd',
+				sample: '2m',
+				describe: t("How long the vote runs. The server's vote duration when left out."),
+			},
+		],
+		defaults: { allowedChats: ['admin'], triggers: ['simplevote'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('showNext', {
 		label: t('Show Next', undefined, { context: 'command' }),
@@ -960,7 +1055,20 @@ type ArgValue<D extends ArgDef> = D extends { kind: 'string' }
 export type ResolvedArgs<Args extends readonly ArgDef[]> = {
 	[D in Args[number] as D['name']]: D extends { optional: true } ? ArgValue<D> | undefined : ArgValue<D>
 }
-export type CommandArgs<Id extends CommandId> = ResolvedArgs<CommandDeclaration<Id>['args']>
+type OptionValue<D extends OptionDef> = D extends { kind: 'flag' }
+	? boolean
+	: D extends { kind: 'int' | 'duration' }
+		? number | undefined
+		: string | undefined
+export type ResolvedOptions<Options extends readonly OptionDef[]> = { [D in Options[number] as D['name']]: OptionValue<D> }
+
+// a handler's positional arguments and its options, on one object
+export type CommandArgs<Id extends CommandId> = ResolvedArgs<CommandDeclaration<Id>['args']> &
+	ResolvedOptions<CommandDeclaration<Id>['options']>
+
+export function commandOptions(id: CommandId): readonly OptionDef[] {
+	return COMMAND_DECLARATIONS[id].options as readonly OptionDef[]
+}
 
 // -------- Helpers --------
 
@@ -998,6 +1106,121 @@ export function parseCommand(msg: SM.RconEvents.ChatMessage, configs: AnyCommand
 		trigger: match.trigger,
 		tokens: args === undefined ? typed : expandTriggerArgs(args, typed),
 	}
+}
+
+// -------- options --------
+
+// what each typed option said: `true` for a flag, and the word given for anything else
+export type OptionTokens = Record<string, string | true>
+
+export type ParseOptionsResult =
+	// `positional` are the words left for the positional arguments, in order. `canonical` is the whole input rewritten
+	// with every option first and a `--` before the positionals, so parsing it again gives the same result whatever the
+	// positionals look like (see canonicalTokens).
+	| { code: 'ok'; options: OptionTokens; positional: string[]; canonical: string[] }
+	| { code: 'err:unknown-option'; option: string; suggestion?: string }
+	| { code: 'err:missing-value'; option: string }
+	| { code: 'err:unexpected-value'; option: string }
+
+const LONG_OPTION = /^--([a-z][a-z0-9-]*)(?:=(.*))?$/i
+const SHORT_OPTION = /^-([a-z][a-z0-9-]*)(?:=(.*))?$/i
+
+// Pulls the options out of a command's words, wherever they sit. A word that looks like an option but names none of
+// `defs` is refused rather than taken as a positional, so a typo cannot quietly become part of a message. A dash
+// followed by anything but a letter, such as `-5`, is a positional. Matching is case-insensitive. A repeated option
+// keeps the last value given.
+export function parseOptions(defs: readonly OptionDef[], tokens: readonly string[]): ParseOptionsResult {
+	const options: OptionTokens = {}
+	const positional: string[] = []
+	for (let i = 0; i < tokens.length; i++) {
+		const token = tokens[i]
+		if (token === '--') {
+			positional.push(...tokens.slice(i + 1))
+			break
+		}
+		const long = LONG_OPTION.exec(token)
+		const short = long ? null : SHORT_OPTION.exec(token)
+		const match = long ?? short
+		if (!match) {
+			positional.push(token)
+			continue
+		}
+		const key = match[1].toLowerCase()
+		const def = long ? defs.find((d) => d.name === key) : defs.find((d) => d.short === key)
+		if (!def) {
+			const [suggestion] = Str.nearest(
+				token,
+				defs.flatMap((d) => [`--${d.name}`, ...(d.short ? [`-${d.short}`] : [])]),
+				1,
+			)
+			return { code: 'err:unknown-option', option: token, suggestion }
+		}
+		const inline = match[2]
+		if (def.kind === 'flag') {
+			if (inline !== undefined) return { code: 'err:unexpected-value', option: token.split('=')[0] }
+			options[def.name] = true
+			continue
+		}
+		const value = inline ?? tokens[i + 1]
+		if (value === undefined || value === '' || (inline === undefined && value === '--')) {
+			return { code: 'err:missing-value', option: token.split('=')[0] }
+		}
+		if (inline === undefined) i++
+		options[def.name] = value
+	}
+	return { code: 'ok', options, positional, canonical: canonicalTokens(defs, options, positional) }
+}
+
+function canonicalTokens(defs: readonly OptionDef[], options: OptionTokens, positional: string[]): string[] {
+	if (defs.length === 0) return positional
+	const optionTokens = Object.entries(options).map(([name, value]) => (value === true ? `--${name}` : `--${name}=${value}`))
+	return [...optionTokens, '--', ...positional]
+}
+
+// The typed options as a handler receives them: an absent flag is false, and an absent valued option undefined.
+export function resolveOptionValues(
+	defs: readonly OptionDef[],
+	typed: OptionTokens,
+): { code: 'ok'; values: Record<string, unknown> } | { code: 'err'; msg: string } {
+	const values: Record<string, unknown> = {}
+	for (const def of defs) {
+		const token = typed[def.name]
+		switch (def.kind) {
+			case 'flag':
+				values[def.name] = token === true
+				break
+			case 'string':
+				values[def.name] = token === true ? undefined : token
+				break
+			case 'int': {
+				if (token === undefined || token === true) break
+				const res = coerceIntArg(`--${def.name}`, token)
+				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				values[def.name] = res.value
+				break
+			}
+			case 'duration': {
+				if (token === undefined || token === true) break
+				const res = resolveDurationArg(`--${def.name}`, token)
+				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				values[def.name] = res.value
+				break
+			}
+			default:
+				def satisfies never
+		}
+	}
+	return { code: 'ok', values }
+}
+
+export function shiftArgTokenRanges(ranges: ArgTokenRanges, by: number): ArgTokenRanges {
+	return Obj.map(ranges, (range) => range && { start: range.start + by, len: range.len })
+}
+
+// renders one option's usage token: `[-i|--internal]`, `[-d|--duration <duration>]`
+export function formatOption(def: OptionDef): string {
+	const names = def.short ? `-${def.short}|--${def.name}` : `--${def.name}`
+	return def.kind === 'flag' ? `[${names}]` : `[${names} <${def.kind === 'string' ? 'value' : def.kind}>]`
 }
 
 export type ArgTokenWindows = Record<string, string[] | undefined>
@@ -1371,7 +1594,11 @@ export function formatTriggerSignature(
 	requiredReasonActions: readonly AMS.AdminActionType[] = [],
 ): string {
 	const template = triggerArgs(trigger)
-	if (template === undefined) return formatArgSignature(COMMAND_DECLARATIONS[cmdId].args, requiredReasonActions)
+	if (template === undefined) {
+		return [...commandOptions(cmdId).map(formatOption), formatArgSignature(COMMAND_DECLARATIONS[cmdId].args, requiredReasonActions)]
+			.filter((part) => part !== '')
+			.join(' ')
+	}
 	const res = resolveTriggerArgs(cmdId, template)
 	if (res.code !== 'ok') return ''
 	return res.params

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePlayer } from '@/emulator'
+import * as RRS from '@/models/repeat-rulesets.models'
 
 import { ADMIN_USER, type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { cmd, LAYERS, queue, voteQueueItem } from '../harness/arrange'
@@ -192,7 +193,7 @@ describe('in-game admin commands', () => {
 			timeoutMs: autoStartVoteDelay + 5_000,
 		})
 
-		const startRes = await orpc.vote.startVote({ serverId: app.serverId })
+		const startRes = await orpc.vote.startVote({ serverId: app.serverId, kind: 'layer', itemId: savedQueue(app)[0].itemId })
 		expect(startRes.code).toBe('ok')
 		expect(appEventTypes(app, newMatchId).filter((t) => t === 'VOTE_STARTED')).toHaveLength(1)
 
@@ -202,6 +203,203 @@ describe('in-game admin commands', () => {
 			},
 			layerQueue: queue(LAYERS.sumariSeed),
 		})
+	})
+})
+
+// the id a layer vote's start result names the vote by
+function runningVoteId(started: unknown): string {
+	return (started as { voteStateUpdate: { state: { voteId: string } } }).voteStateUpdate.state.voteId
+}
+
+// /vote draws its choices from the main pool, and /simplevote runs a vote that never touches the queue. Both start
+// from the queue the block above leaves: a single seed layer, no vote running, and autostart off.
+describe('votes from chat', () => {
+	let orpc: TestOrpcClient
+	beforeAll(async () => {
+		orpc = await createOrpcClient(app)
+	})
+
+	it('puts a vote with one layer per typed map first in the queue, with the text typed for a choice', async () => {
+		// earlier tests played some of these maps, and a repeat rule would rightly leave them out
+		await rearrange(app, { layerQueue: queue(LAYERS.sumariSeed), repeatRules: [] })
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('vote narva:Night_ops skorpo'))
+
+		const reply = await app.waitFor(() => warnsToAdmin().find((w) => /Vote added first in the queue/.test(w)), {
+			label: 'the reply to vote',
+			timeoutMs: 20_000,
+		})
+		expect(reply).toMatch(/1\. Night ops/)
+		const [head, ...rest] = savedQueue(app)
+		expect(head.type).toBe('vote-list-item')
+		expect(head.choices!.map((c) => c.layerId.split('_')[0]).sort()).toEqual(['Narva', 'Skorpo'])
+		const narva = head.choices!.find((c) => c.layerId.startsWith('Narva'))!
+		expect(head.voteConfig?.choiceTexts).toEqual([{ layerId: narva.layerId, text: 'Night ops' }])
+		expect(rest.map((i) => i.layerId)).toEqual([LAYERS.sumariSeed])
+	})
+
+	it('refuses choices of different kinds', async () => {
+		const before = savedQueue(app)
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('vote narva raas'))
+
+		await app.waitFor(() => warnsToAdmin().some((w) => /Every choice must be the same kind/.test(w)), {
+			label: 'the mixed-field refusal',
+			timeoutMs: 20_000,
+		})
+		expect(savedQueue(app)).toEqual(before)
+	})
+
+	it('reports a choice the pool cannot meet and queues nothing', async () => {
+		const before = savedQueue(app)
+		// the mod layer is outside the pool: the test server does not have SuperMod installed
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('vote Narva_RAAS_v1 SU_Sanxian_Invasion_v2'))
+
+		await app.waitFor(() => warnsToAdmin().some((w) => /No layer in the pool matches "SU_Sanxian_Invasion_v2"/.test(w)), {
+			label: 'the unfilled-choice refusal',
+			timeoutMs: 20_000,
+		})
+		expect(savedQueue(app)).toEqual(before)
+	})
+
+	// Restarting an aborted vote clears its result first, and that queue change stages a "ready" state the start then
+	// replaces. Watchers must end on the running vote rather than on the staged state.
+	it('restarts an aborted vote, and watchers end on the running vote', async () => {
+		const itemId = savedQueue(app)[0].itemId
+		const received: { code: string; state?: { code: string } | null; update?: { state?: { code: string } | null } }[] = []
+		const ac = new AbortController()
+		const watching = (async () => {
+			const stream = await orpc.vote.watchUpdates({ serverId: app.serverId }, { signal: ac.signal })
+			for await (const update of stream) received.push(update as (typeof received)[number])
+		})().catch(() => {})
+		try {
+			await app.waitFor(() => received.some((u) => u.code === 'initial-state') || undefined, { label: 'the initial vote state' })
+
+			const first = await orpc.vote.startVote({ serverId: app.serverId, kind: 'layer', itemId })
+			expect(first.code).toBe('ok')
+			const firstId = runningVoteId(first)
+			expect((await orpc.vote.abortVote({ serverId: app.serverId, voteId: firstId })).code).toBe('ok')
+
+			const second = await orpc.vote.startVote({ serverId: app.serverId, kind: 'layer', itemId })
+			expect(second.code).toBe('ok')
+			// anything staged behind the start is sent once its locks are released, and this call queues behind them
+			await orpc.vote.cancelVoteAutostart({ serverId: app.serverId })
+
+			const states = received.filter((u) => u.code === 'update' && u.update && 'state' in u.update)
+			expect(states.at(-1)?.update?.state?.code).toBe('in-progress')
+
+			const secondId = runningVoteId(second)
+			expect((await orpc.vote.abortVote({ serverId: app.serverId, voteId: secondId })).code).toBe('ok')
+		} finally {
+			ac.abort()
+			await watching
+		}
+	})
+
+	it('starts the queued vote among the admins with /startvote --internal', async () => {
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('startvote -i -d 1m'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /Vote for the next layer \(internal\):/.test(w)), {
+			label: 'the internal vote warned to the admins',
+			timeoutMs: 20_000,
+		})
+		expect(await orpc.history.query({ query: { voteKind: 'layer', voteVoters: 'internal' } })).toMatchObject({ code: 'ok', total: 1 })
+
+		// an earlier test's abort warned the same words, so only what follows this one counts
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('abortvote'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /The vote has been aborted/.test(w)), {
+			label: 'the abort warned to the admins',
+			timeoutMs: 20_000,
+		})
+	})
+
+	it('runs a simple vote: broadcasts the choices, counts a vote, and ends it early', async () => {
+		const queueBefore = savedQueue(app)
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('simplevote yes, not sure'))
+
+		const started = await app.emu.expectCommand(/^AdminBroadcast /, { timeoutMs: 20_000 })
+		expect(started.body).toMatch(/1\. yes/)
+		expect(started.body).toMatch(/2\. not sure/)
+
+		app.emu.world.chat(admin, 'ChatAll', '2')
+		await app.waitFor(() => warnsToAdmin().some((w) => /Vote cast for not sure/.test(w)), {
+			label: 'the vote cast receipt',
+			timeoutMs: 20_000,
+		})
+
+		// an end aimed at another vote leaves this one running
+		const stale = await orpc.vote.endVoteEarly({ serverId: app.serverId, voteId: 'not-this-vote' })
+		expect(stale.code).toBe('err:vote-changed')
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('endvote'))
+		const ended = await app.emu.expectCommand(/^AdminBroadcast /, { timeoutMs: 20_000 })
+		expect(ended.body).toMatch(/\[WINNER\] not sure/)
+
+		const types = appEventTypes(app)
+		expect(types).toContain('VOTE_STARTED')
+		expect(types).toContain('VOTE_ENDED')
+		expect(savedQueue(app)).toEqual(queueBefore)
+	})
+
+	it('refuses a mistyped option, naming the one it meant', async () => {
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('simplevote --intrnal Push, Hold'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /Unknown option "--intrnal"\. Did you mean --internal\?/.test(w)), {
+			label: 'the unknown-option refusal',
+			timeoutMs: 20_000,
+		})
+	})
+
+	it('runs an internal simple vote among the admins, cast in admin chat', async () => {
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('simplevote -i --duration=1m Push, Hold'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /Vote \(internal\):/.test(w)), {
+			label: 'the internal vote warned to the admins',
+			timeoutMs: 20_000,
+		})
+
+		app.emu.world.chat(admin, 'ChatAll', '1')
+		await app.waitFor(() => warnsToAdmin().some((w) => /Vote must be cast in AdminChat/.test(w)), {
+			label: 'the wrong-chat refusal',
+			timeoutMs: 20_000,
+		})
+		app.emu.world.chat(admin, 'ChatAdmin', '1')
+		await app.waitFor(() => warnsToAdmin().some((w) => /Vote cast for Push/.test(w)), {
+			label: 'the vote cast receipt',
+			timeoutMs: 20_000,
+		})
+
+		// an earlier test's abort warned the same words, so only what follows this one counts
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('abortvote'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /The vote has been aborted/.test(w)), {
+			label: 'the abort warned to the admins',
+			timeoutMs: 20_000,
+		})
+	})
+
+	// The simple votes above: a public one that "not sure" won, and an internal one between Push and Hold that was
+	// aborted. Every vote event names its choices, and only the event that ended a vote has an outcome or a winner.
+	it('finds vote events by kind, outcome, voters, choice and winner', async () => {
+		const total = async (query: Record<string, unknown>) => {
+			const res = await orpc.history.query({ query: query as never })
+			if (res.code !== 'ok' || (res.type !== 'events' && res.type !== 'matches')) throw new Error(`query failed: ${res.code}`)
+			return res.total
+		}
+		expect(await total({ voteKind: 'simple' })).toBe(4)
+		expect(await total({ voteKind: 'simple', voteWinner: 'not sure' })).toBe(1)
+		expect(await total({ voteKind: 'simple', voteOutcome: 'aborted', voteVoters: 'internal' })).toBe(1)
+		// matched as a case-insensitive substring
+		expect(await total({ voteChoice: 'pus' })).toBe(2)
+		expect(await total({ type: 'matches', voteWinner: 'not sure' })).toBe(1)
+	})
+
+	it('reads words as choices without commas, and refuses a repeated choice', async () => {
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('simplevote yes not_sure Yes'))
+		await app.waitFor(() => warnsToAdmin().some((w) => /"Yes" is listed twice/.test(w)), {
+			label: 'the duplicate-choice refusal',
+			timeoutMs: 20_000,
+		})
+		// the blocks below read the seeded queue's maps back from shownext
+		await rearrange(app, { layerQueue: queue(LAYERS.sumariSeed), repeatRules: [...RRS.DEFAULT_RULES] })
 	})
 })
 

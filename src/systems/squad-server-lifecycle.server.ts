@@ -31,6 +31,7 @@ import type * as SS from '@/models/server-state.models'
 import * as SLL from '@/models/shared-layer-list.models'
 import type * as SQS from '@/models/squad-server.models'
 import * as SM from '@/models/squad.models'
+import * as V from '@/models/vote.models'
 import type * as C from '@/server/context.ts'
 import * as DB from '@/server/db'
 import * as Instr from '@/server/instrumentation'
@@ -617,8 +618,10 @@ async function setupManagedServer(ctx: C.Db & CS.AbortSignal, serverState: SS.Se
 									// a number this player was just asked for outranks the same number as a vote: the prompt was
 									// solicited from them seconds ago and clears itself either way (see command-prompts.server)
 									opts.push(Commands.handleChoiceAnswer(ctx, event).then((res) => Commands.logResult(event, res)))
-								} else if (event.message.trim().match(/^\d+$/) && ctx.vote.state?.code === 'in-progress') {
+								} else if (event.message.trim().match(/^\d+$/) && V.runningVote(ctx.vote) === 'layer') {
 									opts.push(Vote.handleVote(ctx, event))
+								} else if (event.message.trim().match(/^\d+$/) && V.runningVote(ctx.vote) === 'simple') {
+									opts.push(Vote.handleSimpleVote(ctx, event))
 								}
 							}
 							await Promise.all(opts)

@@ -24,7 +24,7 @@ export function savedQueue(
 	source: { type: string; requesters?: { steamId?: string }[] }
 	choices?: { layerId: string }[]
 	tags?: string[]
-	voteConfig?: { displayProps?: string[] }
+	voteConfig?: { displayProps?: string[]; choiceTexts?: { layerId: string; text: string }[] }
 }[] {
 	const db = app.readDb()
 	try {

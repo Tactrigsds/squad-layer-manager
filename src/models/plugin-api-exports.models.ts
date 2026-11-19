@@ -316,4 +316,5 @@ export const PLUGIN_API_EXPORTS: Record<string, readonly string[]> = {
 	],
 	'slm/systems/squad-server': ['endMatch', 'events$', 'getCurrTeams', 'kickPlayers', 'peekCurrentMatch', 'tryKickPlayers'],
 	'slm/systems/tags': ['ensure', 'list'],
+	'slm/systems/vote': ['SIMPLE_VOTE_LIMITS', 'simpleVote$', 'startVote'],
 }

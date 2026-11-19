@@ -59,6 +59,40 @@ describe('app-events persistence', () => {
 		expect(back.payload).toEqual({ seedLayerId: text, history: { layerIds: [text] }, count: 3 })
 	})
 
+	it('reads a vote event recorded before simple votes as a layer vote', () => {
+		const e = AppEvents.create<AppEvents.VoteEnded>({
+			type: 'VOTE_ENDED',
+			actor: { type: 'system' },
+			serverId: 's1',
+			matchId: 1,
+			causeId: null,
+			vote: { kind: 'layer', winnerLayerId: null },
+			reason: 'vote-timeout',
+		})
+		const row = AppEvents.toRow(e, SETTINGS.redactSettingValue) as any
+		const layer = 'Gorodok_RAAS_v1:USA+CombinedArms:RGF+CombinedArms'
+		row.data = superjson.serialize({
+			itemId: 'item-00000001',
+			reason: 'ended-early',
+			winnerLayerId: layer,
+			tally: [{ layerId: layer, votes: 4 }],
+			totalVotes: 4,
+		})
+		const back = AppEvents.fromRow(row) as AppEvents.VoteEnded
+		expect(back.reason).toBe('ended-early')
+		expect(back.totalVotes).toBe(4)
+		if (back.vote.kind !== 'layer') throw new Error(back.vote.kind)
+		expect(back.vote.itemId).toBe('item-00000001')
+		expect(L.toLayerText(back.vote.winnerLayerId!)).toBe(layer)
+		expect(back.vote.tally?.map((t) => [L.toLayerText(t.layerId), t.votes])).toEqual([[layer, 4]])
+		// what the backfill (migration 0146) indexes for it: no voters or labels were recorded then
+		const facts = AppEvents.associationRows(back).filter((r) => r.dimension === 'vote')
+		expect(facts.map((r) => [r.role, r.value])).toEqual([
+			['kind', 'layer'],
+			['outcome', 'winner'],
+		])
+	})
+
 	it('returns null when the persisted payload fails validation', () => {
 		const e = AppEvents.create<AppEvents.VoteStarted>({
 			type: 'VOTE_STARTED',
@@ -66,6 +100,7 @@ describe('app-events persistence', () => {
 			serverId: 's1',
 			matchId: 1,
 			causeId: null,
+			vote: { kind: 'layer' },
 			choiceCount: 3,
 		})
 		const row = AppEvents.toRow(e, SETTINGS.redactSettingValue) as any

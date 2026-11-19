@@ -1,9 +1,14 @@
 import type * as Cleanup from '@/lib/cleanup'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
+import { toast } from '@/lib/toast'
+import * as V_Msgs from '@/messages/vote.messages'
 import * as V from '@/models/vote.models'
 import * as RPC from '@/orpc.client'
+import * as RBAC from '@/rbac.models'
+import { tr } from '@/systems/messages.client'
 import * as PartsSys from '@/systems/parts.client'
+import * as RbacClient from '@/systems/rbac.client'
 
 // casts arrive as deltas against the state before them, so the state is folded on the stream that receives them in
 // order, before the binding that shares it
@@ -37,7 +42,54 @@ export const [useVoteState, voteState$] = ReactRx.bindWithDefault(
 	null,
 )
 
+// casts arrive as deltas, folded in order as voteStateCold$ folds them
+export const [useSimpleVoteState, simpleVoteState$] = ReactRx.bindWithDefault(
+	(serverId: string) =>
+		RPC.observe('vote.watchSimpleVote', () => RPC.orpc.vote.watchSimpleVote.call({ serverId })).pipe(
+			RPC.dropUnavailable(),
+			Rx.scan((state: V.SimpleVote.State | null, update) => V.SimpleVote.applyUpdate(state, update), null),
+		),
+	null,
+)
+
 export function watchServer(serverId: string, cleanup: Cleanup.Tasks) {
 	cleanup.push(voteStateUpdate$(serverId).subscribe())
 	cleanup.push(voteState$(serverId).subscribe())
+	cleanup.push(simpleVoteState$(serverId).subscribe())
+}
+
+export namespace Actions {
+	// resolves true once the vote has started, so a caller can clear what it was typed into
+	export async function startVote(serverId: string, opts: V.StartVoteOpts): Promise<boolean> {
+		if (opts.kind === 'simple') {
+			const choicesError = V.SimpleVote.validateChoices(opts.choices)
+			if (choicesError) {
+				toast.error(tr.text(V_Msgs.simpleChoicesError(choicesError)))
+				return false
+			}
+		}
+		const res = await RPC.orpc.vote.startVote.call({ serverId, ...opts })
+		return reportResult(res, V_Msgs.adminReceipt.started())
+	}
+
+	// a vote is named by the id it ran under when the admin saw it, so a late click cannot end a vote started since
+	export async function endVoteEarly(serverId: string, voteId: string) {
+		const res = await RPC.orpc.vote.endVoteEarly.call({ serverId, voteId })
+		reportResult(res, V_Msgs.adminReceipt.endedEarly())
+	}
+
+	export async function abortVote(serverId: string, voteId: string) {
+		const res = await RPC.orpc.vote.abortVote.call({ serverId, voteId })
+		reportResult(res, V_Msgs.adminReceipt.aborted())
+	}
+
+	function reportResult(res: { code: string }, receipt: ReturnType<typeof V_Msgs.adminReceipt.aborted>): boolean {
+		if (res.code === 'ok') {
+			toast(...tr.toast(receipt))
+			return true
+		}
+		if (RBAC.isPermissionDenied(res)) RbacClient.handlePermissionDenied(res)
+		else toast.error('msg' in res && typeof res.msg === 'string' ? res.msg : res.code)
+		return false
+	}
 }

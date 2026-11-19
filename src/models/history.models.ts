@@ -5,6 +5,7 @@ import { z } from '@/lib/zod'
 import * as CHAT from '@/models/chat.models'
 import * as F from '@/models/filter.models'
 import * as SM from '@/models/squad.models'
+import * as V from '@/models/vote.models'
 
 // The history page's query model. A query is one flat object -- exactly the page's url search params -- and
 // everything (saving, sharing, recents) stores or replays that object. Basic mode's fields and advanced
@@ -170,6 +171,17 @@ export const COLUMN_DEFS = {
 	'layer.gamemode': { key: 'layer.gamemode', domain: { kind: 'dynamic-enum', source: 'gamemodes' } },
 	'layer.faction': { key: 'layer.faction', domain: { kind: 'dynamic-enum', source: 'factions' } },
 	'layer.unit': { key: 'layer.unit', domain: { kind: 'dynamic-enum', source: 'units' } },
+	// What a vote event says about its vote (EM.VoteFacts). Only VOTE_STARTED, VOTE_ENDED and VOTE_ABORTED have these,
+	// so they read as false against everything else, and a match matches when a vote in it does. Each vote event
+	// carries the kind, voters and choices, so one event answers "an internal vote offering X" on its own. An outcome
+	// and a winner are on the event that ended the vote.
+	'vote.kind': { key: 'vote.kind', domain: { kind: 'enum', options: V.VOTE_KINDS } },
+	'vote.outcome': { key: 'vote.outcome', domain: { kind: 'enum', options: V.VOTE_OUTCOMES } },
+	'vote.voterType': { key: 'vote.voterType', domain: { kind: 'enum', options: V.VOTER_TYPE.options } },
+	// what players saw for a choice: a simple vote's text, or a layer vote's choice text or layer. `eq` reads as
+	// "contains".
+	'vote.choice': { key: 'vote.choice', domain: { kind: 'text' } },
+	'vote.winner': { key: 'vote.winner', domain: { kind: 'text' } },
 } as const satisfies Record<string, { key: string; domain: ColumnDomain }>
 
 // Faction and unit are matched against both sides at once: historically "was RGF in this match" is the
@@ -185,6 +197,9 @@ export function isLayerColumn(key: string): key is LayerColumnKey {
 const PLAYER_COLUMN_KEYS = ['player', 'event.attacker', 'event.victim'] as const
 
 /** Columns whose values are player references, and so need resolving before the tree can compile. */
+export const VOTE_COLUMN_KEYS = ['vote.kind', 'vote.outcome', 'vote.voterType', 'vote.choice', 'vote.winner'] as const
+export type VoteColumnKey = (typeof VOTE_COLUMN_KEYS)[number]
+
 export function isPlayerColumn(key: string): key is (typeof PLAYER_COLUMN_KEYS)[number] {
 	return (PLAYER_COLUMN_KEYS as readonly string[]).includes(key)
 }
@@ -428,6 +443,13 @@ const QueryFieldsSchema = z.object({
 	// a layer queue item's id, as the layer history window links to it (see the 'queue.item' column)
 	item: z.string().optional(),
 	minMatches: z.number().int().positive().optional(),
+	// the vote.* columns, one value each: what kind of vote, how it finished, who voted, and text in a choice or the
+	// winner
+	voteKind: z.enum(V.VOTE_KINDS).optional(),
+	voteOutcome: z.enum(V.VOTE_OUTCOMES).optional(),
+	voteVoters: V.VOTER_TYPE.optional(),
+	voteChoice: z.string().optional(),
+	voteWinner: z.string().optional(),
 
 	// one field for all three tabs, read through playerSort/matchSort: the tabs are views over one query, so
 	// a sort set on one carries into the next and falls back where its column means nothing there
@@ -867,6 +889,11 @@ export function queryFilterNode(query: Query): Node {
 	if (query.faction) children.push(comp('layer.faction', [query.faction]))
 	if (query.matchId !== undefined) children.push(comp('match.id', [query.matchId]))
 	if (query.item !== undefined) children.push(comp('queue.item', [query.item]))
+	if (query.voteKind) children.push(comp('vote.kind', [query.voteKind]))
+	if (query.voteOutcome) children.push(comp('vote.outcome', [query.voteOutcome]))
+	if (query.voteVoters) children.push(comp('vote.voterType', [query.voteVoters]))
+	if (query.voteChoice) children.push(comp('vote.choice', [query.voteChoice]))
+	if (query.voteWinner) children.push(comp('vote.winner', [query.voteWinner]))
 	if (query.outcomes?.length) children.push(comp('match.outcome', query.outcomes))
 	if (query.setBy) children.push(comp('match.setBy', [query.setBy]))
 	if (query.setByUsers?.length) children.push(comp('match.setByUser', query.setByUsers))

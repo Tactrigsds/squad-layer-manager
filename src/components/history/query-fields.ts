@@ -1,4 +1,5 @@
 import * as HQ from '@/models/history.models'
+import * as V from '@/models/vote.models'
 
 // Basic mode's optional fields, as the rail lists them: which control edits one, where it sits in the
 // "+ Filter" menu, and which result types offer it. Server, time, player and user are not here -- they are
@@ -36,8 +37,13 @@ export type FieldKey =
 	| 'faction'
 	| 'layer'
 	| 'minMatches'
+	| 'voteKind'
+	| 'voteOutcome'
+	| 'voteVoters'
+	| 'voteChoice'
+	| 'voteWinner'
 
-export type FieldGroup = 'events' | 'match' | 'layer' | 'players'
+export type FieldGroup = 'events' | 'vote' | 'match' | 'layer' | 'players'
 
 export type RangeBoundKey =
 	| 'ticketDiffMin'
@@ -123,12 +129,17 @@ export const FIELD_DEFS: Record<FieldKey, FieldDef> = {
 	faction: { key: 'faction', group: 'layer', control: { kind: 'layer-part', column: 'Faction_1' } },
 	layer: { key: 'layer', group: 'layer', control: { kind: 'saved-filter' } },
 	minMatches: { key: 'minMatches', group: 'players', control: { kind: 'number', field: 'minMatches', min: 1 }, onlyFor: ['players'] },
+	voteKind: { key: 'voteKind', group: 'vote', control: { kind: 'enum', options: V.VOTE_KINDS } },
+	voteOutcome: { key: 'voteOutcome', group: 'vote', control: { kind: 'enum', options: V.VOTE_OUTCOMES } },
+	voteVoters: { key: 'voteVoters', group: 'vote', control: { kind: 'enum', options: V.VOTER_TYPE.options } },
+	voteChoice: { key: 'voteChoice', group: 'vote', control: { kind: 'text' } },
+	voteWinner: { key: 'voteWinner', group: 'vote', control: { kind: 'text' } },
 }
 
 const GROUP_ORDER: Record<HQ.ResultType, readonly FieldGroup[]> = {
-	events: ['events', 'layer', 'match', 'players'],
-	players: ['players', 'events', 'layer', 'match'],
-	matches: ['match', 'layer', 'events', 'players'],
+	events: ['events', 'vote', 'layer', 'match', 'players'],
+	players: ['players', 'events', 'vote', 'layer', 'match'],
+	matches: ['match', 'layer', 'events', 'vote', 'players'],
 }
 
 // What the rail shows for a result type before anything is asked for: the fields that type's questions are

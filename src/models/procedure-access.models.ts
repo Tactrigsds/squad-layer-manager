@@ -84,6 +84,7 @@ export const PROCEDURE_ACCESS = {
 	'vote.abortVote': onServer('vote:manage'),
 	'vote.cancelVoteAutostart': onServer('vote:manage'),
 	'vote.watchUpdates': VIEW_SERVER,
+	'vote.watchSimpleVote': VIEW_SERVER,
 
 	'config.watchConfig': Access.PUBLIC,
 	'announcements.watch': Access.PUBLIC,

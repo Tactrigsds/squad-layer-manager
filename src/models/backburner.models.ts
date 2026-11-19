@@ -11,6 +11,7 @@ import type * as LC from '@/models/layer-columns.models'
 import type * as L from '@/models/layer.models'
 import type * as Msgs from '@/models/messages.models'
 import * as USR from '@/models/users.models'
+import type * as V from '@/models/vote.models'
 
 export const ItemIdSchema = z.string().min(1)
 export type ItemId = z.infer<typeof ItemIdSchema>
@@ -634,6 +635,73 @@ export function resolveRequestTokens(input: { tokens: string[] } & ResolveInput)
 	if (tooMany) return { code: 'err:too-many', column: tooMany.column!, msg: tooMany.msg }
 
 	return { code: 'ok', value: { filter: buildTemplateFilter(parts), parts: displayParts } }
+}
+
+// -------- vote token resolution (/vote) --------
+
+// the token kinds a vote choice can be drawn from, as the choice constraint each sets. Units are left out: a unit choice
+// constraint pins both teams to that unit.
+const VOTE_CHOICE_FIELDS = {
+	layer: 'Layer',
+	map: 'Map',
+	gamemode: 'Gamemode',
+	size: 'Size',
+} as const satisfies Partial<Record<TokenTarget['kind'], V.GenVote.ChoiceConstraintKey>>
+
+export type VoteChoiceField = (typeof VOTE_CHOICE_FIELDS)[keyof typeof VOTE_CHOICE_FIELDS]
+
+// One vote choice: the value it is drawn from, and the text players see for it in place of the layer's name.
+export type VoteChoiceToken = { value: string; text?: string }
+
+export type ResolveVoteTokensResult =
+	| { code: 'ok'; field: VoteChoiceField; choices: VoteChoiceToken[]; filterIds: string[] }
+	| { code: 'err:empty' }
+	| { code: 'err:unknown-token' | 'err:ambiguous-token'; token: string; msg: Msgs.Variants.Textable; suggestions: string[] }
+	// the token names something a vote choice cannot be drawn from, such as a faction
+	| { code: 'err:unsupported-field'; token: string; value: string }
+	| { code: 'err:mixed-fields'; fields: VoteChoiceField[] }
+	// a filter token carried a text, which only a choice can have
+	| { code: 'err:text-on-filter'; token: string }
+
+// A /vote word and the text after its first colon, when it has one. An underscore in the text stands for a space.
+export function splitVoteToken(token: string): { word: string; text?: string } {
+	const colon = token.indexOf(':')
+	if (colon < 0) return { word: token }
+	const text = token
+		.slice(colon + 1)
+		.replaceAll('_', ' ')
+		.trim()
+	return { word: token.slice(0, colon), text: text.length > 0 ? text : undefined }
+}
+
+// Each token is a vote choice or a filter, and a choice may carry its text as `word:text`. Filter tokens apply to every
+// choice, and every choice token must name the same field: all maps, all layers, all gamemodes or all sizes. A repeated
+// value is one choice, which keeps the first text given for it.
+export function resolveVoteTokens(input: { tokens: string[] } & ResolveInput): ResolveVoteTokensResult {
+	const tokens = input.tokens.map((t) => t.trim()).filter((t) => t.length > 0)
+	if (tokens.length === 0) return { code: 'err:empty' }
+
+	const exact = buildExactLookup(input.components)
+	const choices: VoteChoiceToken[] = []
+	const filterIds: string[] = []
+	const fields: VoteChoiceField[] = []
+	for (const token of tokens) {
+		const { word, text } = splitVoteToken(token)
+		const res = resolveToken(word, exact, input)
+		if (res.code !== 'ok') return { code: res.code, token: res.token, msg: res.msg, suggestions: res.suggestions }
+		const target = res.target
+		if (target.kind === 'filter') {
+			if (text !== undefined) return { code: 'err:text-on-filter', token }
+			if (!filterIds.includes(target.filterId)) filterIds.push(target.filterId)
+			continue
+		}
+		const field = (VOTE_CHOICE_FIELDS as Partial<Record<TokenTarget['kind'], VoteChoiceField>>)[target.kind]
+		if (!field) return { code: 'err:unsupported-field', token: word, value: target.value }
+		if (!fields.includes(field)) fields.push(field)
+		if (!choices.some((c) => c.value === target.value)) choices.push({ value: target.value, text })
+	}
+	if (fields.length > 1) return { code: 'err:mixed-fields', fields }
+	return { code: 'ok', field: fields[0] ?? 'Map', choices, filterIds }
 }
 
 // The search box's reading of a request: every token that resolves is applied, and each one that does not is

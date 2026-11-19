@@ -123,7 +123,17 @@ admins.
 ![a vote in progress](../images/features/vote_in_progress.png)
 
 Each vote sets its own duration, and which parts of a layer the choices spell out, such as the map, gamemode or
-factions.
+factions. A choice can also show players a text of its own in place of its layer.
+
+A running vote shows its tally and countdown in a box at the top of the activity feed, with the controls to end or
+abort it.
+
+In game, `/vote narva skorpo goro` generates a vote with one layer from the pool for each map named, and puts the vote
+first in the queue. The choices can also all be layers, gamemodes or sizes. When the pool has no layer for a choice,
+SLM names that choice and queues nothing.
+
+A simple vote asks players to choose between text choices and leaves the queue as it is. Start one with
+`/simplevote yes, no, not sure` in game, or from the activity panel's chat box.
 
 ## Squad's in-game voting
 

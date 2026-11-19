@@ -186,8 +186,7 @@ const GenVoteDialogContent = React.memo<GenVoteDialogContentProps>(function GenV
 
 	const handleSetVoteConfig = (config: Partial<V.AdvancedVoteConfig> | null) => {
 		if (config === null) {
-			// full reset: Actions.setVoteConfig merges onto existing state, so clear it out first via replace
-			Zus.resolveStore<GenVoteFrame.Types['state']>(frameKey).setState({ voteConfig: {} })
+			GenVoteFrame.Actions.replaceVoteConfig(genVoteStores, {})
 		} else {
 			GenVoteFrame.Actions.setVoteConfig(genVoteStores, config)
 		}

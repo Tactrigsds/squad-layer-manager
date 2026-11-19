@@ -1,7 +1,7 @@
 import * as Arr from '@/lib/array-utils'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
-import { def, join, t, type TString } from '@/models/messages.models'
+import { def, join, rt, t, type TString } from '@/models/messages.models'
 import type * as SM from '@/models/squad.models'
 
 // A bare "admin" badge reads as "admins can use this" rather than "only admin chat accepts this", which is what it means.
@@ -106,6 +106,36 @@ export namespace PingAdmins {
 	)
 }
 
+export const optionsHeading = def('Options')
+
+export const optionsSyntaxHint = def(
+	rt(
+		'Options go anywhere after the command. A value follows its option after a space or an equals sign: <code>--duration 2m</code> or <code>--duration=2m</code>. Write <code>--</code> before any word that starts with a dash and is not an option.',
+	),
+)
+
+export const optionError = def(
+	(
+		error:
+			| { code: 'err:unknown-option'; option: string; suggestion?: string }
+			| { code: 'err:missing-value'; option: string }
+			| { code: 'err:unexpected-value'; option: string },
+	) => {
+		switch (error.code) {
+			case 'err:unknown-option':
+				return t('Unknown option "{option}".{hasSuggestion, select, yes { Did you mean {suggestion}?} other {}}', {
+					option: error.option,
+					hasSuggestion: error.suggestion ? 'yes' : 'no',
+					suggestion: error.suggestion,
+				})
+			case 'err:missing-value':
+				return t('{option} needs a value', { option: error.option })
+			case 'err:unexpected-value':
+				return t('{option} takes no value', { option: error.option })
+		}
+	},
+)
+
 // Keyed reference data rather than a message: no target axis applies to a lookup table, but each entry is still
 // prose a reader sees, in the help listing and on the commands page.
 export const descriptions = {
@@ -113,6 +143,8 @@ export const descriptions = {
 	startVote: t('Start the configured vote'),
 	abortVote: t('Abort the current vote'),
 	endVoteEarly: t('End the current vote early'),
+	vote: t('Generate a vote and put it first in the queue, with one choice per map, layer, gamemode or size'),
+	simpleVote: t('Start a vote between text choices that does not change the queue'),
 	showNext: t('Show the next item in the queue'),
 	tickets: t("Show each team's tickets and K/D in the current match"),
 	enableSlmUpdates: t('Allow SLM to set the next layer'),

@@ -77,7 +77,7 @@ export default definePlugin({
 	id: 'my-plugin',
 	name: 'My Plugin',
 	version: '1.0.0',
-	apiVersion: '^0.23',
+	apiVersion: '^0.24',
 	description: 'One line, shown to admins in settings.',
 	configSchema: z.object({
 		greeting: z.string().prefault('hello').describe('What the plugin answers with'),
@@ -921,6 +921,7 @@ absent.
 | `slm/systems/player-activity`                              | who SLM counts as idle, and since when       |
 | `slm/systems/discord`                                      | posting text, embeds and files to a channel  |
 | `slm/systems/layer-queue`                                  | queue reads and edits                        |
+| `slm/systems/vote`                                         | starting layer and simple votes              |
 | `slm/systems/match-history`                                | match reads, and a match's activity feed     |
 | `slm/systems/filter-entity`                                | filter reads and writes                      |
 | `slm/systems/rotation`                                     | rotation reads and writes                    |

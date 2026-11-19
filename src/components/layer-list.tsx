@@ -1,5 +1,4 @@
 import * as RQ from '@tanstack/react-query'
-import * as dateFns from 'date-fns'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -27,7 +26,6 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx'
 import * as LayerQueuePrt from '@/frame-partials/layer-queue.partial'
@@ -37,7 +35,6 @@ import * as SelectLayersFrame from '@/frames/select-layers.frame.ts'
 import * as Browser from '@/lib/browser.ts'
 import * as Obj from '@/lib/object-utils'
 import { inline, useStable } from '@/lib/react.ts'
-import * as Str from '@/lib/string-utils'
 import { toast } from '@/lib/toast'
 import { assertNever } from '@/lib/type-guards.ts'
 import { resToOptional } from '@/lib/types.ts'
@@ -428,7 +425,6 @@ type ServerRowState = {
 	layersStatus:
 		| NonNullable<ReturnType<typeof resToOptional<NonNullable<ReturnType<typeof SquadServerClient.useLayersStatus>>>>>['data']
 		| undefined
-	playerCount: ReturnType<typeof SquadServerClient.usePlayerCount>
 	nextLayerSyncState: ReturnType<typeof LayerQueueClient.useNextLayerSyncState>
 }
 
@@ -436,7 +432,6 @@ function useServerRowState(serverId: string): ServerRowState {
 	return {
 		globalVoteState: VoteClient.useVoteState(serverId),
 		layersStatus: resToOptional(SquadServerClient.useLayersStatus(serverId))?.data,
-		playerCount: SquadServerClient.usePlayerCount(serverId),
 		nextLayerSyncState: LayerQueueClient.useNextLayerSyncState(serverId),
 	}
 }
@@ -550,13 +545,7 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 	} satisfies Partial<ItemDropdownProps>
 
 	const layersStatus = props.server?.layersStatus
-	const playerCount = props.server?.playerCount ?? null
-	const tally =
-		voteState && V.isVoteStateWithVoteData(voteState) && playerCount !== null ? V.tallyVotes(voteState, playerCount) : undefined
-
-	const itemChoiceTallyPercentage = isVoteChoice && voteState ? tally?.percentages?.get(item.itemId) : undefined
 	const isVoteWinner = isVoteChoice && voteState?.code === 'ended:winner' && voteState?.winnerId === item.itemId
-	const voteCount = isVoteChoice && voteState ? tally?.totals?.get(item.itemId) : undefined
 	const updatesDisabled = Zus.useStore(props.stores.listHost, (s) => s.settings.saved.updatesToSquadServerDisabled)
 	const committing = Zus.useStore(props.stores.listHost, LayerQueuePrt.Sel.committing)
 	const nextLayerSyncState = props.server?.nextLayerSyncState
@@ -569,6 +558,14 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 		badges.unshift(
 			<Badge key="default-choice" variant="secondary">
 				{tr.text(LL_Msgs.defaultChoice())}
+			</Badge>,
+		)
+	}
+	const choiceText = parentItem && V.choiceText(parentItem.voteConfig, item.layerId)
+	if (choiceText) {
+		badges.unshift(
+			<Badge key="choice-text" variant="outline" title={tr.text(V_Msgs.choiceTextsLabel())}>
+				{choiceText}
 			</Badge>,
 		)
 	}
@@ -757,12 +754,6 @@ function SingleLayerListRow(props: LayerListItemProps & { server?: ServerRowStat
 								)
 							}
 						/>
-						{itemChoiceTallyPercentage !== undefined && (
-							<span className="flex space-x-1 items-center">
-								<Progress value={itemChoiceTallyPercentage} className={cn('h-2', isVoteWinner && '[&>div]:bg-added')} />
-								<span>{voteCount}</span>
-							</span>
-						)}
 					</span>
 					<span className={cn('flex items-center gap-1.5 max-phone:self-stretch', underVoteZone)}>
 						{sourceDisplay && !isPhone && <span data-tour={isTourRow ? 'queue-item-source' : undefined}>{sourceDisplay}</span>}
@@ -1042,48 +1033,13 @@ function ServerVoteDisplayPropsButton(props: { serverId: string; render: (manage
 	return props.render(!!manageVoteDenied)
 }
 
-// the autostart countdown, the running vote's status and tally, and the controls to end or abort it
+// the vote's status beside its heading: running, or the autostart countdown with the control to cancel it. A running
+// vote's tally and controls are in the activity panel.
 function VoteServerStatus(props: { serverId: string; item: LL.VoteItem }) {
 	const { serverId, item } = props
 	const globalVoteState = VoteClient.useVoteState(serverId)
-	const voteState = (globalVoteState?.itemId === item.itemId ? globalVoteState : undefined) ?? item.endingVoteState
 	const manageVoteDenied = RbacClient.usePermsCheck(RBAC.perm('vote:manage', { serverId }))
 	const isPhone = Browser.useIsSmallViewport()
-	const manageVoteButtonProps = (opts?: { className?: string }) => ({
-		['data-mobile']: isPhone,
-		disabled: !!manageVoteDenied,
-		className: opts?.className,
-	})
-
-	const abortVoteMutation = RQ.useMutation(RPC.orpc.vote.abortVote.mutationOptions())
-	async function abortVote() {
-		const res = await abortVoteMutation.mutateAsync({ serverId })
-		switch (res.code) {
-			case 'err:permission-denied':
-				RbacClient.handlePermissionDenied(res)
-				break
-			case 'ok':
-				toast(...tr.toast(V_Msgs.adminReceipt.aborted()))
-				break
-			default:
-				toast.error(res.msg)
-		}
-	}
-
-	const endVoteEarlyMutation = RQ.useMutation(RPC.orpc.vote.endVoteEarly.mutationOptions())
-	async function endVoteEarly() {
-		const res = await endVoteEarlyMutation.mutateAsync({ serverId })
-		switch (res.code) {
-			case 'err:permission-denied':
-				RbacClient.handlePermissionDenied(res)
-				break
-			case 'ok':
-				toast(...tr.toast(V_Msgs.adminReceipt.endedEarly()))
-				break
-			default:
-				toast.error(res.msg)
-		}
-	}
 
 	const cancelAutostartMutation = RQ.useMutation(RPC.orpc.vote.cancelVoteAutostart.mutationOptions())
 	async function cancelAutostart() {
@@ -1100,79 +1056,36 @@ function VoteServerStatus(props: { serverId: string; item: LL.VoteItem }) {
 		}
 	}
 
-	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
-	const serverInfo = serverInfoRes?.code === 'ok' ? serverInfoRes?.data : undefined
-	const voteAutostartTime = voteState?.code === 'ready' ? voteState.autostartTime : undefined
-	const voteTally = voteState && voteState.code !== 'ready' ? V.tallyVotes(voteState, serverInfo?.playerCount ?? 0) : undefined
+	const ownState = globalVoteState?.itemId === item.itemId ? globalVoteState : undefined
+	if (ownState?.code === 'in-progress') {
+		return (
+			<Badge variant="info" className="gap-1">
+				<Icons.Vote className="size-3" />
+				{tr.text(V_Msgs.status.inProgress())}
+			</Badge>
+		)
+	}
+	const voteAutostartTime = ownState?.code === 'ready' ? ownState.autostartTime : undefined
+	if (!voteAutostartTime) return null
 
 	return (
 		<>
-			{voteAutostartTime && (
-				<>
-					<span>:</span>
-					<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
-						<span>{tr.text(V_Msgs.startsIn())}</span> <Timer deadline={voteAutostartTime.getTime()} />
-						<PermissionDeniedTooltip denied={manageVoteDenied}>
-							<Button
-								variant="ghost"
-								size="icon"
-								title={tr.text(V_Msgs.cancelAutostart())}
-								onClick={cancelAutostart}
-								{...manageVoteButtonProps()}
-							>
-								<Icons.X />
-							</Button>
-						</PermissionDeniedTooltip>
-					</span>
-				</>
-			)}
-			{voteState && voteState.code !== 'ready' && (
-				<div className="flex space-x-2 items-center">
-					<Icons.Dot width={20} height={20} />
-					<span>{Str.statusCodeToTitleCase(voteState.code)}</span>
-					<Icons.Dot width={20} height={20} />
-					<span>{voteTally && serverInfo && <span>{tr.text(V_Msgs.tally(voteTally.totalVotes, serverInfo.playerCount))}</span>}</span>
-					{voteState.code === 'in-progress' && (
-						<>
-							<Icons.Dot width={20} height={20} />
-							<Badge variant="outline">
-								<Timer
-									className="font-mono"
-									formatTime={(ms) => dateFns.format(new Date(ms), 'm:ss')}
-									deadline={voteState.deadline}
-									zeros
-								/>
-							</Badge>
-						</>
-					)}
-					{voteState.code === 'in-progress' && (
-						<PermissionDeniedTooltip denied={manageVoteDenied}>
-							<Button
-								title={tr.text(V_Msgs.endVoteEarly())}
-								variant="ghost"
-								size="icon"
-								onClick={endVoteEarly}
-								{...manageVoteButtonProps()}
-							>
-								<Icons.CheckCheck />
-							</Button>
-						</PermissionDeniedTooltip>
-					)}
-					{voteState.code === 'in-progress' && (
-						<PermissionDeniedTooltip denied={manageVoteDenied}>
-							<Button
-								title={tr.text(V_Msgs.abortVote())}
-								variant="ghost"
-								size="icon"
-								onClick={abortVote}
-								{...manageVoteButtonProps()}
-							>
-								<Icons.Pause />
-							</Button>
-						</PermissionDeniedTooltip>
-					)}
-				</div>
-			)}
+			<span>:</span>
+			<span className="whitespace-nowrap text-nowrap w-max text-sm flex flex-nowrap items-center space-x-2">
+				<span>{tr.text(V_Msgs.startsIn())}</span> <Timer deadline={voteAutostartTime.getTime()} />
+				<PermissionDeniedTooltip denied={manageVoteDenied}>
+					<Button
+						variant="ghost"
+						size="icon"
+						title={tr.text(V_Msgs.cancelAutostart())}
+						onClick={cancelAutostart}
+						data-mobile={isPhone}
+						disabled={!!manageVoteDenied}
+					>
+						<Icons.X />
+					</Button>
+				</PermissionDeniedTooltip>
+			</span>
 		</>
 	)
 }
@@ -1194,19 +1107,8 @@ function VoteServerStart(props: { serverId: string; item: LL.VoteItem; stores: L
 	const [voterType, setVoterType] = React.useState<V.VoterType>(voteState?.voterType ?? 'public')
 	const internalVoteCheckboxId = React.useId()
 
-	const startVoteMutation = RQ.useMutation(RPC.orpc.vote.startVote.mutationOptions())
-	async function startVote() {
-		const res = await startVoteMutation.mutateAsync({ serverId, itemId: item.itemId, ...item.voteConfig, ...{ voterType } })
-		switch (res.code) {
-			case 'err:permission-denied':
-				RbacClient.handlePermissionDenied(res)
-				break
-			case 'ok':
-				toast(...tr.toast(V_Msgs.adminReceipt.started()))
-				break
-			default:
-				toast.error(res.msg)
-		}
+	function startVote() {
+		void VoteClient.Actions.startVote(serverId, { kind: 'layer', itemId: item.itemId, voterType })
 	}
 
 	const canInitiateVote = Zus.useStore(

@@ -18,6 +18,7 @@ import * as SLL from '@/models/shared-layer-list.models'
 import * as SM from '@/models/squad.models'
 import * as TSW from '@/models/teamswaps.models'
 import * as USR from '@/models/users.models'
+import * as V from '@/models/vote.models'
 
 // Application events are SLM's audit log: they record actions SLM (or one of its users) takes.
 // A server event's `source` can link back to the app event that caused it (see server-events-base ActionSource),
@@ -172,31 +173,87 @@ export type TimeoutCancelled = z.infer<typeof TimeoutCancelledSchema>
 export const MatchEndedSchema = event('MATCH_ENDED', {})
 export type MatchEnded = z.infer<typeof MatchEndedSchema>
 
-// the vote events name the queue item the vote belongs to. absent on events recorded before this was introduced.
-const voteItemShape = { itemId: LL.ItemIdSchema.optional() }
+// What a vote event is about, by kind. A layer vote decides between the layers of a queue item. A simple vote decides
+// between text choices and never touches the queue. Each event names the choices, so one event answers a history
+// query about the vote on its own. Rows recorded before simple votes existed carry the layer fields at the top level,
+// and read as layer votes (see upgradeVotePayload).
+const layerVoteShape = {
+	kind: z.literal('layer'),
+	// absent on events recorded before this was introduced
+	itemId: LL.ItemIdSchema.optional(),
+	// the layers players could vote for. snapshotted because the queue item is edited in place as the vote resolves.
+	choices: z.array(L.LayerIdSchema).optional(),
+	// what players saw for each choice, in order: its text, or the layer as the vote's display props spelled it out
+	labels: z.array(z.string()).optional(),
+}
+const simpleVoteShape = { kind: z.literal('simple'), voteId: z.string(), choices: z.array(z.string()) }
+
+// the voters, on every vote event so a query can pair it with the event's other facts. absent on events recorded before
+// this was introduced.
+const voterTypeShape = { voterType: V.VOTER_TYPE.optional() }
 
 export const VoteStartedSchema = event('VOTE_STARTED', {
-	...voteItemShape,
+	vote: z.discriminatedUnion('kind', [z.object(layerVoteShape), z.object(simpleVoteShape)]),
 	choiceCount: z.number(),
-	// the layers players could vote for, and how long they had. snapshotted because the queue item this vote
-	// belongs to is edited in place as the vote resolves.
-	choices: z.array(L.LayerIdSchema).optional(),
 	durationMs: z.number().optional(),
+	...voterTypeShape,
 })
 export type VoteStarted = z.infer<typeof VoteStartedSchema>
 
 export const VoteEndedSchema = event('VOTE_ENDED', {
-	...voteItemShape,
+	vote: z.discriminatedUnion('kind', [
+		z.object({
+			...layerVoteShape,
+			winnerLayerId: L.LayerIdSchema.nullable(),
+			// what players saw for the winning choice
+			winnerLabel: z.string().optional(),
+			// the final count per choice, in the order the choices were offered. stored by layer (not by queue item id,
+			// which means nothing once the item is gone) so the result is readable on its own.
+			tally: z.array(z.object({ layerId: L.LayerIdSchema, votes: z.number() })).optional(),
+		}),
+		z.object({
+			...simpleVoteShape,
+			// null when too few votes were cast to decide it
+			winner: z.string().nullable(),
+			tally: z.array(z.object({ choice: z.string(), votes: z.number() })),
+		}),
+	]),
 	reason: z.enum(['vote-timeout', 'ended-early']),
-	winnerLayerId: L.LayerIdSchema.nullable(),
-	// the final count per choice, in the order the choices were offered. stored by layer (not by queue item id, which
-	// means nothing once the item is gone) so the result is readable on its own.
-	tally: z.array(z.object({ layerId: L.LayerIdSchema, votes: z.number() })).optional(),
 	totalVotes: z.number().optional(),
 	// share of the players on the server who voted
 	turnoutPercentage: z.number().optional(),
+	...voterTypeShape,
 })
 export type VoteEnded = z.infer<typeof VoteEndedSchema>
+
+export const VoteAbortedSchema = event('VOTE_ABORTED', {
+	vote: z.discriminatedUnion('kind', [z.object(layerVoteShape), z.object(simpleVoteShape)]),
+	...voterTypeShape,
+})
+export type VoteAborted = z.infer<typeof VoteAbortedSchema>
+
+// what every vote event says about its vote, whatever happened to it
+function voteFacts(e: VoteStarted | VoteEnded | VoteAborted): EM.VoteFacts {
+	const choices = e.vote.kind === 'layer' ? e.vote.labels : e.vote.choices
+	return { kind: e.vote.kind, voterType: e.voterType, choices }
+}
+
+const VOTE_EVENT_TYPES: ReadonlySet<string> = new Set(['VOTE_STARTED', 'VOTE_ENDED', 'VOTE_ABORTED'])
+const LAYER_VOTE_FIELDS = ['itemId', 'choices', 'winnerLayerId', 'tally'] as const
+
+// A vote event recorded before simple votes existed, which kept a layer vote's fields at the top level, in the shape
+// the schemas read now. Done on read rather than by a migration, so the audit log keeps what was written.
+function upgradeVotePayload(type: string, payload: object): object {
+	if (!VOTE_EVENT_TYPES.has(type) || 'vote' in payload) return payload
+	const rest: Record<string, unknown> = { ...payload }
+	const vote: Record<string, unknown> = { kind: 'layer' }
+	for (const field of LAYER_VOTE_FIELDS) {
+		if (!(field in rest)) continue
+		vote[field] = rest[field]
+		delete rest[field]
+	}
+	return { ...rest, vote }
+}
 
 // A layer artifact update taught the engine layers it did not previously recognise, and the matches recorded
 // against them were re-resolved. Recorded because it changes what a layer-filtered search over history returns.
@@ -211,9 +268,6 @@ export const MatchLayersReconciledSchema = event('MATCH_LAYERS_RECONCILED', {
 	unresolvedRemaining: z.number(),
 })
 export type MatchLayersReconciled = z.infer<typeof MatchLayersReconciledSchema>
-
-export const VoteAbortedSchema = event('VOTE_ABORTED', { ...voteItemShape })
-export type VoteAborted = z.infer<typeof VoteAbortedSchema>
 
 // SLM process lifecycle. APP_STARTED fires on every boot (system actor); APP_RESTARTED is the intentional
 // restart-slm admin action recorded before shutdown (slm-user actor).
@@ -649,13 +703,22 @@ export const APP_EVENT_META = {
 		layers: [{ kind: 'set', get: (e) => e.layerId }],
 		items: [{ get: (e) => e.itemId }],
 	}),
-	VOTE_STARTED: EM.meta<VoteStarted>({ layers: [{ kind: 'offered', get: (e) => e.choices }], items: [{ get: (e) => e.itemId }] }),
+	VOTE_STARTED: EM.meta<VoteStarted>({
+		layers: [{ kind: 'offered', get: (e) => (e.vote.kind === 'layer' ? e.vote.choices : undefined) }],
+		items: [{ get: (e) => (e.vote.kind === 'layer' ? e.vote.itemId : undefined) }],
+		vote: (e) => voteFacts(e),
+	}),
 	VOTE_ENDED: EM.meta<VoteEnded>({
 		layers: [
-			{ kind: 'set', get: (e) => e.winnerLayerId },
-			{ kind: 'offered', get: (e) => e.tally?.map((t) => t.layerId) },
+			{ kind: 'set', get: (e) => (e.vote.kind === 'layer' ? e.vote.winnerLayerId : undefined) },
+			{ kind: 'offered', get: (e) => (e.vote.kind === 'layer' ? e.vote.tally?.map((t) => t.layerId) : undefined) },
 		],
-		items: [{ get: (e) => e.itemId }],
+		items: [{ get: (e) => (e.vote.kind === 'layer' ? e.vote.itemId : undefined) }],
+		vote: (e) => {
+			const decided = e.vote.kind === 'layer' ? e.vote.winnerLayerId !== null : e.vote.winner !== null
+			const winner = e.vote.kind === 'layer' ? e.vote.winnerLabel : (e.vote.winner ?? undefined)
+			return { ...voteFacts(e), outcome: decided ? 'winner' : 'insufficient-votes', winner }
+		},
 	}),
 	LAYER_REQUEST_CONSUMED: EM.meta<LayerRequestConsumed>({
 		layers: [{ kind: 'queued', get: (e) => e.layerId }],
@@ -685,7 +748,10 @@ export const APP_EVENT_META = {
 	BROADCAST_SENT: EM.meta<BroadcastSent>(),
 	RCON_COMMAND_RUN: EM.meta<RconCommandRun>(),
 	MATCH_ENDED: EM.meta<MatchEnded>(),
-	VOTE_ABORTED: EM.meta<VoteAborted>({ items: [{ get: (e) => e.itemId }] }),
+	VOTE_ABORTED: EM.meta<VoteAborted>({
+		items: [{ get: (e) => (e.vote.kind === 'layer' ? e.vote.itemId : undefined) }],
+		vote: (e) => ({ ...voteFacts(e), outcome: 'aborted' satisfies V.VoteOutcome }),
+	}),
 	LAYER_REQUEST_ADDED: EM.meta<LayerRequestAdded>(),
 	LAYER_REQUEST_REMOVED: EM.meta<LayerRequestRemoved>(),
 	SETTINGS_UPDATED: EM.meta<SettingsUpdated>(),
@@ -1114,6 +1180,24 @@ export function associationRows(e: AppEvent): SchemaModels.NewAppEventAssociatio
 	for (const itemId of iterAssocItemIds(e)) {
 		rows.push({ dimension: 'item', value: itemId, time, appEventId: e.id, role: 'involved' })
 	}
+	// one row per fact, the fact's name as its role
+	const vote = metaOf(e).vote?.(e)
+	if (vote) {
+		const facts: [EM.VoteFactRole, string | undefined][] = [
+			['kind', vote.kind],
+			['voterType', vote.voterType],
+			['outcome', vote.outcome],
+			['winner', vote.winner],
+			...(vote.choices ?? []).map((choice): [EM.VoteFactRole, string] => ['choice', choice]),
+		]
+		// two choices can read the same, such as two layers on one map with only the map shown
+		const seen = new Set<string>()
+		for (const [role, value] of facts) {
+			if (value === undefined || seen.has(`${role} ${value}`)) continue
+			seen.add(`${role} ${value}`)
+			rows.push({ dimension: 'vote', value, time, appEventId: e.id, role })
+		}
+	}
 	return rows
 }
 
@@ -1138,7 +1222,7 @@ export function parseRow(row: SchemaModels.AppEvent): RowParseResult {
 					? { type: 'plugin', pluginId: row.actorPluginId }
 					: { type: 'system' }
 	const candidate = {
-		...(payload as object),
+		...upgradeVotePayload(row.type, payload as object),
 		id: row.id,
 		type: row.type,
 		time: row.time.getTime(),

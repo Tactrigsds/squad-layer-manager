@@ -578,7 +578,7 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 					title={fieldLabel(field.key)}
 					allowEmpty
 					className="w-full"
-					value={draft[field.key as 'variant' | 'setBy' | 'channel']}
+					value={draft[field.key as 'variant' | 'setBy' | 'channel' | 'voteKind' | 'voteOutcome' | 'voteVoters']}
 					options={control.options as string[]}
 					onSelect={(v) => {
 						set({ [field.key]: v ?? undefined })
@@ -621,7 +621,9 @@ function FieldControl(props: { field: QF.FieldDef; draft: HQ.Query; set: Set }) 
 				<DraftInput
 					autoFocus
 					className="h-7 w-full text-xs"
-					defaultValue={(draft[field.key as 'chat' | 'damageSource' | 'target'] as string | undefined) ?? ''}
+					defaultValue={
+						(draft[field.key as 'chat' | 'damageSource' | 'target' | 'voteChoice' | 'voteWinner'] as string | undefined) ?? ''
+					}
 					onCommit={(value) => set({ [field.key]: value || undefined })}
 				/>
 			)
@@ -765,6 +767,8 @@ function groupLabel(group: QF.FieldGroup): string {
 			return tr.text(HistoryMsgs.groupLayer())
 		case 'players':
 			return tr.text(HistoryMsgs.groupPlayers())
+		case 'vote':
+			return tr.text(HistoryMsgs.groupVote())
 		default:
 			assertNever(group)
 	}
@@ -824,6 +828,16 @@ function fieldLabel(key: QF.FieldKey): string {
 			return tr.text(HistoryMsgs.fieldItem())
 		case 'minMatches':
 			return tr.text(HistoryMsgs.fieldMinMatches())
+		case 'voteKind':
+			return tr.text(HistoryMsgs.fieldVoteKind())
+		case 'voteOutcome':
+			return tr.text(HistoryMsgs.fieldVoteOutcome())
+		case 'voteVoters':
+			return tr.text(HistoryMsgs.fieldVoteVoters())
+		case 'voteChoice':
+			return tr.text(HistoryMsgs.fieldVoteChoice())
+		case 'voteWinner':
+			return tr.text(HistoryMsgs.fieldVoteWinner())
 		default:
 			assertNever(key)
 	}
