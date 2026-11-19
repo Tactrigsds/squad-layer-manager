@@ -45,6 +45,10 @@ export async function getEngine(): Promise<LayerEngine> {
 	return engine!
 }
 
+export function peekEngine(): LayerEngine | undefined {
+	return engine
+}
+
 // for synchronous code that runs after boot, by which time setup has loaded the engine
 export function requireEngine(): LayerEngine {
 	if (!engine) throw new Error('the layer engine is not loaded yet')

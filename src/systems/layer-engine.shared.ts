@@ -29,6 +29,11 @@ export class LayerEngine {
 	private columnIndexes = new Map<string, number>()
 	readonly rowCount: number
 
+	// the size of the engine's linear memory, which holds the layer table
+	get memoryBytes(): number {
+		return this.exports.memory.buffer.byteLength
+	}
+
 	private constructor(exports: Exports, rowCount: number) {
 		this.exports = exports
 		this.rowCount = rowCount

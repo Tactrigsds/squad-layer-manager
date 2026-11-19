@@ -28,6 +28,7 @@ import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import { getOrpcBase } from '@/server/orpc-base'
 import * as Sql from '@/server/sql'
+import * as WorkerThreads from '@/server/worker-threads'
 import * as AdminList from '@/systems/adminlist.server'
 import * as CleanupSys from '@/systems/cleanup.server'
 import * as HistoryQuery from '@/systems/history-query.shared'
@@ -97,6 +98,7 @@ function bootWorker() {
 		workerData: { dbPath: ENV.DB_PATH },
 		execArgv: isTs ? ['--import', 'tsx'] : undefined,
 	})
+	WorkerThreads.track('history-query', w)
 	w.on('message', (msg: HistoryWorker.Response) => {
 		// the first answer proves this worker works, so a later crash starts its backoff from the top
 		rebootAttempts = 0
