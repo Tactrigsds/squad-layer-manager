@@ -24,7 +24,7 @@ See [In-game commands](admin_actions.md#in-game-commands) for the commands thems
 **The numbers count the words the caller types, not the words of the command that ends up running.** `{{arg1}}` is
 the first word typed after the trigger, `{{arg2}}` the second, and so on. `{{rest}}` is every word typed after the
 highest-numbered placeholder, joined by spaces. Use `{{rest}}` for anything that can be more than one word, such as a
-reason.
+message.
 
 A typed word never fills two placeholders. The numbers start at 1 and cannot skip one: `{{arg1}} {{arg3}}` is rejected,
 because the second word typed would fill nothing.
@@ -40,7 +40,7 @@ it runs:     Alice  2h  spamming badly
 ```
 
 Once a trigger has pinned arguments, the command's card in _Settings > In-game Commands_ shows which placeholder
-fills which argument (`{{arg1}} <player>  {{arg2}} <duration>  {{rest}} <reason|message>`), including whether each
+fills which argument (`{{arg1}} <player>  {{arg2}} <duration>  {{rest}} <shorthand|message>`), including whether each
 one is required under the current reason settings.
 
 ![the triggers of /timeout, including a /to2h trigger that fills in a 2 hour duration](../../images/configuring/command_trigger_settings.png)

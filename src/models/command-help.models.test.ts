@@ -45,11 +45,11 @@ describe('buildExamples', () => {
 	})
 
 	it('escalates from the required args to each optional one, then the free-text form', () => {
-		// timeout is <player> <duration> [reason], and reason has both a preset and a custom form
+		// timeout is <player> <duration> [shorthand|message], and the last arg has both a shorthand and a custom form
 		expect(examplesOf('timeout', configs.timeout, seeds)).toEqual([
 			{ command: `${P}timeout Alice 2h`, note: 'The shortest form' },
-			{ command: `${P}timeout Alice 2h toxicity`, note: 'With reason' },
-			{ command: `${P}timeout Alice 2h stop doing that`, note: 'With a custom reason' },
+			{ command: `${P}timeout Alice 2h toxicity`, note: 'With shorthand' },
+			{ command: `${P}timeout Alice 2h stop doing that`, note: 'With a custom message' },
 		])
 	})
 
@@ -62,7 +62,7 @@ describe('buildExamples', () => {
 	it('omits the preset example when the installation has no applicable reasons configured', () => {
 		expect(examplesOf('kick', configs.kick, noSeeds)).toEqual([
 			{ command: `${P}kick Alice`, note: 'The shortest form' },
-			{ command: `${P}kick Alice stop doing that`, note: 'With a custom reason' },
+			{ command: `${P}kick Alice stop doing that`, note: 'With a custom message' },
 		])
 	})
 
@@ -101,8 +101,8 @@ describe('buildExamples', () => {
 		const config = { ...configs.warn, triggers: [{ string: '!warnsp', args: '{{arg1}} {{^rest}}spam{{/rest}}{{rest}}' }] }
 		expect(examplesOf('warn', config, seeds)).toEqual([
 			{ command: '!warnsp Alice', note: 'The shortest form' },
-			{ command: '!warnsp Alice toxicity', note: 'With reason' },
-			{ command: '!warnsp Alice stop doing that', note: 'With a custom reason' },
+			{ command: '!warnsp Alice toxicity', note: 'With shorthand' },
+			{ command: '!warnsp Alice stop doing that', note: 'With a custom message' },
 		])
 	})
 
@@ -134,7 +134,7 @@ describe('describeArgs', () => {
 		// the shortcut pins the duration, but !timeout still asks for one
 		const config = withTimeoutTriggers(['!timeout', pinned45m('!to')])
 		const [player, duration, reason] = argsOf('timeout', config, seeds)
-		expect([player.name, duration.name, reason.name]).toEqual(['player', 'duration', 'reason'])
+		expect([player.name, duration.name, reason.name]).toEqual(['player', 'duration', 'shorthand'])
 		expect(duration.fixed).toEqual([])
 	})
 
@@ -165,7 +165,7 @@ describe('triggerGroups', () => {
 			['!timeout', '!t'],
 			['!to', '!to45'],
 		])
-		expect(groups[0].signature).toBe('<player> <duration> [reason|message]')
+		expect(groups[0].signature).toBe('<player> <duration> [shorthand|message]')
 		expect(groups[1]).toMatchObject({ signature: '<player>', expansion: '!timeout {{arg1}} 45m' })
 	})
 

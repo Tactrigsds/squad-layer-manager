@@ -49,14 +49,14 @@ export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; descrip
 	},
 	text: { syntax: 'free text', description: t('Everything you type after this point, as-is.') },
 	reason: {
-		syntax: 'preset | free text',
+		syntax: 'shorthand | free text',
 		description: t(
-			'A single word picks a configured reason by one of its keywords. Two or more words are sent verbatim as a custom reason.',
+			'A single word picks a message shorthand by one of its keywords. Two or more words are sent verbatim as a custom message.',
 		),
 	},
 	'preset-reason': {
-		syntax: 'preset',
-		description: t('A configured reason, by one of its keywords. Custom text is not accepted here.'),
+		syntax: 'shorthand',
+		description: t('A message shorthand, by one of its keywords. Custom text is not accepted here.'),
 	},
 }
 
@@ -240,7 +240,7 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 			const token = firstPresetToken(AMS.shorthandsForAction(seeds.reasons, def.action))
 			// `preset-reason` takes presets only, so it has no free-text form to demonstrate
 			if (def.kind === 'preset-reason') return { token }
-			return { token, alt: { token: 'stop doing that', note: t('With a custom reason') } }
+			return { token, alt: { token: 'stop doing that', note: t('With a custom message') } }
 		}
 		default:
 			assertNever(def)
