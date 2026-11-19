@@ -48,8 +48,11 @@ const CLOSE_DUPLICATE = 4009
 // how long an agent has to send its handshake frame before we drop it
 const HANDSHAKE_TIMEOUT_MS = 10_000
 // An agent that misses a pong for one interval is dropped. Without this, a half-open connection holds the server's agent
-// slot until TCP gives up, and every reconnect from the live agent is rejected as a duplicate.
+// slot until TCP gives up.
 const HEARTBEAT_INTERVAL_MS = 15_000
+// How long the connected agent has to answer a ping when another agent claims its server. A proxy can drop the agent's
+// side of a connection and leave ours open: the agent reconnects within seconds, long before the heartbeat notices.
+const DUPLICATE_PROBE_TIMEOUT_MS = 2_000
 
 // An agent-mode server has no other route to its squad server: SLM holds no RCON details for it and reads no
 // log file of its own. An agent that supplies only one of the two leaves the other permanently dead, which
@@ -72,7 +75,8 @@ const HANDSHAKE_RE = /^slm-server-agent@(\d+\.\d+\.\d+):([\w-]+):(.+)$/
 // consumer resubscribing.
 const streams = new Map<string, IsolatedSubject<string>>()
 
-// One live agent per server. A second connection claiming the same serverId is rejected as a duplicate.
+// One live agent per server. A second connection claiming the same serverId replaces the first if the first no longer
+// answers pings, and is otherwise rejected as a duplicate.
 const activeAgents = new Map<string, WebSocket>()
 
 function getStream(serverId: string): IsolatedSubject<string> {
@@ -330,19 +334,35 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 		)
 	}
 
-	if (activeAgents.has(serverId)) {
-		log.warn('Server agent %s: server %s already has a connected agent', remote, serverId)
-		ServerConsole.recordSlm(serverId, 'warn', `Rejected the agent at ${remote}: an agent is already connected for this server`)
-		close(ws, CLOSE_DUPLICATE, 'duplicate agent')
-		return
+	const tunnel = getRconTunnel(serverId)
+	const existing = activeAgents.get(serverId)
+	if (existing) {
+		const existingAnswered = await answersPing(existing, DUPLICATE_PROBE_TIMEOUT_MS)
+		// another agent may have replaced the probed one while the probe ran
+		const current = activeAgents.get(serverId)
+		if ((current && current !== existing) || (current === existing && existingAnswered)) {
+			log.warn('Server agent %s: server %s already has a connected agent', remote, serverId)
+			ServerConsole.recordSlm(serverId, 'warn', `Rejected the agent at ${remote}: an agent is already connected for this server`)
+			close(ws, CLOSE_DUPLICATE, 'duplicate agent')
+			return
+		}
+		if (current === existing) {
+			log.warn('Server agent for server %s did not answer a ping, replacing it with %s', serverId, remote)
+			ServerConsole.recordSlm(
+				serverId,
+				'warn',
+				`Replaced the previous agent with the one at ${remote}: the previous agent stopped responding`,
+			)
+			activeAgents.delete(serverId)
+			tunnel.detachAgent()
+			existing.terminate()
+		}
 	}
 
-	// the connection may have dropped during the async settings lookup above
 	if (ws.readyState !== ws.OPEN) return
 
 	activeAgents.set(serverId, ws)
 	const stream = getStream(serverId)
-	const tunnel = getRconTunnel(serverId)
 	tunnel.attachAgent((payload) => {
 		if (ws.readyState === ws.OPEN) ws.send(Buffer.concat([Buffer.from([TAG_RCON_DATA]), payload]))
 	})
@@ -395,10 +415,32 @@ async function onHandshake(ws: WebSocket, remote: string, handshake: string, sou
 
 	ws.on('close', (code: number, reason: Buffer) => {
 		clearInterval(heartbeat)
-		if (activeAgents.get(serverId) === ws) activeAgents.delete(serverId)
-		tunnel.detachAgent()
+		// a replaced agent has already handed the slot and the tunnel to its successor
+		if (activeAgents.get(serverId) === ws) {
+			activeAgents.delete(serverId)
+			tunnel.detachAgent()
+		}
 		log.info('Server agent %s for server %s disconnected', remote, serverId)
 		ServerConsole.recordSlm(serverId, 'warn', `Server agent at ${remote} disconnected`, reason.toString('utf8') || `close code ${code}`)
+	})
+}
+
+// Resolves false if the socket closes or no pong arrives within timeoutMs.
+function answersPing(ws: WebSocket, timeoutMs: number): Promise<boolean> {
+	if (ws.readyState !== ws.OPEN) return Promise.resolve(false)
+	return new Promise((resolve) => {
+		const settle = (answered: boolean) => {
+			clearTimeout(timer)
+			ws.off('pong', onPong)
+			ws.off('close', onClose)
+			resolve(answered)
+		}
+		const onPong = () => settle(true)
+		const onClose = () => settle(false)
+		const timer = setTimeout(() => settle(false), timeoutMs)
+		ws.on('pong', onPong)
+		ws.on('close', onClose)
+		ws.ping()
 	})
 }
 

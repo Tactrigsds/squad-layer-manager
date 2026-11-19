@@ -21,9 +21,13 @@ const CLOSE_DUPLICATE = 4009
 
 type HandshakeResult = { accepted: boolean; code?: number; reason?: string }
 
-function connect(frame: string, sources: string | null): { ws: WebSocket; settled: Promise<HandshakeResult> } {
+function connect(
+	frame: string,
+	sources: string | null,
+	opts: { autoPong?: boolean } = {},
+): { ws: WebSocket; settled: Promise<HandshakeResult> } {
 	const query = sources === null ? '' : `?sources=${sources}`
-	const ws = new WebSocket(`ws://127.0.0.1:${app.appPort}/server-agent${query}`)
+	const ws = new WebSocket(`ws://127.0.0.1:${app.appPort}/server-agent${query}`, { autoPong: opts.autoPong ?? true })
 	const settled = new Promise<HandshakeResult>((resolve, reject) => {
 		const timer = setTimeout(() => reject(new Error(`no reply to handshake: ${frame}`)), 15_000)
 		ws.on('open', () => ws.send(frame))
@@ -49,15 +53,32 @@ function handshake(version = '0.3.0', token = SERVER_AGENT_TOKEN) {
 // it, so an accepted connection can briefly see the previous one as a duplicate. Only the accepting cases
 // reach that check: every rejection here is decided before it.
 async function connectAccepted(frame: string, sources: string | null): Promise<HandshakeResult> {
+	const { ws, result } = await connectHeld(frame, sources)
+	ws.close()
+	return result
+}
+
+// Like connectAccepted, but leaves the socket open, so it holds the server's agent slot.
+async function connectHeld(
+	frame: string,
+	sources: string | null,
+	opts: { autoPong?: boolean } = {},
+): Promise<{ ws: WebSocket; result: HandshakeResult }> {
 	return app.waitFor(
 		async () => {
-			const { ws, settled } = connect(frame, sources)
+			const { ws, settled } = connect(frame, sources, opts)
 			const result = await settled
+			if (result.code !== CLOSE_DUPLICATE) return { ws, result }
 			ws.close()
-			return result.code === CLOSE_DUPLICATE ? undefined : result
+			return undefined
 		},
 		{ label: 'the agent slot to be free' },
 	)
+}
+
+function closed(ws: WebSocket): Promise<number> {
+	if (ws.readyState === ws.CLOSED) return Promise.resolve(-1)
+	return new Promise((resolve) => ws.once('close', (code) => resolve(code)))
 }
 
 beforeAll(async () => {
@@ -114,6 +135,37 @@ describe('server agent handshake', () => {
 		const result = await connectAccepted(handshake(), 'logs,rcon')
 
 		expect(result.accepted).toBe(true)
+	})
+
+	it('rejects a second agent while the connected one still answers pings', async () => {
+		const held = await connectHeld(handshake(), 'logs,rcon')
+		expect(held.result.accepted).toBe(true)
+
+		const { ws, settled } = connect(handshake(), 'logs,rcon')
+		const result = await settled
+		ws.close()
+		expect(result.code).toBe(CLOSE_DUPLICATE)
+		expect(held.ws.readyState).toBe(WebSocket.OPEN)
+
+		const heldClosed = closed(held.ws)
+		held.ws.close()
+		await heldClosed
+	})
+
+	// a proxy can drop the agent's side of a connection and leave the app's side open, so the slot holder can be dead
+	it('replaces a connected agent that no longer answers pings', async () => {
+		const dead = await connectHeld(handshake(), 'logs,rcon', { autoPong: false })
+		expect(dead.result.accepted).toBe(true)
+		const deadClosed = closed(dead.ws)
+
+		const { ws, settled } = connect(handshake(), 'logs,rcon')
+		const result = await settled
+		expect(result.accepted).toBe(true)
+		expect(await deadClosed).toBe(1006)
+
+		const replacementClosed = closed(ws)
+		ws.close()
+		await replacementClosed
 	})
 
 	// anyone who knows a server's id would know the default token too. Last, since it changes the server's token.
