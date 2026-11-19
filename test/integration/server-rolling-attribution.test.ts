@@ -105,6 +105,7 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 			timeoutMs: 30_000,
 		})
 		expect(target.teamId).toBe(2)
+		await app.waitFor(() => savedTeamswapsCleared(app) || undefined, { label: 'the executed swaps cleared from the server row' })
 	})
 
 	it('a layer squad picked by in-game vote is attributed to the vote and leaves the queue head alone', async () => {
@@ -328,6 +329,16 @@ function disabledReason(fixture: RollingFixture): { type: string; inferred?: boo
 	try {
 		const row = db.prepare(`SELECT settings FROM servers WHERE id = ?`).get(fixture.serverId) as { settings: string }
 		return JSON.parse(row.settings).json.updatesToSquadServerDisabled ?? null
+	} finally {
+		db.close()
+	}
+}
+
+function savedTeamswapsCleared(fixture: RollingFixture): boolean {
+	const db = fixture.readDb()
+	try {
+		const row = db.prepare(`SELECT teamswaps FROM servers WHERE id = ?`).get(fixture.serverId) as { teamswaps: string | null }
+		return row.teamswaps === null
 	} finally {
 		db.close()
 	}

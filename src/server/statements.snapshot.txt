@@ -575,7 +575,7 @@ settings:insertGlobalSettings
   insert into "globalSettings" ("id", "settings") values (?, ?)
 
 settings:insertServer
-  insert into "servers" ("id", "displayName", "enabled", "defaultServer", "layerQueue", "teamswaps", "backburner", "switchRequests", "settings", "visibility", "ownerDiscordId") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  insert into "servers" ("id", "displayName", "enabled", "defaultServer", "layerQueue", "teamswaps", "backburner", "switchRequests", "settings", "visibility", "ownerDiscordId") values (?, ?, ?, ?, ?, null, ?, ?, ?, ?, ?)
 
 settings:markDefaultServer
   update "servers" set "defaultServer" = ? where "servers"."id" = ?

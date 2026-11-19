@@ -627,7 +627,7 @@ export const servers = sqliteTable('servers', {
 	enabled: boolean('enabled').notNull().default(true),
 	defaultServer: boolean('defaultServer').notNull().default(false),
 	layerQueue: superjsonColumn<unknown>('layerQueue').notNull().default([]),
-	teamswaps: superjsonColumn<unknown>('teamswaps').notNull().default(new Map()),
+	teamswaps: superjsonColumn<unknown>('teamswaps'),
 	backburner: superjsonColumn<unknown>('backburner').notNull().default([]),
 	switchRequests: superjsonColumn<unknown>('switchRequests').default(null),
 	settings: superjsonColumn<unknown>('settings').default({}),
