@@ -5,6 +5,7 @@ import AnnouncementBanner from '@/components/announcement-banner'
 import DesktopOnly from '@/components/desktop-only'
 import NavBar from '@/components/nav-bar'
 import { PermissionDeniedPanel } from '@/components/permission-denied-tooltip'
+import Snowfall from '@/components/snowfall'
 import { useCoarsePointer, useIsSmallViewport } from '@/lib/browser'
 import { orUndef } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -45,6 +46,7 @@ function RouteComponent() {
 			<div className={cn('flex flex-1 min-h-0 overflow-hidden', isPhone ? '' : 'p-2.5')}>
 				{desktopOnly ? <DesktopOnly /> : denied ? <PermissionDeniedPanel denied={denied} /> : <Outlet />}
 			</div>
+			<Snowfall />
 		</div>
 	)
 }

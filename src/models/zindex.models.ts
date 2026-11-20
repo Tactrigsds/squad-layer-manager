@@ -21,6 +21,8 @@ export const ZI_OFFSETS = {
 	STICKYGROUP_CEILING: 50,
 	// a scroll surface's own chrome, so it stays reachable over anything that scrolls or pins inside it
 	SCROLLBAR: 55,
+	// decorative, pointer-transparent page overlays such as the seasonal snow, kept under every popover
+	SEASONAL_OVERLAY: 57,
 	// combo box, select, dropdown, context menu, hover card
 	POPOVER: 60,
 	// non-interactive, so it may safely sit above any popover anchored in the same context

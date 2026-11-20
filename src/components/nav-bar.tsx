@@ -9,6 +9,7 @@ import BmTokenDialog from '@/components/bm-token-dialog'
 import LinkSteamAccountDialog from '@/components/link-steam-account-dialog'
 import LogoMark from '@/components/logo-mark'
 import NicknameDialog from '@/components/nickname-dialog'
+import SantaHat from '@/components/santa-hat'
 import SelectLayersDialog from '@/components/select-layers-dialog'
 import { ServerActionMenuItems, ServerActionsDropdown } from '@/components/server-actions-dropdown'
 import { dropdownMenuSlots } from '@/components/server-actions-dropdown'
@@ -49,6 +50,7 @@ import * as SS_Msgs from '@/messages/server-state.messages'
 import * as Project from '@/models/project.models'
 import * as RPC from '@/orpc.client'
 import * as ChangelogClient from '@/systems/changelog.client'
+import * as Christmas from '@/systems/christmas.client'
 import * as ClientOnlySettings from '@/systems/client-only-settings.client'
 import * as Clipboard from '@/systems/clipboard.client'
 import * as ConfigClient from '@/systems/config.client'
@@ -81,6 +83,7 @@ export default function NavBar() {
 	const user = UsersClient.useLoggedInUser()
 
 	const avatarUrl = user?.avatarUrl
+	const christmasCheer = Christmas.useActive()
 	const changelogStatus = useQuery(ChangelogClient.statusQueryOptions)
 	const unseenChanges = changelogStatus.data?.unseen ?? 0
 
@@ -228,6 +231,7 @@ export default function NavBar() {
 			)}
 			<NormalizeTeamsToggle />
 			<HidePluginUiToggle />
+			<ChristmasCheerToggle />
 			<DropdownMenuSeparator />
 			<NicknameDialog onOpenChange={onNicknameOpenChange} open={openState === 'nickname'}>
 				<DropdownMenuItem onClick={() => setDropdownState('nickname')}>
@@ -311,6 +315,9 @@ export default function NavBar() {
 				<AvatarImage src={avatarUrl} crossOrigin="anonymous" />
 				<AvatarFallback className="text-2xs">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
 			</Avatar>
+			{christmasCheer && (
+				<SantaHat className="absolute -top-[27%] start-1/2 w-[110%] -translate-x-1/2 rtl:translate-x-1/2 -rotate-10 rtl:rotate-10 rtl:-scale-x-100" />
+			)}
 			{unseenChanges > 0 && (
 				<span aria-hidden className="absolute -top-0.5 -inset-e-0.5 size-2 rounded-full bg-primary ring-2 ring-background" />
 			)}
@@ -635,6 +642,31 @@ function HidePluginUiToggle() {
 				{tr.text(APP_Msgs.hidePluginUi())}
 			</span>
 			<Switch checked={hidden} tabIndex={-1} className="pointer-events-none" />
+		</DropdownMenuItem>
+	)
+}
+
+// only offered in December, or when the christmasCheer feature flag is on
+function ChristmasCheerToggle() {
+	const available = Christmas.useAvailable()
+	const disabled = Zus.useStore(ClientOnlySettings.Store, (s) => s.christmasCheerDisabled)
+	if (!available) return null
+	return (
+		<DropdownMenuItem
+			role="menuitemcheckbox"
+			aria-checked={!disabled}
+			className="justify-between gap-4"
+			title={tr.text(APP_Msgs.christmasCheerHint())}
+			onSelect={(e) => {
+				e.preventDefault()
+				ClientOnlySettings.Actions.setChristmasCheerDisabled(!disabled)
+			}}
+		>
+			<span className="flex items-center gap-2">
+				<Icons.Snowflake />
+				{tr.text(APP_Msgs.christmasCheer())}
+			</span>
+			<Switch checked={!disabled} tabIndex={-1} className="pointer-events-none" />
 		</DropdownMenuItem>
 	)
 }

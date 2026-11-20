@@ -42,6 +42,7 @@ export type ClientOnlySettingsStore = {
 	pinnedCommands: string[]
 	// hides every plugin's slots, decorations, event renderers and styles, to tell a plugin's effect on a page from the app's
 	pluginUiDisabled: boolean
+	christmasCheerDisabled: boolean
 }
 
 export const Store = Zus.createStore<ClientOnlySettingsStore>()(
@@ -59,6 +60,7 @@ export const Store = Zus.createStore<ClientOnlySettingsStore>()(
 			dashboardTab: 'queue',
 			pinnedCommands: [],
 			pluginUiDisabled: false,
+			christmasCheerDisabled: false,
 		}),
 		{
 			name: 'settings:v1',
@@ -105,6 +107,9 @@ export namespace Actions {
 	}
 	export function setPluginUiDisabled(value: boolean) {
 		Store.setState({ pluginUiDisabled: value })
+	}
+	export function setChristmasCheerDisabled(value: boolean) {
+		Store.setState({ christmasCheerDisabled: value })
 	}
 	export function setChartsTab(value: ChartsTab) {
 		Store.setState({ chartsTab: value })
