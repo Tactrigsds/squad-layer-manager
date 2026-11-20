@@ -796,8 +796,8 @@ describe('the event archive', () => {
 		expect((await total({ feed: 'ALL', targetType: 'AMMO' })).total).toBe(1)
 		// the crew are the vehicle's victims
 		expect((await total({ feed: 'ALL', players: [gunner.eos], playerRole: 'victim', types: ['VEHICLE_DESTROYED'] })).total).toBe(1)
-		// the default feed leaves the enemy's work to the killfeed: of the radio attacks, only the friendly one shows,
-		// as its start and its bottoming out
+		// the default feed leaves the enemy's work to the killfeed: of the radio hits, only the friendly ones show,
+		// the first and the one that bottoms the radio out
 		expect((await total({ vehicle: info.vehicle })).total).toBe(0)
 		const radio = await total({ types: ['FOB_RADIO_DAMAGED'] })
 		expect(radio.total).toBe(2)

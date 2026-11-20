@@ -404,6 +404,30 @@ describe('burst grouping', () => {
 		expect(burst.events.map((e) => e.id)).toEqual([1, 2, 4])
 	})
 
+	it("folds one attacker's hits on a FOB radio, apart from the hit that bottoms it out", () => {
+		const sapper = makePlayer('sapper')
+		const radioHit = (id: number, bottomedOut: boolean): CHAT.EventEnriched => ({
+			type: 'FOB_RADIO_DAMAGED',
+			id,
+			time: 100 * id,
+			matchId: 1,
+			radio: { className: 'BP_FOBRadio_RGF', instanceId: 9, targetType: 'RADIO' },
+			teamId: 2,
+			damageType: null,
+			weapon: 'BP_RPG7',
+			variant: 'normal',
+			damage: 50,
+			health: 100,
+			bottomedOut,
+			attacker: sapper,
+		})
+		const grouped = CHAT.groupBursts([radioHit(1, false), radioHit(2, false), radioHit(3, true), radioHit(4, false)])
+		expect(types(grouped)).toEqual(['BURST', 'FOB_RADIO_DAMAGED'])
+		const burst = grouped[0]
+		if (burst.type !== 'BURST') throw new Error('expected BURST')
+		expect(burst.events.map((e) => e.id)).toEqual([1, 2, 4])
+	})
+
 	it("folds one attacker's wounds of a kind, but never suicides", () => {
 		const mortar = makePlayer('mortar')
 		const grouped = CHAT.groupBursts([

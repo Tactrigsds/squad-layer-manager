@@ -16,13 +16,13 @@ function events(...partials: Record<string, unknown>[]): MatchHistory.MatchEvent
 	return partials.map((e) => ({ id: ++time, time: ++time, matchId: 1, ...e }) as unknown as MatchHistory.MatchEvent)
 }
 
-const squad = (uniqueId: number, squadId: number, squadName: string, teamId: SM.TeamId) => ({
+const squad = (uniqueId: number, squadId: number, squadName: string, creator: SM.Player) => ({
 	uniqueId,
 	squadId,
 	squadName,
-	teamId,
+	teamId: creator.teamId,
 	locked: false,
-	creator: 'x',
+	creator: creator.ids.eos,
 })
 
 describe('tally', () => {
@@ -31,20 +31,21 @@ describe('tally', () => {
 	const c = player('c', 1)
 
 	it('credits kills to the squad instance that held the squad id at the time', () => {
+		const e = player('e', 1, 1)
 		const t = Stats.tally(
 			events(
-				{ type: 'SQUAD_CREATED', squad: squad(10, 1, 'ARMOR', 1) },
+				{ type: 'SQUAD_CREATED', creator: a, squad: squad(10, 1, 'ARMOR', a) },
 				{ type: 'PLAYER_DIED', variant: 'normal', attacker: a, victim: b },
-				{ type: 'SQUAD_DISBANDED', uniqueId: 10, squad: squad(10, 1, 'ARMOR', 1) },
-				{ type: 'SQUAD_CREATED', squad: squad(11, 1, 'INF', 1) },
+				{ type: 'SQUAD_DISBANDED', uniqueId: 10, squad: squad(10, 1, 'ARMOR', a) },
+				{ type: 'SQUAD_CREATED', creator: e, squad: squad(11, 1, 'INF', e) },
 				{ type: 'PLAYER_DIED', variant: 'normal', attacker: a, victim: b },
 				{ type: 'PLAYER_DIED', variant: 'normal', attacker: player('d', 2, 4), victim: c },
 			),
 		)
-		expect([...t.squads.values()].map((s) => [s.name, s.kills])).toEqual([
-			['ARMOR', 1],
-			['INF', 1],
-			['Squad 4', 1],
+		expect([...t.squads.values()].map((s) => [s.squadId, s.creatorName, s.kills])).toEqual([
+			[1, 'a', 1],
+			[1, 'e', 1],
+			[4, null, 1],
 		])
 	})
 
@@ -64,21 +65,50 @@ describe('tally', () => {
 		expect(t.killTimes.map((times) => times.length)).toEqual([3, 1])
 	})
 
-	it('credits vehicle and FOB attacks on an unknown side, but not a crash nobody owned', () => {
+	it('credits vehicle attacks on an unknown side and enemy FOB damage, but not a crash nobody owned', () => {
 		const t = Stats.tally(
 			events(
 				{ type: 'VEHICLE_DAMAGED', variant: null, attacker: a, damage: 400, vehicle: actor('BP_BTR80', 'APC') },
 				{ type: 'VEHICLE_DAMAGED', variant: 'teamkill', attacker: a, damage: 900, vehicle: actor('BP_BTR80', 'APC') },
 				{ type: 'VEHICLE_DESTROYED', variant: null, cause: 'weapon', attacker: a, vehicle: actor('BP_BTR80', 'APC'), crew: [] },
 				{ type: 'VEHICLE_DESTROYED', variant: null, cause: 'collision', attacker: b, vehicle: actor('BP_Loach', 'HELI'), crew: [] },
-				{ type: 'FOB_RADIO_DAMAGED', variant: 'normal', attacker: a, bottomedOut: false, radio: actor('BP_FOBRadio', 'RADIO') },
-				{ type: 'FOB_RADIO_DAMAGED', variant: 'normal', attacker: a, bottomedOut: true, radio: actor('BP_FOBRadio', 'RADIO') },
+				{
+					type: 'FOB_RADIO_DAMAGED',
+					variant: 'normal',
+					attacker: a,
+					damage: 300,
+					bottomedOut: false,
+					radio: actor('BP_FOBRadio', 'RADIO'),
+				},
+				{
+					type: 'FOB_RADIO_DAMAGED',
+					variant: 'normal',
+					attacker: a,
+					damage: 150,
+					bottomedOut: true,
+					radio: actor('BP_FOBRadio', 'RADIO'),
+				},
+				{
+					type: 'FOB_RADIO_DAMAGED',
+					variant: 'teamkill',
+					attacker: a,
+					damage: 500,
+					bottomedOut: false,
+					radio: actor('BP_FOBRadio', 'RADIO'),
+				},
+				{
+					type: 'FOB_RADIO_DAMAGED',
+					variant: 'normal',
+					attacker: a,
+					damage: null,
+					bottomedOut: true,
+					radio: actor('BP_FOBRadio', 'RADIO'),
+				},
 				{ type: 'DEPLOYABLE_DESTROYED', variant: 'normal', attacker: a, deployable: actor('BP_Hab', 'HAB') },
-				{ type: 'DEPLOYABLE_DESTROYED', variant: 'normal', attacker: a, deployable: actor('BP_Ammocrate', 'AMMO') },
 				{ type: 'PLAYER_REVIVED', reviver: c, revived: a },
 			),
 		)
-		expect(t.players.get('a')).toMatchObject({ vehicleDamage: 400, vehicleKills: 1, deployableKills: 2 })
+		expect(t.players.get('a')).toMatchObject({ vehicleDamage: 400, vehicleKills: 1, fobDamage: 450 })
 		expect(t.players.get('b')?.vehicleKills ?? 0).toBe(0)
 		expect(t.players.get('c')!.revives).toBe(1)
 	})

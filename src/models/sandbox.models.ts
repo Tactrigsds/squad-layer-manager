@@ -306,12 +306,13 @@ export const SANDBOX_VERBS = {
 		mutatesWorld: true,
 	}),
 	'damage-radio': def({
-		usage: 'damage-radio <attacker> <blueprint>',
-		summary: 'a player attacks a FOB radio, e.g. BP_FOBRadio_RGF, down to its minimum health',
-		input: z.object({ attacker: PlayerNameSchema, blueprint: z.string().min(1) }),
-		tokens: ([attacker, blueprint]) => {
-			requireTokens([attacker, blueprint], 2, 'damage-radio <attacker> <blueprint>')
-			return { attacker, blueprint }
+		usage: 'damage-radio <attacker> <blueprint> [hits]',
+		summary:
+			'a player attacks a FOB radio, e.g. BP_FOBRadio_RGF, with 1 hit by default and then one taking it down to its minimum health',
+		input: z.object({ attacker: PlayerNameSchema, blueprint: z.string().min(1), hits: z.number().int().positive().prefault(1) }),
+		tokens: ([attacker, blueprint, hits]) => {
+			requireTokens([attacker, blueprint], 2, 'damage-radio <attacker> <blueprint> [hits]')
+			return { attacker, blueprint, hits: hits === undefined ? undefined : Number(hits) }
 		},
 		mutatesWorld: true,
 	}),

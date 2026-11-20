@@ -1923,6 +1923,7 @@ function radioDamagedEvent(
 		damageType: damage.damageType,
 		weapon: damage.weapon,
 		variant: targetVariant(attacker, teamId, []),
+		damage: damage.damage,
 		health: damage.health,
 		bottomedOut: damage.bottomedOut,
 		...(attacker ? { attacker: SM.PlayerIds.getPlayerId(attacker.ids) } : {}),

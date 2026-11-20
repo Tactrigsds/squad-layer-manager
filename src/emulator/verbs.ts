@@ -281,9 +281,9 @@ export async function execute<V extends SB.SandboxVerb>(host: SandboxHost, verb:
 			return `${attacker} destroyed ${blueprint}`
 		}
 		case 'damage-radio': {
-			const { attacker, blueprint } = input as SB.SandboxVerbInput<'damage-radio'>
-			world.damageRadio(requirePlayer(host, attacker), blueprint)
-			return `${attacker} attacked ${blueprint}`
+			const { attacker, blueprint, hits } = input as SB.SandboxVerbInput<'damage-radio'>
+			world.damageRadio(requirePlayer(host, attacker), blueprint, hits)
+			return `${attacker} hit ${blueprint} ${hits} time(s), then took it down to minimum health`
 		}
 		case 'end': {
 			const { winnerTeamId } = input as SB.SandboxVerbInput<'end'>

@@ -302,8 +302,9 @@ export const playersHarmed = def((attacker: Rendered, died: boolean, teamkill: b
 	),
 )
 
-export const vehicleHitRepeatedly = def((attacker: Rendered, vehicle: Rendered, count: number, damage: number, weapon?: Rendered) =>
-	rt('{attacker} hit {vehicle} {count} times for {damage}{weapon}', { attacker, vehicle, count, damage, weapon }),
+// the target is a vehicle or a FOB radio
+export const targetHitRepeatedly = def((attacker: Rendered, target: Rendered, count: number, damage: number, weapon?: Rendered) =>
+	rt('{attacker} hit {target} {count} times for {damage}{weapon}', { attacker, target, count, damage, weapon }),
 )
 
 export const targetsDestroyed = def((attacker: Rendered, vehicles: boolean, count: number, teamkill: boolean, weapon?: Rendered) =>
