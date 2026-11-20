@@ -29,6 +29,27 @@ export namespace Module {
 	export const NAME = 'slm.module.name'
 }
 
+// What the process holds, for sizing a deployment. The first two are OpenTelemetry's semantic conventions; the rest
+// split the memory the V8 heap metrics leave out by owner. Every dimension is bounded: two cpu modes, the app's
+// fixed set of worker threads, and two cgroup memory types.
+export namespace Process {
+	export const CPU_TIME = 'process.cpu.time'
+	export const CPU_MODE = 'cpu.mode'
+	export const MEMORY_USAGE = 'process.memory.usage'
+	// memory V8 tracks outside its heaps, which includes the layer engine's wasm memory
+	export const EXTERNAL_MEMORY = 'slm.process.memory.external'
+	export const ARRAY_BUFFER_MEMORY = 'slm.process.memory.array_buffers'
+	export const LAYER_ENGINE_MEMORY = 'slm.layer_engine.memory'
+	export const WORKER_HEAP_USED = 'slm.worker.heap.used'
+	export const WORKER_HEAP_COMMITTED = 'slm.worker.heap.committed'
+	export const WORKER_NAME = 'slm.worker.name'
+	// The process's own cgroup, read from memory.stat. File-backed memory includes the page cache of the database,
+	// which the kernel reclaims under pressure, so anon is the figure that sizes RAM.
+	export const CGROUP_MEMORY = 'slm.cgroup.memory.usage'
+	export const CGROUP_MEMORY_TYPE = 'slm.cgroup.memory.type'
+	export type CgroupMemoryType = 'anon' | 'file'
+}
+
 export namespace Db {
 	// how a transaction() scope ended
 	export const TX_OUTCOME = 'slm.db.tx.outcome'
