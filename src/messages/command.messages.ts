@@ -1,4 +1,5 @@
 import * as Arr from '@/lib/array-utils'
+import { assertNever } from '@/lib/type-guards'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models'
 import { def, join, rt, t, type TString } from '@/models/messages.models'
@@ -28,13 +29,53 @@ function groupDifference(id: CMD.CommandId, group: CMDH.TriggerGroup): TString {
 	return group.pins.length > 0 ? pinnedArgs(group.pins) : descriptions[id]
 }
 
-// `section` is the raw token typed after the help command; omitted means the quick reference. The brackets and the
-// colon are the listing's own layout rather than prose, so they sit in the pattern where a translator can see what
-// they punctuate.
-export const help = def((commands: CMD.CommandConfigs, section?: string, plugins: CMDH.PluginCommandListing[] = []) => {
-	const listing = CMDH.resolveHelpListing(commands, section, plugins)
-	if (listing.code === 'err:unknown-section') return { warn: [listing.msg] }
+// The brackets and the colon are the listing's own layout rather than prose, so they sit in the pattern where a
+// translator can see what they punctuate.
+export const help = def(
+	(commandsPageUrl: string, commands: CMD.CommandConfigs, listing: Exclude<CMDH.HelpListing, { code: `err:${string}` }>) => {
+		switch (listing.code) {
+			case 'overview':
+				return {
+					warn: [
+						join([
+							t('All commands: {url}', { url: commandsPageUrl }),
+							// the placeholder is syntax rather than prose, and passing it in keeps the pattern free of a literal '<'
+							t('List a section: {helpString} {placeholder} -- {options}', {
+								helpString: listing.helpString,
+								placeholder: '<section>',
+								options: listing.sections,
+							}),
+						]),
+					],
+				}
+			case 'ok':
+				return helpLines(commands, listing.title, listing)
+			case 'page': {
+				// a single page needs no numbering
+				if (listing.pageCount === 1) return helpLines(commands, t('Commands'), listing)
+				const next =
+					listing.page < listing.pageCount
+						? t('Next page: {helpString} {next}', { helpString: listing.helpString, next: listing.page + 1 })
+						: undefined
+				return helpLines(
+					commands,
+					t('Commands ({page}/{pageCount})', { page: listing.page, pageCount: listing.pageCount }),
+					listing,
+					next,
+				)
+			}
+			default:
+				assertNever(listing)
+		}
+	},
+)
 
+function helpLines(
+	commands: CMD.CommandConfigs,
+	title: TString,
+	listing: { commands: CMD.CommandId[]; pluginCommands: CMDH.PluginCommandListing[] },
+	footer?: TString,
+) {
 	// one line per way of running the command: triggers that take the same thing from the caller share a line, and one
 	// that takes something different gets its own
 	const lines = listing.commands.flatMap((id) =>
@@ -60,16 +101,13 @@ export const help = def((commands: CMD.CommandConfigs, section?: string, plugins
 			}),
 		),
 	)
-	if (lines.length === 0) {
-		return { warn: [t('{title}: none.', { title: listing.title }), ...(listing.hint ? [listing.hint] : [])] }
-	}
+	if (lines.length === 0) return { warn: [t('{title}: none.', { title })] }
 	const groups = Arr.paged(lines, 3)
-	groups[0].unshift(t('{title}:', { title: listing.title }))
-	// the hint tells you how to see the rest, so it trails the listing rather than crowding the first warn
-	if (listing.hint) groups[groups.length - 1].push(listing.hint)
+	groups[0].unshift(t('{title}:', { title }))
+	if (footer) groups[groups.length - 1].push(footer)
 	// one warn per group, since chat can only take a few lines at a time
 	return { warn: groups.map((group) => join(group)) }
-})
+}
 
 // What a caller sees when an argument didn't resolve but something close enough did, and they are asked to pick.
 // These carry the whole explanation: the exchange is meant to be understood from the chat it happens in.
@@ -249,10 +287,7 @@ export const enabled = def('Enabled')
 
 export const quickReference = def('Quick Reference')
 
-export const quickReferenceHelp = def(
-	"Show this command on the commands page's quick reference, and in the in-game help command's default listing.",
-	() => ({}),
-)
+export const quickReferenceHelp = def("Show this command on the commands page's quick reference.", () => ({}))
 
 // -------- one command's triggers --------
 

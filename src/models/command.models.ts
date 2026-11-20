@@ -53,8 +53,7 @@ export type CommandConfig = {
 	triggers: CommandTrigger[]
 	allowedChats: ChatGroup[]
 	enabled: boolean
-	// whether the command appears on the quick reference: the commands page's top section, and the only commands
-	// bare `!help` lists (see Messages.WARNS.commands.help)
+	// whether the command appears on the quick reference, the commands page's top section
 	quickReference: boolean
 }
 
@@ -231,8 +230,8 @@ const SWAP_DESTINATION_HELP = t(
 	'Where to send them. The other team when omitted. Name it to avoid accidental duplicate swaps: anyone already on that team is left alone.',
 )
 
-// `quickReference` seeds the default cheat sheet: the handful of commands an admin reaches for in a normal shift,
-// which is what a bare `!help` in the middle of a match should answer with. Admins re-pick it per installation.
+// `quickReference` seeds the default cheat sheet: the handful of commands an admin reaches for in a normal shift.
+// Admins re-pick it per installation.
 export const COMMAND_DECLARATIONS = {
 	...declareCommand('help', {
 		label: t('Help', undefined, { context: 'command' }),
@@ -244,14 +243,17 @@ export const COMMAND_DECLARATIONS = {
 				name: 'section',
 				optional: true,
 				sample: 'moderation',
-				describe: t('One of {sections}, or "{allToken}" for every command. Lists the quick reference when omitted.', {
-					sections: COMMAND_SECTION_IDS.join(', '),
-					allToken: ALL_SECTIONS_TOKEN,
-				}),
+				describe: t(
+					'One of {sections}, or "{allToken}" for every command. A number lists that page of the commands available to the player. When omitted, in-game admins get a link to the commands page, and other players get the first page.',
+					{
+						sections: COMMAND_SECTION_IDS.join(', '),
+						allToken: ALL_SECTIONS_TOKEN,
+					},
+				),
 			},
 		],
 		defaults: {
-			allowedChats: ['admin'],
+			allowedChats: ['admin', 'public'],
 			triggers: ['help', 'h'],
 			enabled: true,
 			quickReference: true,
@@ -838,9 +840,7 @@ function CommandConfigSchema(commandId: CommandId) {
 				.meta(
 					SDoc.of({
 						label: t('Quick Reference'),
-						description: t(
-							'Show this command on the quick reference: the top section of the commands page, and the only commands a bare help command lists',
-						),
+						description: t('Show this command on the quick reference: the top section of the commands page'),
 					}),
 				),
 		})
@@ -917,11 +917,12 @@ export const PluginCommandConfigSchema = z.object({
 		.min(1)
 		.meta(SDoc.of({ label: t('Allowed Chats'), description: t('Which in-game chats accept this command') })),
 	enabled: z.boolean().meta(SDoc.of({ label: t('Enabled') })),
-	quickReference: z
-		.boolean()
-		.meta(
-			SDoc.of({ label: t('Quick Reference'), description: t('Show this command on the quick reference, and in a bare help command') }),
-		),
+	quickReference: z.boolean().meta(
+		SDoc.of({
+			label: t('Quick Reference'),
+			description: t('Show this command on the quick reference: the top section of the commands page'),
+		}),
+	),
 })
 export type PluginCommandConfig = z.infer<typeof PluginCommandConfigSchema>
 

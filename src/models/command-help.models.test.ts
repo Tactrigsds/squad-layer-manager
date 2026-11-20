@@ -178,24 +178,53 @@ describe('triggerGroups', () => {
 })
 
 describe('resolveHelpListing', () => {
-	it('lists only quick-reference commands when no section is given', () => {
-		const listing = CMDH.resolveHelpListing(configs, undefined)
-		expect(listing.code).toBe('ok')
-		if (listing.code !== 'ok') return
-		expect(listing.commands).toContain('help')
-		expect(listing.commands.every((id) => configs[id].quickReference)).toBe(true)
-		expect(listing.commands).not.toContain('clearTimeout')
+	const admin: CMDH.HelpCaller = { isAdmin: true, mayRun: () => true }
+	// a player who can only type in public chat, holding no permissions
+	const player: CMDH.HelpCaller = {
+		isAdmin: false,
+		mayRun: (access, config) => config.allowedChats.includes('public') && RBAC.Access.resolve(access, { serverId: 's' }) === null,
+	}
+	const listingFor = (cfgs: CMD.CommandConfigs, section: string | undefined, plugins: CMDH.PluginCommandListing[] = [], caller = admin) =>
+		CMDH.resolveHelpListing(cfgs, section, plugins, caller)
+
+	it('lists a player the commands they can run instead of linking the commands page', () => {
+		const listing = listingFor(configs, undefined, [], player)
+		if (listing.code !== 'page') throw new Error('expected page')
+		expect(listing.page).toBe(1)
+		expect(listing.commands.length).toBeGreaterThan(0)
+		expect(listing.commands.every((id) => configs[id].allowedChats.includes('public'))).toBe(true)
+	})
+
+	it('pages the commands a caller can run, and refuses a page past the last', () => {
+		const everyone: CMDH.HelpCaller = { isAdmin: false, mayRun: () => true }
+		const runnable = CMD.COMMAND_IDS.filter((id) => configs[id].enabled)
+		const pageCount = Math.ceil(runnable.length / CMDH.HELP_PAGE_SIZE)
+		const first = listingFor(configs, undefined, [], everyone)
+		const second = listingFor(configs, '2', [], everyone)
+		if (first.code !== 'page' || second.code !== 'page') throw new Error('expected page')
+		expect(first).toMatchObject({ page: 1, pageCount, commands: runnable.slice(0, CMDH.HELP_PAGE_SIZE) })
+		expect(second.commands).toEqual(runnable.slice(CMDH.HELP_PAGE_SIZE, 2 * CMDH.HELP_PAGE_SIZE))
+		expect(listingFor(configs, String(pageCount + 1), [], everyone).code).toBe('err:no-such-page')
+		expect(listingFor(configs, '0', [], everyone).code).toBe('err:no-such-page')
+	})
+
+	it('names the single-token sections when no section is given', () => {
+		expect(listingFor(configs, undefined)).toEqual({
+			code: 'overview',
+			helpString: `${P}help`,
+			sections: 'general, votes, layerRequests, teamswaps, switchRequests, flags, moderation, messaging, all',
+		})
 	})
 
 	it('lists every enabled command for the "all" token', () => {
-		const listing = CMDH.resolveHelpListing(withConfig('kick', { enabled: false }), 'all')
+		const listing = listingFor(withConfig('kick', { enabled: false }), 'all')
 		if (listing.code !== 'ok') throw new Error('expected ok')
 		expect(listing.commands).toContain('clearTimeout')
 		expect(listing.commands).not.toContain('kick')
 	})
 
-	// a plugin's command belongs to no declared section, so it rides along with the quick reference and the
-	// "all" listing and stays out of every named one
+	// a plugin's command belongs to no declared section, so it appears in the "all" listing and stays out of every
+	// named one
 	it("carries a plugin's commands into the listings it belongs in", () => {
 		const decl = {
 			name: 'rolltoseed',
@@ -206,17 +235,16 @@ describe('resolveHelpListing', () => {
 			quickReference: true,
 		}
 		const plugin = { id: CMD.pluginCommandId('a-plugin', 'rolltoseed'), decl, config: CMD.pluginCommandConfig(decl, undefined, P) }
-		expect(CMDH.resolveHelpListing(configs, undefined, [plugin])).toMatchObject({ pluginCommands: [plugin] })
-		expect(CMDH.resolveHelpListing(configs, 'all', [plugin])).toMatchObject({ pluginCommands: [plugin] })
-		expect(CMDH.resolveHelpListing(configs, 'moderation', [plugin])).toMatchObject({ pluginCommands: [] })
+		expect(listingFor(configs, 'all', [plugin])).toMatchObject({ pluginCommands: [plugin] })
+		expect(listingFor(configs, 'moderation', [plugin])).toMatchObject({ pluginCommands: [] })
 
 		const off = { ...plugin, config: { ...plugin.config, enabled: false } }
-		expect(CMDH.resolveHelpListing(configs, 'all', [off])).toMatchObject({ pluginCommands: [] })
+		expect(listingFor(configs, 'all', [off])).toMatchObject({ pluginCommands: [] })
 	})
 
 	it('resolves a section by id or by label, case-insensitively', () => {
-		const byId = CMDH.resolveHelpListing(configs, 'moderation')
-		const byLabel = CMDH.resolveHelpListing(configs, 'flags & notes')
+		const byId = listingFor(configs, 'moderation')
+		const byLabel = listingFor(configs, 'flags & notes')
 		if (byId.code !== 'ok' || byLabel.code !== 'ok') throw new Error('expected ok')
 		expect(byId.commands).toContain('kick')
 		expect(byId.commands).not.toContain('swapNow')
@@ -225,7 +253,7 @@ describe('resolveHelpListing', () => {
 
 	it('advertises sections by id, never by a label that could not be typed', () => {
 		// `section` is a single-token arg, so "Flags & Notes" would never match -- only `flags` can be advised
-		const listing = CMDH.resolveHelpListing(configs, 'zzzzzzzz')
+		const listing = listingFor(configs, 'zzzzzzzz')
 		expect(listing.code).toBe('err:unknown-section')
 		if (listing.code !== 'err:unknown-section') return
 		const msg = I18n.ambient.text(listing.msg)
@@ -235,31 +263,22 @@ describe('resolveHelpListing', () => {
 	})
 
 	it('offers the section a shortening was aiming at, instead of listing every one', () => {
-		const listing = CMDH.resolveHelpListing(configs, 'mod')
+		const listing = listingFor(configs, 'mod')
 		expect(listing.code).toBe('err:unknown-section')
 		if (listing.code !== 'err:unknown-section') return
 		expect(listing.choices).toEqual([{ tokens: ['moderation'], label: 'moderation' }])
 		expect(I18n.ambient.text(listing.msg)).not.toContain('teamswaps')
 	})
 
-	it('trails the quick reference with a hint naming the single-token sections', () => {
-		const listing = CMDH.resolveHelpListing(configs, undefined)
-		if (listing.code !== 'ok') throw new Error('expected ok')
-		expect(I18n.ambient.text(listing.title)).toBe('Commands')
-		expect(I18n.ambient.text(listing.hint!)).toBe(
-			`More: ${P}help <section> -- general, votes, layerRequests, teamswaps, switchRequests, flags, moderation, messaging, all`,
-		)
-	})
-
 	// a shortcut trigger is the same command, so it is listed with it rather than separately -- and a disabled
 	// command takes its shortcuts out of the listing with it
 	it('lists a command with shortcut triggers once, under its own section', () => {
 		const withShortcut = withConfig('kick', { triggers: [...configs.kick.triggers, { string: '!tox', args: '{{arg1}} toxicity' }] })
-		const listing = CMDH.resolveHelpListing(withShortcut, 'moderation')
+		const listing = listingFor(withShortcut, 'moderation')
 		if (listing.code !== 'ok') throw new Error('expected ok')
 		expect(listing.commands.filter((id) => id === 'kick')).toEqual(['kick'])
 
-		const disabled = CMDH.resolveHelpListing(withConfig('kick', { ...withShortcut.kick, enabled: false }), 'moderation')
+		const disabled = listingFor(withConfig('kick', { ...withShortcut.kick, enabled: false }), 'moderation')
 		if (disabled.code !== 'ok') throw new Error('expected ok')
 		expect(disabled.commands).not.toContain('kick')
 	})

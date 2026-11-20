@@ -830,6 +830,13 @@ export async function getUserAccessCheck(ctx: C.Db & USR.Ctx.Id & CS.AbortSignal
 	return (req) => RBAC.tryDenyPermissions(perms, req, scopedServerIds) === null
 }
 
+export async function getPlayerAccessCheck(
+	ctx: C.Db & SM.Ctx.Ids & CS.ServerId & CS.AbortSignal,
+): Promise<(req: RBAC.ReqInput) => boolean> {
+	const perms = RBAC.fromTracedPermissions((await getRbacForPlayer(ctx)).perms)
+	return (req) => RBAC.tryDenyPermissions(perms, req, scopedServerIds) === null
+}
+
 // every change to what this user holds, for a stream filtered by their access to recompute on
 export function userInvalidation$(discordId: bigint): Rx.Observable<RbacInvalidation> {
 	return invalidation$.pipe(Rx.filter((e) => e.scope === 'all' || e.discordId === discordId))

@@ -398,43 +398,55 @@ export function describeOptions(id: CMD.CommandId): OptionHelp[] {
 
 // -------- help listings --------
 
-// what a help command lists. A bare `!help` answers with the quick reference, since an admin mid-match wants the
-// handful of commands they actually use, not thirty lines paged into chat. A command's shortcut triggers ride along
-// with it rather than being listed separately: they are the same command, reached a different way.
+// what a help command lists. A bare `!help` from an in-game admin points at the commands page and names the sections,
+// since thirty lines paged into chat are unreadable mid-match. Anyone else gets the commands they can run, a page at a
+// time: they may have no way to open the commands page. A command's shortcut triggers ride along with it rather than
+// being listed separately: they are the same command, reached a different way.
 // a plugin's command as a help listing shows it. Plugin commands belong to no section -- sections are declared, and
-// a plugin's are not -- so they ride along with the quick reference and the "all" listing only.
+// a plugin's are not -- so they appear in the "all" listing and the caller's own pages only.
 export type PluginCommandListing = { id: string; decl: CMD.PluginCommandDeclaration; config: CMD.CommandConfig }
 
+// `mayRun` says whether the caller holds a command's access and can type it in a chat they can reach
+export type HelpCaller = { isAdmin: boolean; mayRun: (access: CMD.CommandAccess, config: CMD.CommandConfig) => boolean }
+
+export const HELP_PAGE_SIZE = 5
+
 export type HelpListing =
-	| { code: 'ok'; title: TString; commands: CMD.CommandId[]; pluginCommands: PluginCommandListing[]; hint?: TString }
+	| { code: 'overview'; helpString: string; sections: string }
+	| { code: 'ok'; title: TString; commands: CMD.CommandId[]; pluginCommands: PluginCommandListing[] }
+	| {
+			code: 'page'
+			commands: CMD.CommandId[]
+			pluginCommands: PluginCommandListing[]
+			page: number
+			pageCount: number
+			helpString: string
+	  }
+	| { code: 'err:no-such-page'; msg: TString }
 	// `choices` are the sections close enough to what was typed to offer back; the message names the rest only when
 	// there are none, so a caller is never read a list twice
 	| { code: 'err:unknown-section'; msg: TString; choices: CMD.ArgChoice[] }
 
 const sectionOptions = () => CMD.sectionTokens().join(', ')
 
-// resolves what `!help [section]` should list. Only enabled commands are listed: a disabled one cannot be run.
+// resolves what `!help [section | page]` should list. Only enabled commands are listed: a disabled one cannot be run.
 export function resolveHelpListing(
 	configs: CMD.CommandConfigs,
 	sectionToken: string | undefined,
-	plugins: PluginCommandListing[] = [],
+	plugins: PluginCommandListing[],
+	caller: HelpCaller,
 ): HelpListing {
 	const runnable = (id: CMD.CommandId) => configs[id].enabled
 	const runnablePlugins = plugins.filter((p) => p.config.enabled)
+	const primary = CMD.primaryTrigger(configs.help)
+	const helpString = primary ? CMD.triggerString(primary) : 'help'
 
-	if (sectionToken === undefined) {
-		const commands = CMD.COMMAND_IDS.filter((id) => runnable(id) && configs[id].quickReference)
-		const primary = CMD.primaryTrigger(configs.help)
-		const helpString = primary ? CMD.triggerString(primary) : 'help'
-		return {
-			code: 'ok',
-			title: t('Commands'),
-			commands,
-			pluginCommands: runnablePlugins.filter((p) => p.config.quickReference),
-			// the placeholder is syntax rather than prose, and passing it in keeps the pattern free of a literal '<'
-			hint: t('More: {helpString} {placeholder} -- {options}', { helpString, placeholder: '<section>', options: sectionOptions() }),
-		}
+	const pageToken = sectionToken === undefined ? (caller.isAdmin ? undefined : '1') : sectionToken.trim()
+	if (pageToken !== undefined && /^\d+$/.test(pageToken)) {
+		return resolveHelpPage(configs, runnablePlugins, caller, Number(pageToken), helpString)
 	}
+
+	if (sectionToken === undefined) return { code: 'overview', helpString, sections: sectionOptions() }
 
 	if (sectionToken.trim().toLowerCase() === CMD.ALL_SECTIONS_TOKEN) {
 		return { code: 'ok', title: t('All commands'), commands: CMD.COMMAND_IDS.filter(runnable), pluginCommands: runnablePlugins }
@@ -457,6 +469,32 @@ export function resolveHelpListing(
 		title: t('{label} commands', { label: CMD.COMMAND_SECTIONS[section].label }),
 		commands: CMD.commandsInSection(section).filter(runnable),
 		pluginCommands: [],
+	}
+}
+
+// one page of the commands the caller can run, built-in commands first
+function resolveHelpPage(
+	configs: CMD.CommandConfigs,
+	runnablePlugins: PluginCommandListing[],
+	caller: HelpCaller,
+	page: number,
+	helpString: string,
+): HelpListing {
+	const commands = CMD.COMMAND_IDS.filter((id) => configs[id].enabled && caller.mayRun(CMD.COMMAND_DECLARATIONS[id].access, configs[id]))
+	const pluginCommands = runnablePlugins.filter((p) => caller.mayRun(p.decl.access, p.config))
+	const pageCount = Math.max(1, Math.ceil((commands.length + pluginCommands.length) / HELP_PAGE_SIZE))
+	if (page < 1 || page > pageCount) {
+		return { code: 'err:no-such-page', msg: t('There is no page {page}. Pages: 1-{pageCount}', { page, pageCount }) }
+	}
+	const start = (page - 1) * HELP_PAGE_SIZE
+	const end = start + HELP_PAGE_SIZE
+	return {
+		code: 'page',
+		commands: commands.slice(start, end),
+		pluginCommands: pluginCommands.slice(Math.max(0, start - commands.length), Math.max(0, end - commands.length)),
+		page,
+		pageCount,
+		helpString,
 	}
 }
 
