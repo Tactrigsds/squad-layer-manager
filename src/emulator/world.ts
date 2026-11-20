@@ -432,17 +432,23 @@ export class World {
 		)
 	}
 
-	// an attack on a radio: a first hit, then one taking it down to the minimum health radios stop at
-	damageRadio(attacker: EmuPlayer, blueprint: string, weapon = 'BP_RPG7_Tandem_Heat_Proj2') {
+	// an attack on a radio: `hits` hits of 50, then one taking it down to the minimum health radios stop at
+	damageRadio(attacker: EmuPlayer, blueprint: string, hits = 1, weapon = 'BP_RPG7_Tandem_Heat_Proj2') {
 		const actor = `${blueprint}_C_${this.#nextInstanceId--}`
 		const causer = `${weapon}_C_${this.#nextInstanceId--}`
-		this.#log(
-			Fmt.logDeployableDamageApplied(actor, 5000, 'BP_HAT_DamageType_C'),
-			Fmt.logDeployableHealth(actor, 50, causer, attacker, 250),
-		)
+		const minHealth = 24
+		let health = 300
+		for (let i = 0; i < hits; i++) {
+			if (health - 50 <= minHealth) break
+			health -= 50
+			this.#log(
+				Fmt.logDeployableDamageApplied(actor, 5000, 'BP_HAT_DamageType_C'),
+				Fmt.logDeployableHealth(actor, 50, causer, attacker, health),
+			)
+		}
 		this.#log(
 			Fmt.logDeployableDamageApplied(actor, 22600, 'BP_HAT_DamageType_C'),
-			Fmt.logDeployableHealth(actor, 226, causer, attacker, 24),
+			Fmt.logDeployableHealth(actor, 226, causer, attacker, minHealth),
 		)
 	}
 

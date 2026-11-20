@@ -456,6 +456,8 @@ export type FobRadioDamaged<P = SM.PlayerId> = {
 	damageType: string | null
 	weapon: string | null
 	variant: DestroyedVariant
+	// null on a hit recorded before every hit carried its damage
+	damage: number | null
 	health: number
 	bottomedOut: boolean
 } & Partial<SM.PlayerAssoc<'attacker', P>> &
@@ -703,6 +705,7 @@ export const FobRadioDamagedSchema = event('FOB_RADIO_DAMAGED', {
 	weapon: z.string().nullable(),
 	variant: PlayerWoundedOrDiedVariantSchema.nullable(),
 	attacker: SM.PlayerIdSchema.optional(),
+	damage: z.number().nullable().default(null),
 	health: z.number(),
 	bottomedOut: z.boolean(),
 })

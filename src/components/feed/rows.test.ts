@@ -246,6 +246,19 @@ describe('bursts render on every path', () => {
 			variant: 'normal',
 			attacker,
 		}),
+		FOB_RADIO_DAMAGED: (id) => ({
+			type: 'FOB_RADIO_DAMAGED',
+			...envelope(id),
+			radio: { className: 'BP_FOBRadio_PLA', instanceId: 1, targetType: 'RADIO' },
+			teamId: null,
+			damageType: null,
+			weapon: 'BP_RPG7',
+			variant: 'normal',
+			damage: 40.4,
+			health: 250,
+			bottomedOut: false,
+			attacker,
+		}),
 	}
 
 	it.each(Object.keys(member) as CHAT.BurstKind[])('%s', (kind) => {

@@ -197,7 +197,23 @@ function Burst(props: { ctx: RC.RenderCtx; event: CHAT.Burst }) {
 				return [
 					<Icon key="icon" name="Crosshair" className={`h-4 w-4 shrink-0 ${teamkill ? tone : 'text-muted-foreground'}`} />,
 					tr.richText(
-						CHAT_Msgs.vehicleHitRepeatedly(
+						CHAT_Msgs.targetHitRepeatedly(
+							attacker,
+							<TargetDisplay ctx={ctx} event={event.events[0]} />,
+							count,
+							Math.round(damage),
+							weapon,
+						),
+					),
+				] as const
+			}
+			case 'FOB_RADIO_DAMAGED': {
+				let damage = 0
+				for (const hit of event.events) damage += hit.damage ?? 0
+				return [
+					<Icon key="icon" name="RadioTower" className={`h-4 w-4 shrink-0 ${teamkill ? tone : 'text-warn'}`} />,
+					tr.richText(
+						CHAT_Msgs.targetHitRepeatedly(
 							attacker,
 							<TargetDisplay ctx={ctx} event={event.events[0]} />,
 							count,

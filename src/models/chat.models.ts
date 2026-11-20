@@ -335,6 +335,7 @@ type BurstableEvents = {
 	VEHICLE_DAMAGED: SE.VehicleDamaged<SM.Player>
 	VEHICLE_DESTROYED: SE.VehicleDestroyed<SM.Player>
 	DEPLOYABLE_DESTROYED: SE.DeployableDestroyed<SM.Player>
+	FOB_RADIO_DAMAGED: SE.FobRadioDamaged<SM.Player>
 }
 export type BurstKind = keyof BurstableEvents
 // in arrival order, always two or more
@@ -807,6 +808,10 @@ function burstKey(event: EventEnriched): string | null {
 			return `${event.matchId}\u0000${event.type}\u0000${SM.PlayerIds.getPlayerId(event.attacker.ids)}\u0000${event.variant}\u0000${event.damageSource}`
 		case 'VEHICLE_DAMAGED':
 			return `${event.matchId}\u0000${event.type}\u0000${SM.PlayerIds.getPlayerId(event.attacker.ids)}\u0000${event.variant}\u0000${event.weapon}\u0000${event.vehicle.instanceId}`
+		case 'FOB_RADIO_DAMAGED':
+			// taking a radio down to minimum health gets a line of its own
+			if (!event.attacker || event.bottomedOut) return null
+			return `${event.matchId}\u0000${event.type}\u0000${SM.PlayerIds.getPlayerId(event.attacker.ids)}\u0000${event.variant}\u0000${event.weapon}\u0000${event.radio.instanceId}`
 		case 'VEHICLE_DESTROYED':
 		case 'DEPLOYABLE_DESTROYED':
 			// a vehicle's crew finishing it is a crash, one at a time

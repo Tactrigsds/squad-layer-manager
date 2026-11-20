@@ -198,7 +198,7 @@ describe('FOB radios', () => {
 		`[2026.09.28-${time}][  5]LogSquadTrace: [DedicatedServer]TakeDamage(): BP_FOBRadio_TLF_C_2147398110: ${damage.toFixed(2)} damage taken by causer BP_EmplacedDshk_C_2147469189 instigator APFSDS-3BM59 (Online IDs: EOS: 00028d93c0ff4633b34d013dd7e75e4b steam: 76561199411874537) health remaining ${health.toFixed(2)}`
 
 	// the first hit is a real line; the rest follow its format
-	it('reports an attack as it starts, again after a lull, and when the radio bottoms out', async () => {
+	it('reports each hit that costs health, with the health it cost', async () => {
 		const { destructions, radioDamage } = await replayAll([
 			hit('16.15.46:399', 1.6, 298.4),
 			hit('16.15.46:508', 1.6, 296.8),
@@ -212,9 +212,14 @@ describe('FOB radios', () => {
 		expect(destructions).toEqual([])
 		expect(radioDamage.map((d) => [d.health, d.bottomedOut])).toEqual([
 			[298.4, false],
+			[296.8, false],
+			[295.2, false],
 			[293.6, false],
+			[93.6, false],
 			[24, true],
 		])
+		const damage = [1.6, 1.6, 1.6, 1.6, 200, 69.6]
+		radioDamage.forEach((d, i) => expect(d.damage).toBeCloseTo(damage[i]))
 		expect(radioDamage[0]).toMatchObject({
 			actor: { className: 'BP_FOBRadio_TLF', instanceId: 2147398110 },
 			weapon: 'BP_EmplacedDshk',

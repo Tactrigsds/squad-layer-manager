@@ -16,13 +16,10 @@ import type * as SM from '@/models/squad.models'
 // - Wrecks (`Loach_Destroyed_CAS`, `CTM131_Obliterate`) are actors of their own and take damage too.
 // - Level-placed objects (`BP_SandBagWall_3`) have no instance suffix, and are not anyone's to lose.
 // - FOB radios bottom out at RADIO_MIN_HEALTH and are never logged reaching zero, so a radio is never destroyed
-//   here. An attack on one is reported instead: once when it starts, and once when the radio bottoms out. A radio
-//   takes several hits a second while under fire, so one report per hit would bury everything else.
+//   here. Each hit that costs one health is reported instead, and the feed folds a run of them into one burst.
 
 // the health a FOB radio stops losing at, measured across every radio in two days of production logs
 export const RADIO_MIN_HEALTH = 24
-// how long a radio has to go without losing health before its next hit counts as a new attack
-export const RADIO_ATTACK_GAP_MS = 60_000
 
 export const DEPLOYABLE_TYPES = [
 	'MINE',
@@ -128,8 +125,6 @@ export type State = {
 	// the DAMAGE_APPLIED lines of the tick being read. A tick's key is its time and chainID together, since the
 	// chainID alone wraps at 1000.
 	tick: { key: string; hits: Hit[] }
-	// when each radio last lost health, for telling a new attack from the one in progress
-	radioLastHitAt: Map<string, number>
 }
 
 export function init(): State {
@@ -139,7 +134,6 @@ export function init(): State {
 		vehiclesByClass: new Map(),
 		occupants: new Map(),
 		tick: { key: '', hits: [] },
-		radioLastHitAt: new Map(),
 	}
 }
 
@@ -151,7 +145,6 @@ export function resetForMatch(state: State, matchId: number) {
 	state.vehiclesByClass.clear()
 	state.occupants.clear()
 	state.tick = { key: '', hits: [] }
-	state.radioLastHitAt.clear()
 }
 
 function tickKey(event: { time: number; chainID: number }) {
@@ -302,6 +295,8 @@ export type RadioDamage = {
 	damageType: string | null
 	weapon: string | null
 	attacker: SM.PlayerId | null
+	// the health the hit took
+	damage: number
 	health: number
 	// this hit took the radio down to RADIO_MIN_HEALTH
 	bottomedOut: boolean
@@ -319,19 +314,15 @@ export function onDeployableHealthChanged(state: State, event: SM.LogEvents.Depl
 
 	if (deployableType(actor.className) === 'RADIO') {
 		if (!lostHealth) return null
-		const lastHitAt = state.radioLastHitAt.get(event.actor)
-		state.radioLastHitAt.set(event.actor, event.time)
-		const attackStarts = lastHitAt === undefined || event.time - lastHitAt > RADIO_ATTACK_GAP_MS
-		const bottomedOut = previous > RADIO_MIN_HEALTH && event.health <= RADIO_MIN_HEALTH
-		if (!attackStarts && !bottomedOut) return null
 		return {
 			kind: 'radio-damaged',
 			actor,
 			damageType: hit()?.damageType ?? null,
 			weapon: weapon(),
 			attacker: event.instigatorIds?.eos ?? null,
+			damage: previous - event.health,
 			health: event.health,
-			bottomedOut,
+			bottomedOut: previous > RADIO_MIN_HEALTH && event.health <= RADIO_MIN_HEALTH,
 		}
 	}
 
