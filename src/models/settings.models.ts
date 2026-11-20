@@ -1760,10 +1760,15 @@ export function getSettingsConstraints(
 }
 
 // The main pool as a draw sees it: the installed mods, the pool filter and every repeat rule of the server's ruleset.
-// Leaves out the filters and the rule selection that only constrain automatic generation.
-export function getMainPoolConstraints(settings: PublicServerSettings, repeatRules: readonly RRS.RepeatRuleConfig[]) {
+// Leaves out the filters and the rule selection that only constrain automatic generation. opts.poolFilter false leaves
+// out the pool filter as well.
+export function getMainPoolConstraints(
+	settings: PublicServerSettings,
+	repeatRules: readonly RRS.RepeatRuleConfig[],
+	opts?: { poolFilter?: boolean },
+) {
 	const constraints: LQY.Constraint[] = [getInstalledModsConstraint(settings)]
-	const poolFilterConstraint = getPoolFilterConstraint(settings)
+	const poolFilterConstraint = opts?.poolFilter === false ? null : getPoolFilterConstraint(settings)
 	if (poolFilterConstraint) constraints.push(poolFilterConstraint)
 	repeatRules.forEach((rule, index) => {
 		constraints.push(CB.repeatRule(getRepeatRuleConstraintId('mainPool', index), rule))

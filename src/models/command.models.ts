@@ -339,6 +339,17 @@ export const COMMAND_DECLARATIONS = {
 				),
 			},
 		],
+		options: [
+			{
+				kind: 'string',
+				name: 'filters',
+				short: 'f',
+				sample: 'mainpool,!jensens',
+				describe: t(
+					'Filters to draw the choices with in place of the pool filter, separated by commas. A ! before a name inverts that filter, and none draws without any. The repeat rules still apply.',
+				),
+			},
+		],
 		defaults: { allowedChats: ['admin'], triggers: ['vote'], enabled: true, quickReference: false },
 	}),
 	...declareCommand('simpleVote', {
@@ -404,7 +415,9 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('requestLayer', {
 		label: t('Request Layer', undefined, { context: 'command' }),
 		section: 'layerRequests',
-		access: Access.inHandler('how many requests a caller may hold is capped per grant, and counted against the queue'),
+		access: Access.inHandler(
+			'how many requests a caller may hold is capped per grant, and counted against the queue. --filters needs queue:write',
+		),
 		args: [
 			{
 				kind: 'text',
@@ -412,6 +425,17 @@ export const COMMAND_DECLARATIONS = {
 				sample: 'goro adf pla',
 				describe: t(
 					'Any mix of map, gamemode, size, faction, alliance, unit or filter names. Map and filter names match loosely; everything else must match exactly. Two factions (or alliances/units) mean a matchup.',
+				),
+			},
+		],
+		options: [
+			{
+				kind: 'string',
+				name: 'filters',
+				short: 'f',
+				sample: 'mainpool,!jensens',
+				describe: t(
+					"Filters for the request in place of the server's layer request filters, separated by commas. A ! before a name inverts that filter, and none leaves them all out. Needs permission to edit the queue.",
 				),
 			},
 		],

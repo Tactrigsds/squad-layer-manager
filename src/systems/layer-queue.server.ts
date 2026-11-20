@@ -1709,16 +1709,15 @@ export type AddRequestResult =
 // either surface.
 export async function addBackburnerRequestFromChat(
 	ctx: C.Db & C.ManagedServer & CS.AbortSignal & SM.Ctx.Ids,
-	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode },
+	// requestFilters replace the server's layer request filters. The caller checks the sender may replace them.
+	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode; requestFilters?: BB.AppliedFilter[] },
 ): Promise<AddRequestResult> {
 	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.Req.layerRequest(ctx.serverId))
 	if (denied) return denied
 	const serverState = SquadServer.getServerState(ctx)
-	// in-game requests always carry the layer request filters; only the GUI can deliberately drop them
-	const { filter, skipped } = dropUnappliableRequestFilters(
-		ctx,
-		BB.withFilters(args.filter, serverState.settings.queue.mainPool.layerRequestFilters),
-	)
+	const { filter, skipped } = args.requestFilters
+		? { filter: BB.withFilters(args.filter, args.requestFilters), skipped: [] }
+		: dropUnappliableRequestFilters(ctx, BB.withFilters(args.filter, serverState.settings.queue.mainPool.layerRequestFilters))
 	const check = await checkTemplate(ctx, filter)
 	if (check.code === 'err:invalid-filter') return invalidRequestResult(ctx, check.errors)
 	if (check.code === 'err:no-solutions') return { code: 'err:no-solutions', msg: 'No layers in the current pool match this request' }
@@ -1764,16 +1763,29 @@ const VOTE_FIELD_DISPLAY_PROP: Record<BB.VoteChoiceField, DH.LayerDisplayProp | 
 }
 
 // The chat path (/vote): draws one layer per value from the main pool, with the typed filters applied to every choice,
-// and puts the vote at the head of the queue. Nothing is queued unless every choice is drawn.
+// and puts the vote at the head of the queue. Nothing is queued unless every choice is drawn. poolFilters, when given,
+// replace the pool filter.
 export async function addVoteFromChat(
 	ctx: SideEffectCtx,
-	args: { field: BB.VoteChoiceField; choices: BB.VoteChoiceToken[]; filterIds: string[]; source: LL.Source },
+	args: {
+		field: BB.VoteChoiceField
+		choices: BB.VoteChoiceToken[]
+		filterIds: string[]
+		poolFilters?: BB.AppliedFilter[]
+		source: LL.Source
+	},
 ): Promise<AddVoteResult> {
 	if (ctx.vote.state?.code === 'in-progress') return { code: 'err:vote-in-progress' }
 	const serverState = SquadServer.getServerState(ctx)
 	const typedFilterConstraintId = (filterId: string) => `vote-filter:${filterId}`
+	const poolFilterConstraintId = (filterId: string) => `vote-pool-filter:${filterId}`
 	const constraints = [
-		...SETTINGS.getMainPoolConstraints(serverState.settings, Settings.repeatRulesFor(serverState.settings)),
+		...SETTINGS.getMainPoolConstraints(serverState.settings, Settings.repeatRulesFor(serverState.settings), {
+			poolFilter: !args.poolFilters,
+		}),
+		...(args.poolFilters ?? []).map(({ filterId, applyAs }) =>
+			CB.filterEntity(poolFilterConstraintId(filterId), filterId, { filterApplState: applyAs }),
+		),
 		...args.filterIds.map((filterId) => CB.filterEntity(typedFilterConstraintId(filterId), filterId)),
 	]
 	const res = await LayerQueriesShared.genVote({
@@ -1793,9 +1805,12 @@ export async function addVoteFromChat(
 		log.warn({ [ATTRS.SquadServer.ID]: ctx.serverId }, 'vote choices from chat cannot be applied: %o', res.choices)
 		return { code: 'err:unfilled-choices', values: res.choices.map((c) => args.choices[c.index].value) }
 	}
-	const brokenTypedFilters = args.filterIds.filter((filterId) =>
-		res.problems.some((problem) => problem.constraintId === typedFilterConstraintId(filterId)),
-	)
+	const brokenTypedFilters = [
+		...(args.poolFilters ?? [])
+			.map((f) => f.filterId)
+			.filter((filterId) => res.problems.some((problem) => problem.constraintId === poolFilterConstraintId(filterId))),
+		...args.filterIds.filter((filterId) => res.problems.some((problem) => problem.constraintId === typedFilterConstraintId(filterId))),
+	]
 	if (brokenTypedFilters.length > 0) {
 		return { code: 'err:invalid-filter', filterNames: brokenTypedFilters.map((id) => backburnerFilterName(id) ?? id) }
 	}
