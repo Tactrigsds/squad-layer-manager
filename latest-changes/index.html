@@ -16,6 +16,10 @@
 </ul>
 </li>
 <li>
+<p><strong>Added:</strong> The history page can search votes by kind (layer or simple), outcome, voters (public or internal), and the text of a choice or of the winner. Add them from the Vote group under &quot;+ Filter&quot;, or as columns in the advanced editor.</p>
+<p>Votes recorded before this update can be searched by kind and outcome only.</p>
+</li>
+<li>
 <p><strong>Added:</strong> On a phone, the back gesture closes the open dialog, menu or window instead of leaving the page.</p>
 <p>With several open, each back press closes the top one.</p>
 </li>
@@ -26,6 +30,21 @@
 <li>
 <p><strong>Added:</strong> The activity feed shows players getting into a vehicle, moving to another seat, and getting out. Find them under the <em>All</em> and <em>Vehicles &amp; Deployables</em> filters, and in history.</p>
 <p>Each row names the vehicle and the seat number. Hover over the seat to see which turret, periscope or passenger seat it is.</p>
+</li>
+<li>
+<p><strong>Added:</strong> Admins can generate a vote from game chat with <code>/vote</code>, and run a vote between text choices with <code>/simplevote</code>.</p>
+<p><code>/vote narva skorpo goro</code> generates a vote with one layer from the pool for each map named, and puts the vote first in
+the queue. The choices can also all be layers, gamemodes or sizes, and a filter name applies to every choice. When the
+pool has no layer for a choice, SLM names that choice and queues nothing.</p>
+<p>A vote&#x27;s choices can show players a text of their own in place of the layer&#x27;s name. Type it after a colon in <code>/vote</code>,
+with underscores for spaces: <code>/vote narva:Night_ops skorpo</code>. The vote&#x27;s display options set the same texts from the
+dashboard.</p>
+<p><code>/simplevote yes, no, not sure</code> starts a vote that leaves the queue as it is. Commas separate the choices. Without a
+comma, each word is a choice. <code>--internal</code> (<code>-i</code>) has only the admins vote, in admin chat, and <code>--duration 2m</code> (<code>-d</code>)
+sets how long the vote runs. <code>/startvote</code> takes the same two options for the vote at the head of the queue. A simple
+vote can also be started from the activity panel&#x27;s chat box, which sets the same two options.</p>
+<p>Every vote, layer or simple, shows its tally and countdown in a box at the top of the activity feed, with the
+controls to end or abort it. The queue no longer shows a running vote&#x27;s tally.</p>
 </li>
 <li>
 <p><strong>Changed:</strong> The <em>Scoreline</em> chart is now called <em>Scores</em> and plots tickets by default. The <em>Population</em> chart&#x27;s <em>Teams</em> view plots how many more players one team had than the other.</p>
@@ -91,6 +110,9 @@ and end, and the joins and leaves during the round.</p>
 </li>
 <li>
 <p><strong>Fixed:</strong> The repeat ruleset picker no longer warns that a ruleset does not exist when the ruleset does. The warning could appear after a rotation or another server&#x27;s settings had been open earlier in the same session.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> A vote started again after it was aborted shows as running on the dashboard, rather than as not yet started until the page is reloaded.</p>
 </li>
 <li>
 <p><strong>Fixed:</strong> Saved teamswaps no longer fail with a &quot;NOT NULL constraint failed&quot; error when they run at the start of a new match, are swapped now, or are cleared.</p>
@@ -170,6 +192,12 @@ and end, and the joins and leaves during the round.</p>
 </li>
 <li>
 <p><strong>Added:</strong> Plugin API 0.22.3 lets a plugin link to a rotation from outside SLM, such as in a Discord message. <code>pageUrl</code> in <code>slm/systems/rotation</code> returns the rotation page&#x27;s address, built from <code>ORIGIN</code>. Plugins built for 0.22.2 keep working.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The plugin API is version 0.24, and plugins can start votes. A plugin built for 0.23 does not load until its <code>apiVersion</code> is raised to <code>^0.24</code>.</p>
+<p><code>slm/systems/vote</code> starts the layer vote of a queue item, starts a simple vote between text choices, and follows the
+simple vote&#x27;s tally to its result. The version moved because a vote&#x27;s config gained the text shown for each choice,
+and the per-server ctx gained the vote state.</p>
 </li>
 <li>
 <p><strong>Fixed:</strong> A server agent whose connection was dropped by a proxy reconnects within a few seconds. SLM used to reject the reconnecting agent as a duplicate for up to 30 seconds, and RCON and log streaming stopped for that time.</p>
