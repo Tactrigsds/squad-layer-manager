@@ -16,6 +16,10 @@
 </ul>
 </li>
 <li>
+<p><strong>Added:</strong> On a phone, the back gesture closes the open dialog, menu or window instead of leaving the page.</p>
+<p>With several open, each back press closes the top one.</p>
+</li>
+<li>
 <p><strong>Added:</strong> The new Scheduled Commands plugin runs RCON commands on your servers on a schedule. A task can run on an interval, at set times from a cron pattern, a set time after each match starts, or a set time after each match ends.</p>
 <p>Each task is listed under the plugin on the settings page with its next run and its last result. Click <em>Run now</em> to run a task straight away. Commands can include variables such as <code>{{layer}}</code>, <code>{{nextLayer}}</code>, <code>{{server}}</code> and <code>{{players}}</code>, filled in each time the task runs. Each command appears in the server&#x27;s activity feed.</p>
 </li>
@@ -88,6 +92,10 @@ and end, and the joins and leaves during the round.</p>
 <li>
 <p><strong>Fixed:</strong> Saved teamswaps no longer fail with a &quot;NOT NULL constraint failed&quot; error when they run at the start of a new match, are swapped now, or are cleared.</p>
 <p>At the start of a new match, the players were still swapped, but the toast reported the swap as failed.</p>
+</li>
+<li>
+<p><strong>Fixed:</strong> The warning about unsaved edits now appears only when leaving the page.</p>
+<p>Switching tabs on the server dashboard, or moving between sections of the settings page, no longer asks to discard edits.</p>
 </li>
 </ul>
 <details><summary>Smaller fixes and tweaks</summary>
