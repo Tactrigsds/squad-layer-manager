@@ -859,7 +859,14 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		}
 		const owner = await resolveChatOwner(h)
 		const source: LL.Source = owner.discordId ? { type: 'manual', userId: owner.discordId } : { type: 'unknown' }
-		const res = await LayerQueue.addVoteFromChat(h.ctx, { field, choices, filterIds, source })
+		let poolFilters: BB.AppliedFilter[] | undefined
+		if (args.filters !== undefined) {
+			const filterEntities = Array.from(FilterEntity.state.filters.values()).map((f) => ({ id: f.id, name: f.name }))
+			const resolved = BB.resolveFilterList(h.ctx.tr, args.filters, filterEntities)
+			if (resolved.code !== 'ok') return await h.error('invalid-filters', h.ctx.tr.text(resolved.msg))
+			poolFilters = resolved.filters
+		}
+		const res = await LayerQueue.addVoteFromChat(h.ctx, { field, choices, filterIds, poolFilters, source })
 		switch (res.code) {
 			case 'ok':
 				await h.reply(V_Msgs.fromChat.added(res.labels))
@@ -1525,10 +1532,19 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			})
 		}
 		if (resolveRes.code !== 'ok') return await h.error('invalid-request', h.ctx.tr.text(resolveRes.msg))
+		let requestFilters: Extract<BB.ResolveFilterListResult, { code: 'ok' }> | undefined
+		if (args.filters !== undefined) {
+			const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, RBAC.perm('queue:write', { serverId: h.ctx.serverId }))
+			if (denyRes) return await h.error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
+			const resolved = BB.resolveFilterList(h.ctx.tr, args.filters, filterEntities)
+			if (resolved.code !== 'ok') return await h.error('invalid-filters', h.ctx.tr.text(resolved.msg))
+			requestFilters = resolved
+		}
 		const source = await resolveChatOwner(h)
 		const res = await LayerQueue.addBackburnerRequestFromChat(h.ctx, {
 			source,
 			filter: resolveRes.value.filter,
+			requestFilters: requestFilters?.filters,
 		})
 		switch (res.code) {
 			case 'err:permission-denied':
@@ -1541,7 +1557,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 				return await h.error('backburner-full', h.ctx.tr.text(BB_Msgs.backburnerFull(res.max)))
 			case 'ok': {
 				const ownCount = BB.ownedItems(LayerQueue.getSavedBackburner(h.ctx), source).length
-				await h.reply(BB_Msgs.added(resolveRes.value.parts, ownCount, res.evicted.length))
+				await h.reply(BB_Msgs.added([...resolveRes.value.parts, ...(requestFilters?.names ?? [])], ownCount, res.evicted.length))
 				if (res.skippedRequestFilters.length > 0) await h.reply(BB_Msgs.requestFiltersSkipped(res.skippedRequestFilters))
 				return { code: 'ok' }
 			}

@@ -180,4 +180,18 @@ export const tooManyValues = def(
 	(column: 'layer' | 'map' | 'gamemode' | 'version' | 'collection' | 'size') => ({ column }),
 )
 
+export const unknownFilterOption = def(
+	'{count, plural, =0 {No filter is named like "{token}".} other {No filter is named like "{token}". Did you mean {suggestionList}?}}',
+	(token: string, suggestions: string[]) => ({
+		token,
+		count: suggestions.length,
+		suggestionList: suggestions.map((name) => `"${name}"`).join(', '),
+	}),
+)
+
+export const ambiguousFilterOption = def(
+	'"{token}" matches several filters: {matchList}. Type more of the name.',
+	(token: string, matched: string[]) => ({ token, matchList: matched.map((name) => `"${name}"`).join(', ') }),
+)
+
 export const unknownRequest = def('Unknown request "{token}"', (token: string) => ({ token }))

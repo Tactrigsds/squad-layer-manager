@@ -306,3 +306,77 @@ describe('filters that cannot be applied', () => {
 		})
 	})
 })
+
+describe('filters chosen with --filters', () => {
+	const GEN_POOL = { filterId: 'gen-pool', applyAs: 'regular' } as const
+
+	it('requests with the filters typed after --filters in place of the layer request filters', async () => {
+		await rearrange(app, { pool: (p) => (p.layerRequestFilters = [GEN_POOL]) })
+		app.emu.rcon.commandLog.length = 0
+		// Narva is outside the layer request filter, so only a request without it can be met
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer narva --filters=!impossible'))
+		await app.waitFor(() => savedBackburner(app).length === 1 || null, { label: 'the request persisting', timeoutMs: 20_000 })
+		const parts = BB.parseTemplateParts(savedBackburner(app)[0].filter)
+		expect(parts.filterIds).toEqual([])
+		expect(parts.excludedFilterIds).toEqual(['impossible'])
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('Layer request queued: Narva, not Impossible')) || null, {
+			label: 'the queued reply naming the typed filter',
+			timeoutMs: 20_000,
+		})
+
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('unreqlayer'))
+		await app.waitFor(() => savedBackburner(app).length === 0 || null, { label: 'cleanup', timeoutMs: 20_000 })
+	})
+
+	it('refuses --filters from a player who cannot edit the queue', async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(requester, 'ChatAll', cmd('reqlayer skorpo -f none'))
+		await app.waitFor(() => warnsTo(app, requester).some((w) => w.includes('Permission denied')) || null, {
+			label: 'the permission refusal',
+			timeoutMs: 20_000,
+		})
+		expect(savedBackburner(app)).toHaveLength(0)
+	})
+
+	it('names a filter --filters cannot find', async () => {
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer skorpo -f gen,brokn'))
+		await app.waitFor(
+			() => warnsTo(app, admin).some((w) => w.includes('No filter is named like "brokn". Did you mean "Broken"')) || null,
+			{
+				label: 'the unknown-filter refusal',
+				timeoutMs: 20_000,
+			},
+		)
+		expect(savedBackburner(app)).toHaveLength(0)
+	})
+
+	it('draws a vote with the filters typed after --filters in place of the pool filter', async () => {
+		await rearrange(app, {
+			layerQueue: queue(LAYERS.gorodokRaas),
+			repeatRules: [],
+			pool: (p) => (p.poolFilter = { filterId: 'gen-pool', mode: 'include' }),
+		})
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('vote narva yeho'))
+		await app.waitFor(() => warnsTo(app, admin).some((w) => /No layers? in the pool match/.test(w)) || null, {
+			label: 'the pool filter refusing the maps',
+			timeoutMs: 20_000,
+		})
+
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('vote narva yeho --filters none'))
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('Vote added first in the queue')) || null, {
+			label: 'the vote drawn without the pool filter',
+			timeoutMs: 20_000,
+		})
+		const [head] = savedQueue(app)
+		expect(new Set(head.choices!.map((c) => L.toLayer(L.readStoredLayerId(c.layerId)).Map))).toEqual(new Set(['Narva', 'Yehorivka']))
+
+		app.emu.rcon.commandLog.length = 0
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('vote narva skorpo -f !gen'))
+		await app.waitFor(() => warnsTo(app, admin).some((w) => w.includes('No layer in the pool matches "Skorpo"')) || null, {
+			label: 'the inverted filter refusing Skorpo',
+			timeoutMs: 20_000,
+		})
+	})
+})
