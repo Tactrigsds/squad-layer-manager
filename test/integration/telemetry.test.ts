@@ -61,6 +61,29 @@ describe('telemetry from the app under test', () => {
 		expect(body).toContain(app.serverId)
 	})
 
+	// Sizing a deployment reads these, and a gauge whose callback throws is dropped from the export without a word.
+	it('carries the process cpu and memory instruments', async () => {
+		await app.waitFor(() => received.join('\n').includes('slm.worker.heap.committed'), {
+			label: 'the process metrics exported',
+			timeoutMs: 30_000,
+		})
+		const body = received.join('\n')
+		for (const name of [
+			'process.cpu.time',
+			'process.memory.usage',
+			'slm.process.memory.external',
+			'slm.process.memory.array_buffers',
+			'slm.layer_engine.memory',
+			'slm.worker.heap.used',
+			// the history query worker starts with the app, so it is always there to report
+			'history-query',
+		]) {
+			expect(body).toContain(name)
+		}
+		// cgroup v2 is what both CI and the production image run on
+		if (process.platform === 'linux') expect(body).toContain('slm.cgroup.memory.usage')
+	})
+
 	// The switch-request dashboard is only as real as the instruments behind it, and a metric that is
 	// never recorded looks exactly like a metric nobody has triggered yet. Driving one /switch through
 	// the same export path the collector reads is what tells the two apart.

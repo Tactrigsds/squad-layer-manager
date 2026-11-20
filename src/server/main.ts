@@ -34,6 +34,7 @@ import * as Metrics from '@/systems/metrics.server'
 import * as PersistedCache from '@/systems/persistedCache.server'
 import * as PlayerDiscordRoles from '@/systems/player-discord-roles.server'
 import * as PluginsSys from '@/systems/plugins.server'
+import * as ProcessMetrics from '@/systems/process-metrics.server'
 import * as Rbac from '@/systems/rbac.server'
 import * as RotationEdit from '@/systems/rotation-edit.server'
 import * as Rotation from '@/systems/rotation.server'
@@ -185,6 +186,7 @@ await Instr.spanOp('main', { module }, async () => {
 
 	// after SquadServerLifecycle.setup, since its gauges read SquadServer.globalState
 	Metrics.setup()
+	ProcessMetrics.setup()
 	// before Plugins.setup, which attaches the active plugins' jobs: a run interrupted by the last shutdown has to be
 	// marked as such before anything can start it again
 	SchedJobs.setup()
