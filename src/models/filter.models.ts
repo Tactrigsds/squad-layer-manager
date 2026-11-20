@@ -2,9 +2,11 @@ import type * as SchemaModels from '$root/drizzle/schema.models'
 import * as CD from '@/lib/ctx-def'
 import { createId } from '@/lib/id'
 import * as Obj from '@/lib/object-utils'
+import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import type { DistributiveOmit } from '@/lib/types'
 import { z } from '@/lib/zod'
+import * as F_Msgs from '@/messages/filter.messages'
 // Filter nodes form a small expression AST. Every node's `type` is an operator: block operators
 // (and/or/nor/nand) take child nodes, comparison operators take argument terms (columns,
 // constants, team-generic columns), and apply-filter operators (included-in/excluded-from) reference
@@ -1140,3 +1142,52 @@ export type Ctx = CS.Ctx & {
 	filters: Map<string, FilterEntity>
 }
 export const CtxDef = CD.defCtx<Ctx>()(['filters'], { name: 'filters' })
+
+// -------- filter lists typed in game (--filters) --------
+
+// a filter entity applied to layers matching it (regular) or to layers not matching it (inverted)
+export type AppliedFilter = { filterId: FilterEntityId; applyAs: 'regular' | 'inverted' }
+
+// the filter list that applies no filters at all
+export const NO_FILTERS = 'none'
+
+// as many alternatives as a chat warn can put in front of someone without becoming a wall
+const MAX_LIST_SUGGESTIONS = 3
+
+export type ParseFilterListResult =
+	// names are the filters as players see them back, an inverted one as "not <name>"
+	| { code: 'ok'; filters: AppliedFilter[]; names: string[] }
+	| { code: 'err:unknown-filter' | 'err:ambiguous-filter'; token: string; msg: Msgs.Variants.Textable }
+
+// Reads a typed filter list: filter names separated by commas, each matched loosely, with `!` before a name to apply
+// that filter inverted. NO_FILTERS reads as no filters.
+export function parseFilterList(
+	tr: Msgs.Translator,
+	value: string,
+	filterEntities: { id: FilterEntityId; name: string }[],
+): ParseFilterListResult {
+	if (Str.normalizeForMatch(value) === NO_FILTERS) return { code: 'ok', filters: [], names: [] }
+	const filters: AppliedFilter[] = []
+	const names: string[] = []
+	const entityNames = filterEntities.map((f) => f.name)
+	for (const raw of value.split(',')) {
+		const token = raw.trim()
+		if (token.length === 0) continue
+		const inverted = token.startsWith('!')
+		const nameToken = inverted ? token.slice(1) : token
+		const match = Str.uniqueSubstringMatch(entityNames, nameToken)
+		if (match.code === 'err:multiple-matches') {
+			const msg = F_Msgs.ambiguousInList(nameToken, match.matched.slice(0, MAX_LIST_SUGGESTIONS))
+			return { code: 'err:ambiguous-filter', token: nameToken, msg }
+		}
+		if (match.code === 'err:not-found') {
+			const msg = F_Msgs.unknownInList(nameToken, Str.nearest(nameToken, entityNames, MAX_LIST_SUGGESTIONS))
+			return { code: 'err:unknown-filter', token: nameToken, msg }
+		}
+		const entity = filterEntities.find((f) => f.name === match.value)!
+		if (filters.some((f) => f.filterId === entity.id)) continue
+		filters.push({ filterId: entity.id, applyAs: inverted ? 'inverted' : 'regular' })
+		names.push(inverted ? tr.text(F_Msgs.invertedInList(entity.name)) : entity.name)
+	}
+	return { code: 'ok', filters, names }
+}

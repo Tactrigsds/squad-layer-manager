@@ -20,6 +20,7 @@ import * as CHAT from '@/models/chat.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared.models'
+import * as F from '@/models/filter.models'
 import type * as LL from '@/models/layer-list.models'
 import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
@@ -884,10 +885,10 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		}
 		const owner = await resolveChatOwner(h)
 		const source: LL.Source = owner.discordId ? { type: 'manual', userId: owner.discordId } : { type: 'unknown' }
-		let poolFilters: BB.AppliedFilter[] | undefined
+		let poolFilters: F.AppliedFilter[] | undefined
 		if (args.filters !== undefined) {
 			const filterEntities = Array.from(FilterEntity.state.filters.values()).map((f) => ({ id: f.id, name: f.name }))
-			const resolved = BB.resolveFilterList(h.ctx.tr, args.filters, filterEntities)
+			const resolved = F.parseFilterList(h.ctx.tr, args.filters, filterEntities)
 			if (resolved.code !== 'ok') return await h.error('invalid-filters', h.ctx.tr.text(resolved.msg))
 			poolFilters = resolved.filters
 		}
@@ -1557,11 +1558,11 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 			})
 		}
 		if (resolveRes.code !== 'ok') return await h.error('invalid-request', h.ctx.tr.text(resolveRes.msg))
-		let requestFilters: Extract<BB.ResolveFilterListResult, { code: 'ok' }> | undefined
+		let requestFilters: Extract<F.ParseFilterListResult, { code: 'ok' }> | undefined
 		if (args.filters !== undefined) {
 			const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, RBAC.perm('queue:write', { serverId: h.ctx.serverId }))
 			if (denyRes) return await h.error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
-			const resolved = BB.resolveFilterList(h.ctx.tr, args.filters, filterEntities)
+			const resolved = F.parseFilterList(h.ctx.tr, args.filters, filterEntities)
 			if (resolved.code !== 'ok') return await h.error('invalid-filters', h.ctx.tr.text(resolved.msg))
 			requestFilters = resolved
 		}

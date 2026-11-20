@@ -128,11 +128,9 @@ function unionSpec(x: F.MatchupTeamSpec, y: F.MatchupTeamSpec): F.MatchupTeamSpe
 	return out
 }
 
-export type AppliedFilter = { filterId: string; applyAs: 'regular' | 'inverted' }
-
 // Bakes filters into a template, so requests carry them themselves instead of having them enforced separately at
 // generation time. A filter the template already includes or excludes is left as the template has it.
-export function withFilters(filter: F.FilterNode, filters: AppliedFilter[]): F.FilterNode {
+export function withFilters(filter: F.FilterNode, filters: F.AppliedFilter[]): F.FilterNode {
 	const parts = parseTemplateParts(filter)
 	let changed = false
 	for (const { filterId, applyAs } of filters) {
@@ -530,7 +528,7 @@ function resolveToken(token: string, exact: Map<string, TokenTarget>, input: Res
 	const exactTarget = exact.get(Str.normalizeForMatch(token))
 	if (exactTarget) return { code: 'ok', target: exactTarget }
 
-	const mapMatches = uniqueSubstringMatch(components.maps, token)
+	const mapMatches = Str.uniqueSubstringMatch(components.maps, token)
 	if (mapMatches.code === 'ok') return { code: 'ok', target: { kind: 'map', value: mapMatches.value } }
 	if (mapMatches.code === 'err:multiple-matches') {
 		return {
@@ -541,7 +539,7 @@ function resolveToken(token: string, exact: Map<string, TokenTarget>, input: Res
 		}
 	}
 
-	const filterMatches = uniqueSubstringMatch(
+	const filterMatches = Str.uniqueSubstringMatch(
 		filterEntities.map((f) => f.name),
 		token,
 	)
@@ -706,55 +704,6 @@ export function resolveVoteTokens(input: { tokens: string[] } & ResolveInput): R
 	return { code: 'ok', field: fields[0] ?? 'Map', choices, filterIds }
 }
 
-// -------- the --filters option (/reqlayer, /vote) --------
-
-// the --filters value that applies no filters at all
-export const NO_FILTERS = 'none'
-
-export type ResolveFilterListResult =
-	// names are the filters as players see them back, an inverted one as "not <name>"
-	| { code: 'ok'; filters: AppliedFilter[]; names: string[] }
-	| { code: 'err:unknown-filter' | 'err:ambiguous-filter'; token: string; msg: Msgs.Variants.Textable }
-
-// Reads a --filters value: filter names separated by commas, each matched loosely, with `!` before a name to apply
-// that filter inverted. NO_FILTERS reads as no filters.
-export function resolveFilterList(
-	tr: Msgs.Translator,
-	value: string,
-	filterEntities: { id: string; name: string }[],
-): ResolveFilterListResult {
-	if (Str.normalizeForMatch(value) === NO_FILTERS) return { code: 'ok', filters: [], names: [] }
-	const filters: AppliedFilter[] = []
-	const names: string[] = []
-	const entityNames = filterEntities.map((f) => f.name)
-	for (const raw of value.split(',')) {
-		const token = raw.trim()
-		if (token.length === 0) continue
-		const inverted = token.startsWith('!')
-		const nameToken = inverted ? token.slice(1) : token
-		const match = uniqueSubstringMatch(entityNames, nameToken)
-		if (match.code === 'err:multiple-matches') {
-			return {
-				code: 'err:ambiguous-filter',
-				token: nameToken,
-				msg: BB_Msgs.ambiguousFilterOption(nameToken, match.matched.slice(0, MAX_SUGGESTIONS)),
-			}
-		}
-		if (match.code === 'err:not-found') {
-			return {
-				code: 'err:unknown-filter',
-				token: nameToken,
-				msg: BB_Msgs.unknownFilterOption(nameToken, Str.nearest(nameToken, entityNames, MAX_SUGGESTIONS)),
-			}
-		}
-		const entity = filterEntities.find((f) => f.name === match.value)!
-		if (filters.some((f) => f.filterId === entity.id)) continue
-		filters.push({ filterId: entity.id, applyAs: inverted ? 'inverted' : 'regular' })
-		names.push(inverted ? tr.text(BB_Msgs.excludedFilter(entity.name)) : entity.name)
-	}
-	return { code: 'ok', filters, names }
-}
-
 // The search box's reading of a request: every token that resolves is applied, and each one that does not is
 // reported beside the rest rather than rejecting the whole request, as /reqlayer does.
 export function resolveSearchTokens(input: { tokens: string[] } & ResolveInput): { parts: TemplateParts; errors: TokenError[] } {
@@ -769,23 +718,6 @@ export function resolveSearchTokens(input: { tokens: string[] } & ResolveInput):
 	}
 	const collected = collectTargets(resolved)
 	return { parts: collected.parts, errors: [...errors, ...collected.errors] }
-}
-
-function uniqueSubstringMatch(candidates: string[], token: string) {
-	const normalized = Str.normalizeForMatch(token)
-	const matched = candidates.filter((candidate) => Str.normalizeForMatch(candidate).includes(normalized))
-	if (matched.length === 0) return { code: 'err:not-found' as const }
-	if (matched.length > 1) {
-		// mod vocabularies embed the vanilla names (Fallujah, Supermod_Fallujah, GoingDark_Fallujah; ADF, SU_ADF). A
-		// match that is itself contained in every other match is the base name, and the one a chat token means; the
-		// mod variants stay reachable by typing more of their name.
-		const base = matched.find((candidate) =>
-			matched.every((other) => other === candidate || Str.normalizeForMatch(other).includes(Str.normalizeForMatch(candidate))),
-		)
-		if (base !== undefined) return { code: 'ok' as const, value: base }
-		return { code: 'err:multiple-matches' as const, count: matched.length, matched }
-	}
-	return { code: 'ok' as const, value: matched[0] }
 }
 
 // as many alternatives as a chat warn can put in front of someone without becoming a wall
