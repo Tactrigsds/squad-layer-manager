@@ -36,6 +36,24 @@ export async function showTeams(page: Page, opts?: { timeout?: number }) {
 	await expect(teamsSection(page)).toBeVisible({ timeout })
 }
 
+// Flips one of the teams header toggles that fold into its More menu when the header runs out of room (see
+// usePriorityPlus). The toggle is either inline or in the open menu, never both, so the menu is opened first and
+// whichever copy exists is the one clicked.
+export async function clickTeamsHeaderToggle(page: Page, name: string) {
+	const panel = teamsSection(page)
+	await panel.getByRole('button', { name: 'More', exact: true }).click()
+	const inline = panel.getByRole('switch', { name, exact: true })
+	const folded = page.getByRole('menuitemcheckbox', { name, exact: true })
+	await expect(inline.or(folded)).toHaveCount(1)
+	if ((await folded.count()) > 0) {
+		await folded.click()
+		await page.keyboard.press('Escape')
+	} else {
+		await page.keyboard.press('Escape')
+		await inline.click()
+	}
+}
+
 // The queue counterpart, for the tests that switch back to it.
 export async function showQueue(page: Page, opts?: { timeout?: number }) {
 	const timeout = opts?.timeout ?? DEFAULT_TIMEOUT_MS

@@ -704,8 +704,9 @@ export function buildSteps(plan: GroupingPlan) {
 		},
 		{
 			id: 'show-spoilers',
-			anchor: 'teams-show-spoilers',
-			interact: 'anchor-only',
+			// the toggle folds into the More menu when the header runs out of room, and the menu's items need the pointer
+			anchor: { css: '[data-tour="teams-show-spoilers"], [data-tour="teams-more"]' },
+			interact: 'free',
 			msg: PMTUT_Msgs.showSpoilers,
 			prepare: ensureTeamsShown,
 		},
@@ -868,8 +869,8 @@ export function buildSteps(plan: GroupingPlan) {
 		},
 		{
 			id: 'timeouts-open',
-			anchor: 'teams-timeouts',
-			interact: 'anchor-only',
+			anchor: 'teams-more',
+			interact: 'free',
 			msg: PMTUT_Msgs.Timeouts.openList,
 			prepare: ensureTeamsShown,
 			advanceFromPrevious: { type: 'state', ...timedOut, simulate: simTimeout },
@@ -983,8 +984,8 @@ export function buildSteps(plan: GroupingPlan) {
 					},
 					{
 						id: 'switch-open',
-						anchor: 'teams-switch-requests',
-						interact: 'anchor-only',
+						anchor: 'teams-more',
+						interact: 'free',
 						msg: PMTUT_Msgs.SwitchQueue.openWindow,
 						prepare: ensureTeamsShown,
 					},

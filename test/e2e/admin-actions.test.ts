@@ -208,7 +208,7 @@ test.describe('admin actions from the teams panel', () => {
 		await expect(memberRow.getByRole('checkbox').first()).not.toBeChecked()
 
 		await expect(memberRow.getByText('minsk400 (Driver)')).toBeHidden()
-		await panel.getByText('Show Spoilers', { exact: true }).click()
+		await Dash.clickTeamsHeaderToggle(page, 'Show Spoilers')
 		await expect(memberRow.getByText('minsk400 (Driver)')).toBeVisible()
 	})
 
