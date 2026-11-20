@@ -207,7 +207,7 @@ function leaderboards(opts: {
 		(r) => `${Math.round(r.value)} dmg, ${plural(r.item.vehicleKills, 'kill')}`,
 	)
 	board(
-		'FOB/HAB Destroyer',
+		'FOB Destroyer',
 		Stats.top(playerList, (p) => p.deployableKills, size),
 		playerLabel,
 	)

@@ -17,7 +17,7 @@ server is a real Squad server rather than a sandbox, the server's name is shown 
 | Squad Kills         | kills by the members of each squad, listed by squad number, creator and faction |
 | Combat Medic        | revives                                                                         |
 | Vehicles            | damage dealt to enemy vehicles, and enemy vehicles destroyed, ranked by damage  |
-| FOB/HAB Destroyer   | enemy FOB radios taken down to their minimum health, and enemy HABs destroyed   |
+| FOB Destroyer       | enemy FOB radios taken down to their minimum health, and enemy HABs destroyed   |
 | Longest Kill Streak | the most kills a player made without dying in between                           |
 | Best K/D            | kills per death, for players with at least `minKillsForKd` kills                |
 | Most Deaths         | deaths, including teamkills and suicides                                        |
