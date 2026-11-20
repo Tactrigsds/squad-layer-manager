@@ -211,6 +211,10 @@ and the per-server ctx gained the vote state.</p>
 nullable object, a union branch or a record entry of a plugin&#x27;s config now counts as a reference to that filter.</p>
 </li>
 <li>
+<p><strong>Added:</strong> With telemetry on, SLM exports its own CPU time and memory, and the bundled Grafana overview dashboard shows them in a new Process row.</p>
+<p>The metrics are <code>process.cpu.time</code> and <code>process.memory.usage</code>, the container&#x27;s memory split into anonymous memory and page cache (<code>slm.cgroup.memory.usage</code>), and the memory held by each worker thread&#x27;s heap and by the layer engine. Use them to choose the CPU and RAM to give SLM.</p>
+</li>
+<li>
 <p><strong>Fixed:</strong> The Docker image runs Node.js 24.22.2, which includes fixes to V8 and to streams.</p>
 </li>
 </ul>
