@@ -9,6 +9,7 @@ import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
+import * as OverlayHistory from '@/systems/overlay-history.client'
 
 // A menu as a sheet from the bottom of a phone screen, for the row and selection menus whose desktop form is a
 // context menu at the pointer. A submenu is a page of the same sheet rather than a flyout: SubTrigger is a row
@@ -41,6 +42,7 @@ export function MenuSheet(props: {
 }) {
 	const zIndex = useZIndex(ZI_OFFSETS.DIALOG)
 	const inheritKeys = KBClient.useInheritAttrs()
+	OverlayHistory.useBackDismiss(props.open, () => props.onOpenChange(false))
 	return (
 		<DialogPrimitive.Root open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogPrimitive.Portal>

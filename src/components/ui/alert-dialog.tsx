@@ -6,9 +6,21 @@ import { SubmitChordKbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as KBClient from '@/systems/keybinds.client'
+import * as OverlayHistory from '@/systems/overlay-history.client'
 import * as SubmitChordClient from '@/systems/submit-chord.client'
 
-const AlertDialog = AlertDialogPrimitive.Root
+// controlled here whether or not the caller controls it, so a back press can close an uncontrolled dialog too
+function AlertDialog(props: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
+	const { open: openProp, defaultOpen, onOpenChange: onOpenChangeProp } = props
+	const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen ?? false)
+	const open = openProp ?? uncontrolledOpen
+	const onOpenChange = (next: boolean) => {
+		if (openProp === undefined) setUncontrolledOpen(next)
+		onOpenChangeProp?.(next)
+	}
+	OverlayHistory.useBackDismiss(open, () => onOpenChange(false))
+	return <AlertDialogPrimitive.Root {...props} open={open} onOpenChange={onOpenChange} />
+}
 
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger
 

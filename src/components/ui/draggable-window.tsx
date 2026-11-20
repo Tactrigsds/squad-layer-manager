@@ -15,6 +15,7 @@ import {
 	type WindowState,
 } from '@/systems/draggable-window.client'
 import * as KBClient from '@/systems/keybinds.client'
+import * as OverlayHistory from '@/systems/overlay-history.client'
 
 export { useDraggableWindow, useDraggableWindowContext }
 import {
@@ -115,6 +116,7 @@ function DraggableWindowInstance({ window: windowState, definition }: DraggableW
 	const close = React.useCallback(() => {
 		DraggableWindowStore.getState().closeWindow(windowState.id)
 	}, [windowState.id])
+	OverlayHistory.useBackDismiss(true, close)
 
 	const bringToFront = React.useCallback(() => {
 		DraggableWindowStore.getState().bringToFront(windowState.id)

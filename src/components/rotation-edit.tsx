@@ -1,6 +1,6 @@
 import * as Form from '@tanstack/react-form'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -37,6 +37,7 @@ import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import { useFrameLifecycle } from '@/frames/frame-manager'
 import * as RepeatRulesetEditorFrame from '@/frames/repeat-ruleset-editor.frame'
 import * as RotationEditorFrame from '@/frames/rotation-editor.frame'
+import * as PageLeave from '@/lib/page-leave'
 import * as Rx from '@/lib/rxjs'
 import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
@@ -89,9 +90,10 @@ function RotationEditLoaded(props: { rotation: ROT.Rotation }) {
 	const listModified = Zus.useStore(listHost, (s) => s.queue.isModified)
 	const rulesModified = Zus.useStore(repeatRulesetEditor, (s) => s.modified)
 	const unsaved = (isEditing && listModified) || rulesModified
-	useBlocker({
+	PageLeave.useBlocker({
 		enableBeforeUnload: unsaved,
-		shouldBlockFn: () => unsaved && !confirm(tr.text(ROT_Msgs.unsavedChangesConfirm())),
+		unsaved: () => unsaved,
+		message: () => tr.text(ROT_Msgs.unsavedChangesConfirm()),
 	})
 	const ownerName = FilterEntityClient.useOwnerName(rotation.owner)
 	const singleColumn = Zus.useStore(listHost, (s) => s.view) === 'yaml'
@@ -838,9 +840,10 @@ export function RotationNew(props: { listHost: RotationEditorFrame.Key }) {
 
 	// leaving loses the new rotation, so it asks first once there is something to lose
 	const unsaved = layerCount > 0 || details.name !== '' || details.description !== null
-	useBlocker({
+	PageLeave.useBlocker({
 		enableBeforeUnload: unsaved,
-		shouldBlockFn: () => unsaved && !confirm(tr.text(ROT_Msgs.unsavedChangesConfirm())),
+		unsaved: () => unsaved,
+		message: () => tr.text(ROT_Msgs.unsavedChangesConfirm()),
 	})
 
 	const create = async () => {

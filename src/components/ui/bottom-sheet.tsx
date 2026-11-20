@@ -8,6 +8,7 @@ import * as UI_Msgs from '@/messages/ui.messages'
 import { BaseZIndexContext, useZIndex, ZI_OFFSETS } from '@/models/zindex.models'
 import * as KBClient from '@/systems/keybinds.client'
 import { tr } from '@/systems/messages.client'
+import * as OverlayHistory from '@/systems/overlay-history.client'
 
 // A panel along the bottom of a phone screen over a scrim. It is not modal: it leaves focus management to whatever
 // dialog it opens from, which is what lets it open from inside the headless dialogs.
@@ -25,6 +26,7 @@ export function BottomSheetFrame(
 	const zIndex = useZIndex(ZI_OFFSETS.POPOVER)
 	const inheritKeys = KBClient.useInheritAttrs()
 	const [node, setNode] = React.useState<HTMLDivElement | null>(null)
+	OverlayHistory.useBackDismiss(true, onClose)
 
 	// see PopoverContent: a Radix dialog's scroll lock swallows wheel events from portalled content
 	React.useEffect(() => {

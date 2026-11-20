@@ -1,4 +1,4 @@
-import { createFileRoute, useBlocker, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import React from 'react'
 
 import RecommendedTutorialsDialog from '@/components/recommended-tutorials-dialog'
@@ -8,6 +8,7 @@ import { useFrameLifecycle, useFrameTeardownOnUnmount } from '@/frames/frame-man
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import * as Browser from '@/lib/browser'
 import * as FRM from '@/lib/frame'
+import * as PageLeave from '@/lib/page-leave'
 import * as ReactRx from '@/lib/react-rxjs'
 import * as Rx from '@/lib/rxjs'
 import { toast } from '@/lib/toast'
@@ -204,12 +205,10 @@ function useUnsavedEditsGuard(stores: SquadServerFrame.KeyProp, serverId: string
 	const wouldDiscardRef = React.useRef(wouldDiscard)
 	wouldDiscardRef.current = wouldDiscard
 
-	useBlocker({
+	PageLeave.useBlocker({
 		enableBeforeUnload: wouldDiscard,
-		shouldBlockFn: () => {
-			if (!wouldDiscardRef.current) return false
-			return !confirm(tr.text(LL_Msgs.leavingDiscardsEdits()))
-		},
+		unsaved: () => wouldDiscardRef.current,
+		message: () => tr.text(LL_Msgs.leavingDiscardsEdits()),
 	})
 
 	React.useEffect(
