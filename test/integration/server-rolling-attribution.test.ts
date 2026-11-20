@@ -150,10 +150,13 @@ describe('server rolling: what an event across the roll is attributed to', () =>
 	})
 
 	it('a roll onto a layer other than the head leaves the head queued and writes it back as next', async () => {
+		// A generated head can share Narva_RAAS_v1 under other factions, and the roll's log line names only the classname
+		await rearrange(app, { layerQueue: queue(LAYERS.skorpoRaas, LAYERS.sumariSeed) })
+		await app.waitForNextLayerSync()
 		const oldMatch = app.latestMatch()
 		const head = savedQueue(app)[0]
 		const headLayerId = L.readStoredLayerId(head!.layerId!)
-		expect(L.areLayersCompatible(headLayerId, LAYERS.narvaRaas)).toBe(false)
+		expect(L.layerMatchesIngameLayerClassname(headLayerId, 'Narva_RAAS_v1')).toBe(false)
 
 		// the roll clears the server's next layer, as a real server replacing it from its own rotation would
 		app.emu.rcon.commandLog.length = 0
