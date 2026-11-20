@@ -168,6 +168,10 @@ export const hidePluginUiHint = def(
 	'Hide the panels, row highlights, activity lines and styles that plugins add. Use this switch to check whether a problem on a page comes from a plugin.',
 )
 
+export const christmasCheer = def('Christmas Cheer')
+
+export const christmasCheerHint = def('Show falling snow and a santa hat on your avatar')
+
 // -------- theme --------
 
 export const language = def('Language')

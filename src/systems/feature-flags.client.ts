@@ -3,9 +3,11 @@ import * as Zus from '@/lib/zustand'
 const FEATURE_FLAGS = {
 	displayWsClientId: false,
 	loadConsole: false,
+	// shows the snow and santa hat outside December
+	christmasCheer: false,
 }
 
-interface FeatureFlagsState {
+export interface FeatureFlagsState {
 	flags: typeof FEATURE_FLAGS
 	setFeatureFlag: (flag: keyof typeof FEATURE_FLAGS, value: boolean) => void
 }
