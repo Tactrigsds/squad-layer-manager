@@ -229,7 +229,7 @@ describe('seedCommandConfigs', () => {
 		const stored = { warn: { triggers: ['/w'], allowedChats: ['admin'], enabled: false } }
 		const seeded = CMD.seedCommandConfigs(stored, '/')
 		expect(seeded.warn).toEqual(stored.warn)
-		expect(seeded.help).toEqual({ triggers: ['/help', '/h'], allowedChats: ['admin'], enabled: true, quickReference: true })
+		expect(seeded.help).toEqual({ triggers: ['/help', '/h'], allowedChats: ['admin', 'public'], enabled: true, quickReference: true })
 		expect(Object.keys(seeded).sort()).toEqual(Object.keys(CMD.COMMAND_DECLARATIONS).sort())
 	})
 

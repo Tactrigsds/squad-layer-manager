@@ -6,7 +6,7 @@ players, add notes and request layers. Players can use the public commands, such
 player who types it. See
 [Permissions and access control](permissions.md).
 
-Type `/help` in game to list the commands. Commands are case-insensitive, and player, squad and flag names match on any part
+Type `/help` in game to find commands. In-game admins get a link to the commands page, and other players get a list of the commands they can run. Commands are case-insensitive, and player, squad and flag names match on any part
 of the name.
 
 Some commands take options, written anywhere after the command: `/simplevote --internal --duration 2m yes, no`. The

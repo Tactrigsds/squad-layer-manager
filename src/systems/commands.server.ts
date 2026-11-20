@@ -31,6 +31,7 @@ import type * as USR from '@/models/users.models'
 import * as V from '@/models/vote.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
+import * as Env from '@/server/env'
 import { initModule } from '@/server/logger'
 import * as Battlemetrics from '@/systems/battlemetrics.server'
 import * as CommandPrompts from '@/systems/command-prompts.server'
@@ -52,8 +53,12 @@ import * as Vote from '@/systems/vote.server'
 const module = initModule('commands')
 let log!: CS.Logger
 
+const buildEnv = Env.getEnvBuilder({ ...Env.groups.httpServer })
+let ENV!: ReturnType<typeof buildEnv>
+
 export function setup() {
 	log = module.getLogger()
+	ENV = buildEnv()
 }
 
 type HandlerResult = { code: string; msg?: string } | undefined
@@ -753,18 +758,38 @@ async function resolveFlagArg(
 // exhaustive by construction: a new CommandId without a handler is a compile error
 const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<Id>) => Promise<HandlerResult> } = {
 	help: async (h, args) => {
-		const plugins = pluginCommandListings()
-		const listing = CMDH.resolveHelpListing(Settings.GLOBAL_SETTINGS.commands, args.section, plugins)
-		if (listing.code === 'err:unknown-section') {
-			return await h.nearMiss('section', {
-				msg: h.ctx.tr.text(listing.msg),
-				typed: args.section!,
-				cause: 'no-match',
-				choices: listing.choices,
-			})
+		const configs = Settings.GLOBAL_SETTINGS.commands
+		const isAdmin = h.sender.isAdmin
+		const allows = await Rbac.getPlayerAccessCheck(h.ctx)
+		// only Squad's in-game admins can type in admin chat
+		const reachableChats: CMD.ChatGroup[] = isAdmin ? ['admin', 'public'] : ['public']
+		const caller: CMDH.HelpCaller = {
+			isAdmin,
+			mayRun: (access, config) => {
+				if (!config.allowedChats.some((chat) => reachableChats.includes(chat))) return false
+				const required = RBAC.Access.resolve(access, { serverId: h.ctx.serverId })
+				return !required || allows(required)
+			},
 		}
-		await h.reply(CMD_Msgs.help(Settings.GLOBAL_SETTINGS.commands, args.section, plugins))
-		return { code: 'ok' }
+		const listing = CMDH.resolveHelpListing(configs, args.section, pluginCommandListings(), caller)
+		switch (listing.code) {
+			case 'err:unknown-section':
+				return await h.nearMiss('section', {
+					msg: h.ctx.tr.text(listing.msg),
+					typed: args.section!,
+					cause: 'no-match',
+					choices: listing.choices,
+				})
+			case 'err:no-such-page':
+				return await h.error('no-such-page', h.ctx.tr.text(listing.msg))
+			case 'overview':
+			case 'ok':
+			case 'page':
+				await h.reply(CMD_Msgs.help(`${ENV.ORIGIN}/commands`, configs, listing))
+				return { code: 'ok' }
+			default:
+				assertNever(listing)
+		}
 	},
 
 	startVote: async (h, args) => {
