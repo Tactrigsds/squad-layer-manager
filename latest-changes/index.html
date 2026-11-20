@@ -84,6 +84,9 @@ and end, and the joins and leaves during the round.</p>
 <p>A layer request filter that cannot be applied is left out of new layer requests, and the reply names it. A request that applies such a filter itself is refused with a message saying the filter cannot be applied, instead of &quot;No layers in the current pool match this request&quot;.</p>
 </li>
 <li>
+<p><strong>Changed:</strong> In game, <code>/help</code> from an in-game admin replies with a link to the commands page and the names of the command sections, instead of listing the quick reference commands. Other players get the commands they can run, five per page. <code>/help 2</code> shows the second page. <code>/help &lt;section&gt;</code> still lists a section&#x27;s commands.</p>
+</li>
+<li>
 <p><strong>Changed:</strong> The filter, rotation and settings text editors list every problem with its line, and underline it in the text.</p>
 <ul>
 <li>Click a problem to move the cursor to it. The copy button copies the whole list.</li>
@@ -196,6 +199,9 @@ and end, and the joins and leaves during the round.</p>
 </li>
 <li>
 <p><strong>Added:</strong> Plugin API 0.22.3 lets a plugin link to a rotation from outside SLM, such as in a Discord message. <code>pageUrl</code> in <code>slm/systems/rotation</code> returns the rotation page&#x27;s address, built from <code>ORIGIN</code>. Plugins built for 0.22.2 keep working.</p>
+</li>
+<li>
+<p><strong>Changed:</strong> The help command now accepts public chat as well as admin chat. The upgrade opens it to public chat where its allowed chats were admin chat only. To keep it admin-only, turn public chat back off for the help command on the settings page after upgrading.</p>
 </li>
 <li>
 <p><strong>Changed:</strong> The plugin API is version 0.24, and plugins can start votes. A plugin built for 0.23 does not load until its <code>apiVersion</code> is raised to <code>^0.24</code>.</p>
