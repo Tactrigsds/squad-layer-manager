@@ -123,6 +123,16 @@ export const warnAdminsChannel = def('Admins')
 
 export const broadcastChannel = def('Broadcast')
 
+export const simpleVoteChannel = def('Simple Vote')
+
+export const simpleVoteInternal = def('Internal')
+
+export const simpleVoteInternalHint = def('Only the admins in game vote, in admin chat')
+
+export const simpleVoteDurationHint = def('How long the vote runs')
+
+export const simpleVoteDefaultDuration = def('Default ({duration})', (duration: string) => ({ duration }))
+
 export const warnSelectedChannel = def('Selected{any, select, yes { ({count})} other {}}', (count: number) => ({
 	count,
 	any: count > 0 ? 'yes' : 'no',
@@ -137,6 +147,8 @@ export const missingPermission = def('Missing permission')
 export const warnAdminsPlaceholder = def('Warn all online admins…')
 
 export const broadcastPlaceholder = def('Broadcast to the server…')
+
+export const simpleVotePlaceholder = def('Vote choices, separated by commas')
 
 export const nobodySelectedPlaceholder = def('No players selected in the teams panel')
 

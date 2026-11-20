@@ -7,7 +7,7 @@ import { VoteDisplayPropsCheckboxes } from '@/components/vote-display-props-chec
 import * as ListHostPrt from '@/frame-partials/list-host.partial'
 import * as Zus from '@/lib/zustand'
 import * as V_Msgs from '@/messages/vote.messages'
-import type * as DH from '@/models/display-helpers.models'
+import * as DH from '@/models/display-helpers.models'
 import type * as L from '@/models/layer.models'
 import * as V from '@/models/vote.models.ts'
 import { tr } from '@/systems/messages.client'
@@ -31,7 +31,13 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 
 	const preview =
 		props.choices.length > 0
-			? tr.richText(V_Msgs.started({ choiceIds: [], voterType: 'public' }, props.choices, duration, displayProps))
+			? tr.richText(
+					V_Msgs.started(
+						'public',
+						props.choices.map((layerId) => V.choiceLabel(layerId, props.config ?? undefined, voteDefaults.voteDisplayProps)),
+						duration,
+					),
+				)
 			: (props.previewPlaceholder ?? 'No layers selected for preview')
 	const valid = props.choices.length > 0 ? V.validateChoicesWithDisplayProps(props.choices, displayProps) : true
 
@@ -48,9 +54,15 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 		props.onChange(configToPass)
 	}
 
+	function setChoiceText(layerId: L.LayerId, text: string) {
+		props.onChange(V.withChoiceText(props.config, layerId, text))
+	}
+
+	// the choices' texts are not display defaults, so resetting keeps them
 	function resetToDefault() {
 		if (usingDefault) return
-		props.onChange(null)
+		const choiceTexts = props.config?.choiceTexts
+		props.onChange(choiceTexts?.length ? { choiceTexts } : null)
 	}
 
 	return (
@@ -65,6 +77,26 @@ export function AdvancedVoteConfigEditor(props: AdvancedVoteConfigEditorProps) {
 					<div className="fd-alert fd-alert-dng grid-cols-1">
 						<p className="text-xs">{tr.text(V_Msgs.choicesIndistinguishable())}</p>
 					</div>
+				)}
+				{props.choices.length > 0 && (
+					<fieldset className="fd-fld grid gap-1">
+						<legend className="text-sm">{tr.text(V_Msgs.choiceTextsLabel())}</legend>
+						<p className="text-xs text-text-3">{tr.text(V_Msgs.choiceTextsBlurb())}</p>
+						{props.choices.map((layerId, index) => {
+							const layerName = DH.toShortLayerNameFromId(layerId, undefined, displayProps)
+							return (
+								<Input
+									key={String(layerId)}
+									aria-label={tr.text(V_Msgs.choiceTextFor(index + 1, layerName))}
+									placeholder={layerName}
+									defaultValue={V.choiceText(props.config ?? undefined, layerId) ?? ''}
+									maxLength={V.MAX_CHOICE_TEXT_LENGTH}
+									onChange={(e) => setChoiceText(layerId, e.target.value)}
+									disabled={props.readonly}
+								/>
+							)
+						})}
+					</fieldset>
 				)}
 				<div className="fd-fld">
 					<Label>{tr.text(V_Msgs.previewLabel())}</Label>

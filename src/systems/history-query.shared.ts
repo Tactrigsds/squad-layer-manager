@@ -5,6 +5,7 @@ import * as Schema from '$root/drizzle/schema'
 import * as SchemaModels from '$root/drizzle/schema.models'
 import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
+import type * as EM from '@/models/event-meta.models'
 import * as F from '@/models/filter.models'
 import * as HQ from '@/models/history.models'
 import * as L from '@/models/layer.models'
@@ -731,6 +732,11 @@ export function compileEventCond(node: HQ.Node, art: ResolvedArtifacts, t: Event
 		// an app-event dimension a server event has no counterpart for: it records what the game did, which is
 		// never attributable to an SLM user
 		case 'user':
+		case 'vote.kind':
+		case 'vote.outcome':
+		case 'vote.voterType':
+		case 'vote.choice':
+		case 'vote.winner':
 			return comp.neg ? negate(sql`0 = 1`) : sql`0 = 1`
 		default:
 			assertNever(column)
@@ -845,6 +851,12 @@ export function compileAppEventCond(node: HQ.Node, art: ResolvedArtifacts): E.SQ
 		}
 		case 'match.id':
 			return compileComp(comp, ae.matchId, id)
+		case 'vote.kind':
+		case 'vote.outcome':
+		case 'vote.voterType':
+		case 'vote.choice':
+		case 'vote.winner':
+			return appEventVoteCond(comp, column)
 		case 'queue.item': {
 			const itemIds = compValueList(comp).filter((v): v is string => typeof v === 'string')
 			const cond = itemIds.length === 0 ? sql`0 = 1` : appEventItemCond(itemIds)
@@ -899,6 +911,33 @@ function appEventPlayerCond(playerIds: string[]): E.SQL {
 	return sql`${ae.id} IN (SELECT ${aea.appEventId} FROM ${aea} WHERE ${aea.dimension} = 'player' AND ${inJsonSet(aea.value, playerIds)})`
 }
 
+const VOTE_FACT_ROLES = {
+	'vote.kind': 'kind',
+	'vote.outcome': 'outcome',
+	'vote.voterType': 'voterType',
+	'vote.choice': 'choice',
+	'vote.winner': 'winner',
+} as const satisfies Record<HQ.VoteColumnKey, EM.VoteFactRole>
+
+// A vote event whose `vote` association for the column's fact satisfies the comparison. Text facts match on a
+// case-insensitive substring. Negation is per-event, as everywhere: `vote.kind != simple` is any event that is not a
+// simple vote's.
+function appEventVoteCond(comp: F.CompNode, column: HQ.VoteColumnKey): E.SQL {
+	const positive = { ...comp, neg: false } as F.CompNode
+	const valueCond =
+		HQ.COLUMN_DEFS[column].domain.kind === 'text' ? containsCond(positive, aea.value) : compileComp(positive, aea.value, id)
+	const cond = sql`${ae.id} IN (SELECT ${aea.appEventId} FROM ${aea} WHERE ${aea.dimension} = 'vote' AND ${aea.role} = ${VOTE_FACT_ROLES[column]} AND ${valueCond})`
+	return comp.neg ? negate(cond) : cond
+}
+
+// any of the comparison's values as a substring of `col`. A text column offers equality and its lists only.
+function containsCond(comp: F.CompNode, col: E.SQL | E.AnyColumn): E.SQL {
+	const needles =
+		comp.type === 'eq' || comp.type === 'in' ? compValueList(comp).filter((v): v is string => typeof v === 'string' && v !== '') : []
+	if (needles.length === 0) return sql`0 = 1`
+	return E.or(...needles.map((needle) => sql`${col} LIKE ${likeContains(needle)} ESCAPE '\\'`)) as E.SQL
+}
+
 function appEventItemCond(itemIds: string[]): E.SQL {
 	return sql`${ae.id} IN (SELECT ${aea.appEventId} FROM ${aea} WHERE ${aea.dimension} = 'item' AND ${inJsonSet(aea.value, itemIds)})`
 }
@@ -931,6 +970,7 @@ const EVENT_VALUED_COLUMNS = new Set<HQ.ColumnKey>([
 	'chat.channel',
 	'event.attacker',
 	'event.victim',
+	...HQ.VOTE_COLUMN_KEYS,
 ])
 
 function hasEventValuedLeaf(node: HQ.Node): boolean {
@@ -1063,6 +1103,11 @@ export function compileMatchCond(node: HQ.Node, art: ResolvedArtifacts, bounds: 
 		case 'chat.channel':
 		case 'event.attacker':
 		case 'event.victim':
+		case 'vote.kind':
+		case 'vote.outcome':
+		case 'vote.voterType':
+		case 'vote.choice':
+		case 'vote.winner':
 			return matchHasEvent(node, art, bounds)
 		default:
 			assertNever(column)

@@ -1,3 +1,4 @@
+import * as RQ from '@tanstack/react-query'
 import * as Icons from 'lucide-react'
 import React from 'react'
 
@@ -9,15 +10,30 @@ import { Textarea } from '@/components/ui/textarea'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
+import * as ZodUtils from '@/lib/zod-utils'
 import * as Zus from '@/lib/zustand'
 import * as CHAT_Msgs from '@/messages/chat.messages'
+import * as V from '@/models/vote.models'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as UsersClient from '@/systems/users.client'
+import * as VoteClient from '@/systems/vote.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
-type Channel = 'warn-admins' | 'broadcast' | 'warn-selected'
+type Channel = 'warn-admins' | 'broadcast' | 'warn-selected' | 'simple-vote'
+
+function selectVoteDuration(s: SquadServerFrame.State) {
+	return SquadServerFrame.Sel.settings(s).vote.voteDuration
+}
+
+// the channel picker and a channel's options share a size. On a phone that is the event filter button's, which the
+// phone layout places beside them.
+const CHANNEL_CONTROL_SIZE = 'max-phone:h-(--ctl-sm) max-phone:text-xs'
+
+// the lengths a simple vote started here can run for. Any other is a `--duration` away in game.
+const VOTE_DURATIONS_MS = [30_000, 60_000, 120_000, 180_000, 300_000, 600_000]
+const DEFAULT_DURATION = 'default'
 
 // broadcast matches CHANNEL_STYLES.Broadcast in server-event.tsx (yellow-500); warn-selected gets orange as a
 // "targeted warn" accent distinct from both
@@ -40,6 +56,12 @@ const CHANNEL_CFG: Record<
 		triggerClass:
 			'text-warn [&_svg]:text-warn shadow-[inset_0_1px_0_var(--ctl-hi),inset_0_-1px_0_var(--ctl-lo),inset_0_0_0_1px_rgba(232,194,74,0.5)]',
 		inputClass: 'shadow-[inset_0_1px_2px_rgba(0,0,0,0.7),inset_0_0_0_1px_rgba(232,194,74,0.5)]',
+	},
+	'simple-vote': {
+		icon: Icons.Vote,
+		triggerClass:
+			'text-info [&_svg]:text-info shadow-[inset_0_1px_0_var(--ctl-hi),inset_0_-1px_0_var(--ctl-lo),inset_0_0_0_1px_rgba(91,141,239,0.5)]',
+		inputClass: 'shadow-[inset_0_1px_2px_rgba(0,0,0,0.7),inset_0_0_0_1px_rgba(91,141,239,0.5)]',
 	},
 	'warn-selected': {
 		icon: Icons.AlertTriangle,
@@ -66,6 +88,10 @@ export default function ServerChatBox({
 	// null follows the server's admin-target rule; set once the admin ticks the box either way
 	const [notifyAdmins, setNotifyAdmins] = React.useState<boolean | null>(null)
 	const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+	// a simple vote's options. A duration of DEFAULT_DURATION follows the server's
+	const [internalVote, setInternalVote] = React.useState(false)
+	const [voteDuration, setVoteDuration] = React.useState<string>(DEFAULT_DURATION)
+	const defaultVoteDuration = Zus.useStore(stores.squadServer, selectVoteDuration)
 
 	// switch channel and reset the name-prefix and notify-admins toggles to that channel's defaults
 	function selectChannel(next: Channel) {
@@ -91,7 +117,7 @@ export default function ServerChatBox({
 			Zus.resolveReadStore(stores.squadServer).subscribe((state, prev) => {
 				const now = SquadServerFrame.Sel.hasSelection(state)
 				if (now === SquadServerFrame.Sel.hasSelection(prev)) return
-				if (channel === 'broadcast') return
+				if (channel === 'broadcast' || channel === 'simple-vote') return
 				selectChannel(now ? 'warn-selected' : 'warn-admins')
 			}),
 		[channel, stores.squadServer],
@@ -100,6 +126,7 @@ export default function ServerChatBox({
 	const username = UsersClient.useLoggedInUser()?.displayName
 	const warnDenied = RbacClient.useAccess('squadServer.warnPlayers', { serverId })
 	const broadcastDenied = RbacClient.useAccess('squadServer.broadcast', { serverId })
+	const simpleVoteDenied = RbacClient.useAccess('vote.startVote', { serverId })
 	const selectedCount = Zus.useStore(stores.squadServer, SquadServerFrame.Sel.selectedPlayerCount)
 	const selectionIsAllAdmins = Zus.useStore(stores.squadServer, SquadServerFrame.Sel.selectionIsAllAdmins)
 	const notifyAdminsChecked = notifyAdmins ?? !selectionIsAllAdmins
@@ -109,15 +136,29 @@ export default function ServerChatBox({
 	const warnAdminsMutation = SquadServerClient.useWarnAdminsMutation()
 	const broadcastMutation = SquadServerClient.useBroadcastMutation()
 	const warnPlayersMutation = SquadServerClient.useWarnPlayersMutation()
-	const pending = warnAdminsMutation.isPending || broadcastMutation.isPending || warnPlayersMutation.isPending
+	const simpleVoteMutation = RQ.useMutation({
+		mutationFn: (opts: { choices: string[]; duration?: number; voterType: V.VoterType }) =>
+			VoteClient.Actions.startVote(serverId, { kind: 'simple', ...opts }),
+	})
+	const pending =
+		warnAdminsMutation.isPending || broadcastMutation.isPending || warnPlayersMutation.isPending || simpleVoteMutation.isPending
 
 	const cfg = CHANNEL_CFG[channel]
-	const channelDenied = channel === 'broadcast' ? broadcastDenied : warnDenied
+	const channelDenied = channel === 'broadcast' ? broadcastDenied : channel === 'simple-vote' ? simpleVoteDenied : warnDenied
 	const sendDisabled = pending || !!channelDenied || !message.trim() || (channel === 'warn-selected' && selectedCount === 0)
 
 	async function send() {
 		const text = message.trim()
 		if (!text || sendDisabled) return
+		if (channel === 'simple-vote') {
+			const started = await simpleVoteMutation.mutateAsync({
+				choices: V.SimpleVote.choicesFromText(text),
+				duration: voteDuration === DEFAULT_DURATION ? undefined : Number(voteDuration),
+				voterType: internalVote ? 'internal' : 'public',
+			})
+			if (started) setMessage('')
+			return
+		}
 		// the sender's name leads the whole message, ahead of any audience tag: "grey275: @admins ...". warn-selected
 		// leaves both to the server, which is the only path that knows who the "@..." tag should name.
 		const prefixed = (body: string) => (prefixName && username ? `${username}: ${body}` : body)
@@ -161,16 +202,20 @@ export default function ServerChatBox({
 			? tr.text(CHAT_Msgs.warnAdminsPlaceholder())
 			: channel === 'broadcast'
 				? tr.text(CHAT_Msgs.broadcastPlaceholder())
-				: selectedCount === 0
-					? tr.text(CHAT_Msgs.nobodySelectedPlaceholder())
-					: tr.text(CHAT_Msgs.warnSelectedPlaceholder(selectedCount))
+				: channel === 'simple-vote'
+					? tr.text(CHAT_Msgs.simpleVotePlaceholder())
+					: selectedCount === 0
+						? tr.text(CHAT_Msgs.nobodySelectedPlaceholder())
+						: tr.text(CHAT_Msgs.warnSelectedPlaceholder(selectedCount))
 
 	return (
 		// On a phone the controls take one line and the message the next: side by side, a textarea that fits beside
 		// the channel picker is too narrow to read what you are about to send to the whole server.
 		<div data-tour="activity-warn" className="flex items-stretch gap-1.5 pt-1.5 shrink-0 max-phone:flex-wrap">
-			<div className="flex flex-col justify-between gap-1 shrink-0 items-end max-phone:flex-row max-phone:items-center max-phone:justify-start">
-				<div className="flex items-center gap-2">
+			{/* on a phone this group wraps within itself, so the send button keeps its place beside it; the channel's own
+			    options go below the channel picker there */}
+			<div className="flex flex-col justify-between gap-1 shrink-0 items-end max-phone:flex-row max-phone:flex-wrap max-phone:flex-1 max-phone:min-w-0 max-phone:items-center max-phone:justify-start">
+				<div className="flex flex-wrap items-center justify-end gap-1.5 max-phone:order-last max-phone:justify-start">
 					{channel === 'warn-selected' && (
 						<label
 							className="flex items-center gap-1 text-xs text-text-3 whitespace-nowrap cursor-pointer"
@@ -180,7 +225,41 @@ export default function ServerChatBox({
 							{tr.text(CHAT_Msgs.notifyAdmins())}
 						</label>
 					)}
-					{username && (
+					{channel === 'simple-vote' && (
+						<>
+							<Button
+								size="sm"
+								aria-pressed={internalVote}
+								title={tr.text(CHAT_Msgs.simpleVoteInternalHint())}
+								onClick={() => setInternalVote(!internalVote)}
+								className={cn('gap-1.5 px-2 bg-ctl', CHANNEL_CONTROL_SIZE)}
+							>
+								<Icons.Shield className="size-3" />
+								{tr.text(CHAT_Msgs.simpleVoteInternal())}
+							</Button>
+							<Select value={voteDuration} onValueChange={setVoteDuration}>
+								<SelectTrigger
+									aria-label={tr.text(CHAT_Msgs.simpleVoteDurationHint())}
+									title={tr.text(CHAT_Msgs.simpleVoteDurationHint())}
+									className={cn('fd-btn fd-btn-sm w-auto gap-1.5 px-2 bg-ctl [&>span]:whitespace-nowrap', CHANNEL_CONTROL_SIZE)}
+								>
+									<Icons.Timer className="size-3 shrink-0" />
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value={DEFAULT_DURATION}>
+										{tr.text(CHAT_Msgs.simpleVoteDefaultDuration(ZodUtils.formatHumanTime(defaultVoteDuration)))}
+									</SelectItem>
+									{VOTE_DURATIONS_MS.map((ms) => (
+										<SelectItem key={ms} value={String(ms)}>
+											{ZodUtils.formatHumanTime(ms)}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</>
+					)}
+					{username && channel !== 'simple-vote' && (
 						<label
 							className="flex items-center gap-1 text-xs text-text-3 whitespace-nowrap cursor-pointer"
 							title={tr.text(CHAT_Msgs.prefixNameHint())}
@@ -195,8 +274,7 @@ export default function ServerChatBox({
 						data-tour="activity-warn-channel"
 						className={cn(
 							'fd-btn fd-btn-sm w-auto min-w-24 gap-1.5 px-2 bg-ctl shrink-0 [&>span]:whitespace-nowrap [&>span]:overflow-visible',
-							// match the event filter button beside it, which the phone layout places here
-							'max-phone:h-(--ctl-sm) max-phone:text-xs',
+							CHANNEL_CONTROL_SIZE,
 							cfg.triggerClass,
 						)}
 					>
@@ -212,6 +290,9 @@ export default function ServerChatBox({
 						</SelectItem>
 						<SelectItem value="warn-selected" disabled={!!warnDenied} className="text-pri-hi whitespace-nowrap">
 							{tr.text(CHAT_Msgs.warnSelectedChannel(selectedCount))}
+						</SelectItem>
+						<SelectItem value="simple-vote" disabled={!!simpleVoteDenied} className="text-info whitespace-nowrap">
+							{tr.text(CHAT_Msgs.simpleVoteChannel())}
 						</SelectItem>
 					</SelectContent>
 				</Select>
@@ -236,8 +317,8 @@ export default function ServerChatBox({
 					cfg.inputClass,
 				)}
 			/>
-			{/* warn-admins is a free-form message to admins, with no preset codepath behind it */}
-			{channel !== 'warn-admins' && (
+			{/* warn-admins is a free-form message to admins, with no preset codepath behind it, and vote choices are not messages */}
+			{channel !== 'warn-admins' && channel !== 'simple-vote' && (
 				<AdminShorthandPicker
 					shorthands={draft.reasons}
 					preview={draft.render}

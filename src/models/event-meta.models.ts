@@ -22,6 +22,19 @@ export type LayerAssocKind =
 	| 'queued' // present in the queue after a save
 	| 'offered' // a choice in a vote, won or not
 
+// What a vote event says about its vote, which the history query's vote.* columns search. An event records only what
+// it knows: an outcome only once the vote has one.
+export type VoteFactRole = 'kind' | 'voterType' | 'outcome' | 'choice' | 'winner'
+
+export type VoteFacts = {
+	kind: string
+	voterType?: string
+	outcome?: string
+	// what players saw for each choice
+	choices?: readonly string[]
+	winner?: string
+}
+
 export type EventMeta<E> = {
 	players: { assocType: ServerEventPlayerAssocType; get: (event: E) => AssocValues<SM.Player | SM.PlayerId> }[]
 	// squads carry either the whole object (which registers the squad) or just its uniqueId (which references one)
@@ -31,6 +44,8 @@ export type EventMeta<E> = {
 	users: { get: (event: E) => AssocValues<USR.UserId> }[]
 	// layer queue items the event touched, by item id. Only app events have these.
 	items: { get: (event: E) => AssocValues<string> }[]
+	// the vote a vote event is about. Only app events have one.
+	vote?: (event: E) => VoteFacts
 }
 
 export function* iterAssocValues<T>(values: AssocValues<T>): Generator<T> {
@@ -51,6 +66,7 @@ export function meta<E>(opts?: Partial<EventMeta<E>>): EventMeta<E> {
 		layers: opts?.layers ?? [],
 		users: opts?.users ?? [],
 		items: opts?.items ?? [],
+		vote: opts?.vote,
 	}
 }
 

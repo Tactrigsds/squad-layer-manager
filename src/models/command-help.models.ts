@@ -151,7 +151,14 @@ export function describeArgs(
 			name: def.name,
 			syntax: kindHelp.syntax,
 			// the kind explains the general shape; `describe` says what this arg means for this command
-			description: def.describe ? join([def.describe, kindHelp.description], ' ') : kindHelp.description,
+			description: join(
+				[
+					...(def.describe ? [def.describe] : []),
+					kindHelp.description,
+					...(def.kind === 'text' && CMD.commandOptions(id).length > 0 ? [t('Options are taken out of it.')] : []),
+				],
+				' ',
+			),
 			optional: argOptional(def, requiredReasonActions),
 			presets: argPresets(def, seeds).map(LP.describePreset),
 			fixed,
@@ -346,7 +353,47 @@ export function buildExamples(
 		if (examples.some((e) => e.command === command)) continue
 		examples.push({ command, note: variant.note })
 	}
+
+	// one more, of the shortest form with every option set. A template trigger takes options only through what it
+	// leaves open, so only a plain one is shown with them.
+	const options = CMD.commandOptions(id)
+	const shortest = examples[0]
+	if (options.length > 0 && shortest && primary && CMD.triggerArgs(primary) === undefined) {
+		const optionTokens = options.flatMap((def) => (def.kind === 'flag' ? [`--${def.name}`] : [`--${def.name}`, optionSample(def)]))
+		const rest = shortest.command.slice(cmdString.length).trim()
+		examples.push({ command: [cmdString, ...optionTokens, ...(rest ? [rest] : [])].join(' '), note: t('With options') })
+	}
 	return examples
+}
+
+function optionSample(def: Exclude<CMD.OptionDef, { kind: 'flag' }>): string {
+	if (def.sample) return def.sample
+	switch (def.kind) {
+		case 'duration':
+			return '2m'
+		case 'int':
+			return '5'
+		case 'string':
+			return def.name
+		default:
+			assertNever(def)
+	}
+}
+
+export type OptionHelp = { name: string; syntax: string; description: TString }
+
+// a command's options as the commands page lists them, with each way to write one
+export function describeOptions(id: CMD.CommandId): OptionHelp[] {
+	return CMD.commandOptions(id).map((def) => {
+		const names = [...(def.short ? [`-${def.short}`] : []), `--${def.name}`].join(', ')
+		if (def.kind === 'flag') return { name: def.name, syntax: names, description: def.describe ?? t('A flag, with no value.') }
+		const kindHelp = ARG_KIND_HELP[def.kind]
+		return {
+			name: def.name,
+			syntax: `${names} <${kindHelp.syntax}>`,
+			description: def.describe ? join([def.describe, kindHelp.description], ' ') : kindHelp.description,
+		}
+	})
 }
 
 // -------- help listings --------

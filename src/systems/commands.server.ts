@@ -20,6 +20,7 @@ import * as CHAT from '@/models/chat.models'
 import * as CMDH from '@/models/command-help.models'
 import * as CMD from '@/models/command.models.ts'
 import type * as CS from '@/models/context-shared.models'
+import type * as LL from '@/models/layer-list.models'
 import * as L from '@/models/layer.models'
 import * as MH from '@/models/match-history.models'
 import type * as Msgs from '@/models/messages.models'
@@ -27,6 +28,7 @@ import type * as SR from '@/models/squad-rcon.models'
 import * as SM from '@/models/squad.models'
 import type * as TSW from '@/models/teamswaps.models'
 import type * as USR from '@/models/users.models'
+import * as V from '@/models/vote.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context.ts'
 import { initModule } from '@/server/logger'
@@ -277,15 +279,32 @@ async function runCommand(
 		return { code: 'ok' }
 	}
 
-	const resolved = await resolveArgs(ctx, cmd as CMD.CommandId, cmdConfig, tokens, sender, trigger)
+	// Options come out first, and the rest is assigned to the positional arguments. From here on the command is held as
+	// its canonical tokens, which put a prompt's picks back over the positional words they replace.
+	const optionDefs = CMD.commandOptions(cmd as CMD.CommandId)
+	let positional = tokens
+	let canonical = tokens
+	let optionValues: Record<string, unknown> = {}
+	if (optionDefs.length > 0) {
+		const parsed = CMD.parseOptions(optionDefs, tokens)
+		if (parsed.code !== 'ok') return await chat.error('invalid-option', ctx.tr.text(CMD_Msgs.optionError(parsed)))
+		const values = CMD.resolveOptionValues(optionDefs, parsed.options)
+		if (values.code !== 'ok') return await chat.error('invalid-option', values.msg)
+		positional = parsed.positional
+		canonical = parsed.canonical
+		optionValues = values.values
+	}
+
+	const resolved = await resolveArgs(ctx, cmd as CMD.CommandId, cmdConfig, positional, sender, trigger)
+	const ranges = resolved.code === 'err' ? {} : CMD.shiftArgTokenRanges(resolved.ranges, canonical.length - positional.length)
 	if (resolved.code === 'err:near-miss') {
-		return await raisePrompt(chat, { cmd: cmd as CMD.CommandId, trigger, tokens, typed, ranges: resolved.ranges }, resolved.nearMisses)
+		return await raisePrompt(chat, { cmd: cmd as CMD.CommandId, trigger, tokens: canonical, typed, ranges }, resolved.nearMisses)
 	}
 	if (resolved.code !== 'ok') {
 		return await chat.error('invalid-args', resolved.msg)
 	}
 
-	const invocation: Invocation = { cmd: cmd as CMD.CommandId, trigger, tokens, typed, ranges: resolved.ranges }
+	const invocation: Invocation = { cmd: cmd as CMD.CommandId, trigger, tokens: canonical, typed, ranges }
 	const h: HandlerCtx = {
 		...chat,
 		invocation,
@@ -294,7 +313,7 @@ async function runCommand(
 
 	// TS cannot correlate handlers[cmd] with CommandArgs<typeof cmd> across the union, so the args
 	// are cast at this single dispatch point; each handler's signature is still fully typed
-	return await handlers[cmd as CMD.CommandId](h, resolved.args as never)
+	return await handlers[cmd as CMD.CommandId](h, { ...resolved.args, ...optionValues } as never)
 }
 
 // Asks the caller to pick, and holds what to run once they have. The command itself does not run: every near miss
@@ -748,49 +767,126 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		return { code: 'ok' }
 	},
 
-	startVote: async (h) => {
-		const res = await Vote.startVote(h.ctx, { initiator: h.user })
-		switch (res.code) {
-			case 'err:invalid-item-type':
-			case 'err:public-vote-not-first':
-			case 'err:vote-not-allowed':
-			case 'err:item-not-found':
-			case 'err:vote-in-progress':
-			case 'err:editing-in-progress':
-				return await h.error('vote-error', res.msg)
-			case 'err:rcon':
-				throw new Error(`RCON error`)
-			case 'ok':
-				return { code: 'ok' }
-			default:
-				assertNever(res)
-		}
+	startVote: async (h, args) => {
+		const head = LayerQueue.getSavedQueue(h.ctx)[0]
+		if (!head) return await h.error('vote-error', h.ctx.tr.text(V_Msgs.start.itemNotFound()))
+		const res = await Vote.startVote(h.ctx, {
+			kind: 'layer',
+			itemId: head.itemId,
+			voterType: args.internal ? 'internal' : 'public',
+			duration: args.duration,
+			initiator: h.user,
+		})
+		return await reportStartVote(h, res)
 	},
-
 	abortVote: async (h) => {
-		const res = await Vote.abortVote(h.ctx, { aborter: h.user })
+		const voteId = V.runningVoteId(h.ctx.vote)
+		if (!voteId) return await h.error('no-vote-in-progress', h.ctx.tr.text(V_Msgs.noVoteInProgress()))
+		const res = await Vote.abortVote(h.ctx, { voteId, aborter: h.user })
 		switch (res.code) {
 			case 'ok':
 				return { code: 'ok' }
 			case 'err:no-vote-in-progress':
-				return await h.error('no-vote-in-progress', h.ctx.tr.text(V_Msgs.noVoteInProgress()))
+			case 'err:vote-changed':
+				return await h.error(res.code.slice(4), res.msg)
 			default:
 				assertNever(res)
 		}
 	},
 
 	endVoteEarly: async (h) => {
-		const res = await Vote.endVote(h.ctx, { reason: 'ended-early', endedBy: h.user })
+		const voteId = V.runningVoteId(h.ctx.vote)
+		if (!voteId) return await h.error('no-vote-in-progress', h.ctx.tr.text(V_Msgs.noVoteInProgress()))
+		const res = await Vote.endVote(h.ctx, { voteId, reason: 'ended-early', endedBy: h.user })
 		switch (res.code) {
 			case 'ok':
 				return { code: 'ok' }
 			case 'err:no-vote-in-progress':
-				return await h.error('no-vote-in-progress', h.ctx.tr.text(V_Msgs.noVoteInProgress()))
+			case 'err:vote-changed':
+				return await h.error(res.code.slice(4), res.msg)
 			case 'err:rcon':
 				return await h.error('rcon', res.msg)
 			default:
 				assertNever(res)
 		}
+	},
+
+	vote: async (h, args) => {
+		const tokens = args.choices.split(/\s+/).filter((t) => t.length > 0)
+		const filterEntities = Array.from(FilterEntity.state.filters.values()).map((f) => ({ id: f.id, name: f.name }))
+		const resolveRes = BB.resolveVoteTokens({ tokens, components: L.StaticLayerComponents, filterEntities })
+		switch (resolveRes.code) {
+			case 'err:unknown-token':
+			case 'err:ambiguous-token': {
+				const offending = resolveRes.token
+				return await h.nearMiss('choices', {
+					msg: h.ctx.tr.text(resolveRes.msg),
+					typed: offending,
+					cause: resolveRes.code === 'err:unknown-token' ? 'no-match' : 'ambiguous',
+					// the corrected word keeps whatever text was typed after its colon
+					choices: resolveRes.suggestions.slice(0, CMD.MAX_CHOICES).map((suggestion) => ({
+						tokens: tokens.map((t) => {
+							const { word } = BB.splitVoteToken(t)
+							return word === offending ? suggestion.replace(/\s+/g, '') + t.slice(word.length) : t
+						}),
+						label: suggestion,
+					})),
+				})
+			}
+			case 'err:text-on-filter':
+				return await h.error('text-on-filter', h.ctx.tr.text(V_Msgs.fromChat.textOnFilter(resolveRes.token)))
+			case 'err:empty':
+				return await h.error('too-few-choices', h.ctx.tr.text(V_Msgs.simple.tooFewChoices(V.SimpleVote.MIN_CHOICES)))
+			case 'err:unsupported-field':
+				return await h.error('unsupported-field', h.ctx.tr.text(V_Msgs.fromChat.unsupportedField(resolveRes.token, resolveRes.value)))
+			case 'err:mixed-fields':
+				return await h.error('mixed-fields', h.ctx.tr.text(V_Msgs.fromChat.mixedFields()))
+			case 'ok':
+				break
+			default:
+				assertNever(resolveRes)
+		}
+		const { field, choices, filterIds } = resolveRes
+		const longText = choices.find((c) => c.text && c.text.length > V.MAX_CHOICE_TEXT_LENGTH)?.text
+		if (longText) {
+			return await h.error('text-too-long', h.ctx.tr.text(V_Msgs.simple.choiceTooLong(longText, V.MAX_CHOICE_TEXT_LENGTH)))
+		}
+		if (choices.length < V.SimpleVote.MIN_CHOICES) {
+			return await h.error('too-few-choices', h.ctx.tr.text(V_Msgs.simple.tooFewChoices(V.SimpleVote.MIN_CHOICES)))
+		}
+		if (choices.length > V.SimpleVote.MAX_CHOICES) {
+			return await h.error('too-many-choices', h.ctx.tr.text(V_Msgs.simple.tooManyChoices(V.SimpleVote.MAX_CHOICES)))
+		}
+		const owner = await resolveChatOwner(h)
+		const source: LL.Source = owner.discordId ? { type: 'manual', userId: owner.discordId } : { type: 'unknown' }
+		const res = await LayerQueue.addVoteFromChat(h.ctx, { field, choices, filterIds, source })
+		switch (res.code) {
+			case 'ok':
+				await h.reply(V_Msgs.fromChat.added(res.labels))
+				return { code: 'ok' }
+			case 'err:unfilled-choices':
+				return await h.error('unfilled-choices', h.ctx.tr.text(V_Msgs.fromChat.unfilledChoices(res.values)))
+			case 'err:invalid-filter':
+				return await h.error('invalid-filter', h.ctx.tr.text(V_Msgs.fromChat.invalidFilter(res.filterNames)))
+			case 'err:vote-in-progress':
+				return await h.error('vote-in-progress', h.ctx.tr.text(V_Msgs.start.voteAlreadyInProgress()))
+			case 'err:unsaved-edits':
+				return await h.error('unsaved-edits', h.ctx.tr.text(V_Msgs.fromChat.queueBeingEdited()))
+			default:
+				assertNever(res)
+		}
+	},
+
+	simpleVote: async (h, args) => {
+		const choices = V.SimpleVote.choicesFromText(args.choices)
+		const res = await Vote.startVote(h.ctx, {
+			kind: 'simple',
+			choices,
+			voterType: args.internal ? 'internal' : 'public',
+			duration: args.duration,
+			initiator: h.user,
+		})
+		return await reportStartVote(h, res)
 	},
 
 	showNext: async (h) => {
@@ -1489,6 +1585,28 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		await h.reply(BB_Msgs.removed(BB.describeTemplate(h.ctx.tr, target.filter, LayerQueue.backburnerFilterName)))
 		return { code: 'ok' }
 	},
+}
+
+async function reportStartVote(h: HandlerCtx, res: Awaited<ReturnType<typeof Vote.startVote>>): Promise<HandlerResult> {
+	switch (res.code) {
+		case 'ok':
+			return { code: 'ok' }
+		case 'err:rcon':
+			throw new Error('RCON error')
+		case 'err:invalid-item-type':
+		case 'err:public-vote-not-first':
+		case 'err:vote-not-allowed':
+		case 'err:item-not-found':
+		case 'err:vote-in-progress':
+		case 'err:editing-in-progress':
+		case 'err:too-few-choices':
+		case 'err:too-many-choices':
+		case 'err:choice-too-long':
+		case 'err:duplicate-choice':
+			return await h.error('vote-error', res.msg)
+		default:
+			assertNever(res)
+	}
 }
 
 // how the cancel command is named back to a queued player, read from live config so a renamed trigger or prefix

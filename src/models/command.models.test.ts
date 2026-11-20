@@ -524,3 +524,46 @@ describe('resolvePluginCommandTriggers', () => {
 		expect(conflicts).toHaveLength(1)
 	})
 })
+
+describe('parseOptions', () => {
+	const defs: CMD.OptionDef[] = [
+		{ kind: 'flag', name: 'internal', short: 'i' },
+		{ kind: 'duration', name: 'duration', short: 'd' },
+	]
+	const parse = (line: string) => CMD.parseOptions(defs, line.split(' '))
+
+	it('reads long and short options, valued with a space or an equals sign, anywhere among the positionals', () => {
+		for (const line of ['--internal --duration 2m yes no', '-i -d=2m yes no', 'yes -d 2m no --INTERNAL', 'yes --duration=2m -i no']) {
+			const res = parse(line)
+			expect(res.code, line).toBe('ok')
+			if (res.code !== 'ok') continue
+			expect(res.options, line).toEqual({ internal: true, duration: '2m' })
+			expect(res.positional, line).toEqual(['yes', 'no'])
+		}
+	})
+
+	it('takes everything after -- as positional, and a dash before a non-letter as positional', () => {
+		const res = parse('-i -- -d yes -5')
+		expect(res).toMatchObject({ code: 'ok', options: { internal: true }, positional: ['-d', 'yes', '-5'] })
+	})
+
+	it('gives canonical tokens that parse back to the same result', () => {
+		const res = parse('yes -d 2m -- --not-an-option')
+		if (res.code !== 'ok') throw new Error(res.code)
+		expect(res.canonical).toEqual(['--duration=2m', '--', 'yes', '--not-an-option'])
+		expect(CMD.parseOptions(defs, res.canonical)).toEqual(res)
+	})
+
+	it('refuses an unknown option with the closest one, a flag given a value, and an option missing its value', () => {
+		expect(parse('--durtion 2m yes')).toEqual({ code: 'err:unknown-option', option: '--durtion', suggestion: '--duration' })
+		expect(parse('-x yes')).toMatchObject({ code: 'err:unknown-option', option: '-x' })
+		expect(parse('--internal=yes no')).toEqual({ code: 'err:unexpected-value', option: '--internal' })
+		expect(parse('yes no -d')).toEqual({ code: 'err:missing-value', option: '-d' })
+		expect(parse('-d -- yes')).toEqual({ code: 'err:missing-value', option: '-d' })
+	})
+
+	it('resolves values for a handler, with absent flags false and bad durations refused', () => {
+		expect(CMD.resolveOptionValues(defs, { duration: '90s' })).toEqual({ code: 'ok', values: { internal: false, duration: 90_000 } })
+		expect(CMD.resolveOptionValues(defs, { duration: 'soon' }).code).toBe('err')
+	})
+})

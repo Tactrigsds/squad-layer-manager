@@ -305,16 +305,16 @@ export const serverEventIndex = sqliteTable(
 export const appEventAssociations = sqliteTable(
 	'appEventAssociations',
 	{
-		// 'player' | 'layer' | 'user' | 'item'
+		// 'player' | 'layer' | 'user' | 'item' | 'vote'
 		dimension: text('dimension').notNull(),
-		// an eos id, a layer id, a user id or a queue item id, per the dimension
+		// an eos id, a layer id, a user id, a queue item id or a vote fact, per the dimension
 		value: text('value').notNull(),
 		// denormalized from appEvents so one subject's trail is a contiguous pk range rather than a join then a sort
 		time: timestamp('time').notNull(),
 		appEventId: text('appEventId')
 			.notNull()
 			.references(() => appEvents.id, { onDelete: 'cascade' }),
-		// how the event relates to the value: a ServerEventPlayerAssocType, or an EM.LayerAssocKind
+		// how the event relates to the value: a ServerEventPlayerAssocType, an EM.LayerAssocKind, or an EM.VoteFactRole
 		role: text('role').notNull(),
 	},
 	(table) => ({

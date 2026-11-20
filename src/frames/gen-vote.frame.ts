@@ -209,9 +209,15 @@ export namespace Actions {
 		store(stores).setState({ showAdvanced })
 	}
 
+	// the result carries the config too, so a change made after the choices are drawn reaches the submitted vote
 	export function setVoteConfig(stores: KeyProp, update: Partial<V.AdvancedVoteConfig>) {
+		replaceVoteConfig(stores, { ...store(stores).getState().voteConfig, ...update })
+	}
+
+	export function replaceVoteConfig(stores: KeyProp, voteConfig: Partial<V.AdvancedVoteConfig>) {
 		const s = store(stores)
-		s.setState({ voteConfig: { ...s.getState().voteConfig, ...update } })
+		const result = s.getState().result
+		s.setState({ voteConfig, result: result && { ...result, voteConfig } })
 	}
 
 	export function setChoiceConstraint(stores: KeyProp, index: number, key: V.GenVote.ChoiceConstraintKey, value: LC.InputValue) {

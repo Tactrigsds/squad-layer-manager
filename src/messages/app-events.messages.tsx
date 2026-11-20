@@ -103,6 +103,10 @@ export const voteStarted = def((actor: React.ReactNode, choiceCount: number) =>
 	rt('{actor} started a vote ({choiceCount, plural, one {# option} other {# options}})', { actor, choiceCount }),
 )
 
+export const simpleVoteStarted = def((actor: React.ReactNode, choices: string[]) =>
+	rt('{actor} started a vote: {choices}', { actor, choices: choices.map((c) => `"${c}"`).join(', ') }),
+)
+
 // the disclosure under an ended vote that shows what it broadcast to the server
 export const voteBroadcastsShown = def('{count, plural, one {Broadcast} other {# broadcasts}}', (count: number) => ({ count }))
 
@@ -545,10 +549,16 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 		case 'SCHEDULED_JOB_CANCELLED':
 			return `stopped ${e.pluginId}'s running job ${e.jobId}`
 		case 'VOTE_STARTED':
-			return `started a vote (${e.choiceCount} ${e.choiceCount === 1 ? 'option' : 'options'})`
+			return e.vote.kind === 'simple'
+				? `started a vote: ${e.vote.choices.map((c) => `"${c}"`).join(', ')}`
+				: `started a vote (${e.choiceCount} ${e.choiceCount === 1 ? 'option' : 'options'})`
 		case 'VOTE_ENDED': {
 			const verb = e.reason === 'ended-early' ? 'ended a vote early' : 'a vote ended'
-			const winner = e.winnerLayerId ? `, ${DH.toShortLayerNameFromId(e.winnerLayerId)} won` : ''
+			const winnerName =
+				e.vote.kind === 'simple'
+					? e.vote.winner !== null && `"${e.vote.winner}"`
+					: e.vote.winnerLayerId && DH.toShortLayerNameFromId(e.vote.winnerLayerId)
+			const winner = winnerName ? `, ${winnerName} won` : ''
 			const turnout = e.totalVotes !== undefined ? ` (${e.totalVotes} ${e.totalVotes === 1 ? 'vote' : 'votes'})` : ''
 			return `${verb}${winner}${turnout}`
 		}

@@ -97,6 +97,7 @@ function CommandDetails({
 	const seeds: CMDH.ExampleSeeds = { reasons: settings.adminMessageShorthands }
 	const args = CMDH.describeArgs(cmdId, cmd, seeds, settings.requireReasonFor)
 	const examples = CMDH.buildExamples(cmdId, cmd, seeds, settings.requireReasonFor)
+	const options = CMDH.describeOptions(cmdId)
 	const chatCommand = cmd.allowedChats.includes('admin') ? 'ChatToAdmin' : 'ChatToAll'
 
 	return (
@@ -141,6 +142,24 @@ function CommandDetails({
 						)
 					})}
 				</dl>
+			)}
+			{options.length > 0 && (
+				<div className="space-y-1">
+					<p className="text-xs font-medium text-muted-foreground">{tr.text(CMD_Msgs.optionsHeading())}</p>
+					<dl className="space-y-2">
+						{options.map((option) => (
+							<div key={option.name} className="text-sm">
+								<dt>
+									<code className="font-mono text-xs bg-muted rounded px-1 py-0.5 ltr-isolate">{option.syntax}</code>
+								</dt>
+								<dd className="text-xs text-muted-foreground pt-0.5">{tr.text(option.description)}</dd>
+							</div>
+						))}
+					</dl>
+					<p className="text-xs text-muted-foreground [&_code]:whitespace-nowrap [&_code]:font-mono">
+						{tr.richText(CMD_Msgs.optionsSyntaxHint())}
+					</p>
+				</div>
 			)}
 			{examples.length > 0 && (
 				<div className="space-y-1">

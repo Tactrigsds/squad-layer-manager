@@ -14,6 +14,7 @@ import * as LL_Msgs from '@/messages/layer-list.messages'
 import * as SS_Msgs from '@/messages/server-state.messages'
 import * as AppEvents from '@/models/app-events.models'
 import * as BB from '@/models/backburner.models'
+import * as CB from '@/models/constraint-builders.models'
 import * as CS from '@/models/context-shared.models'
 import type * as DH from '@/models/display-helpers.models'
 import * as FPM from '@/models/filter-problems.models'
@@ -1743,6 +1744,81 @@ export async function addBackburnerRequestFromChat(
 		source: args.source,
 	})
 	return { code: 'ok', item, evicted, skippedRequestFilters: skipped }
+}
+
+export type AddVoteResult =
+	// labels are the choices as players see them
+	| { code: 'ok'; labels: string[] }
+	// the choices no layer in the pool could be drawn for, by the value each was asked for
+	| { code: 'err:unfilled-choices'; values: string[] }
+	// filterNames are the typed filters that cannot be applied
+	| { code: 'err:invalid-filter'; filterNames: string[] }
+	| { code: 'err:vote-in-progress' }
+	| { code: 'err:unsaved-edits' }
+
+const VOTE_FIELD_DISPLAY_PROP: Record<BB.VoteChoiceField, DH.LayerDisplayProp | null> = {
+	Map: 'map',
+	Layer: 'layer',
+	Gamemode: 'gamemode',
+	Size: null,
+}
+
+// The chat path (/vote): draws one layer per value from the main pool, with the typed filters applied to every choice,
+// and puts the vote at the head of the queue. Nothing is queued unless every choice is drawn.
+export async function addVoteFromChat(
+	ctx: SideEffectCtx,
+	args: { field: BB.VoteChoiceField; choices: BB.VoteChoiceToken[]; filterIds: string[]; source: LL.Source },
+): Promise<AddVoteResult> {
+	if (ctx.vote.state?.code === 'in-progress') return { code: 'err:vote-in-progress' }
+	const serverState = SquadServer.getServerState(ctx)
+	const typedFilterConstraintId = (filterId: string) => `vote-filter:${filterId}`
+	const constraints = [
+		...SETTINGS.getMainPoolConstraints(serverState.settings, Settings.repeatRulesFor(serverState.settings)),
+		...args.filterIds.map((filterId) => CB.filterEntity(typedFilterConstraintId(filterId), filterId)),
+	]
+	const res = await LayerQueriesShared.genVote({
+		ctx: await LayerQueries.resolveLayerQueryCtx(ctx),
+		input: {
+			constraints,
+			list: await LayerQueries.resolveLayerItemsState(ctx),
+			// the vote goes in first, so the repeat rules look back from the head of the queue
+			cursor: { type: 'start' },
+			action: 'add',
+			choices: args.choices.map((choice) => ({ choiceConstraints: { [args.field]: choice.value } })),
+			uniqueConstraints: [args.field],
+			seed: LQY.getSeed(),
+		},
+	})
+	if (res.code !== 'ok') {
+		log.warn({ [ATTRS.SquadServer.ID]: ctx.serverId }, 'vote choices from chat cannot be applied: %o', res.choices)
+		return { code: 'err:unfilled-choices', values: res.choices.map((c) => args.choices[c.index].value) }
+	}
+	const brokenTypedFilters = args.filterIds.filter((filterId) =>
+		res.problems.some((problem) => problem.constraintId === typedFilterConstraintId(filterId)),
+	)
+	if (brokenTypedFilters.length > 0) {
+		return { code: 'err:invalid-filter', filterNames: brokenTypedFilters.map((id) => backburnerFilterName(id) ?? id) }
+	}
+	if (res.problems.length > 0) {
+		log.warn(
+			{ [ATTRS.SquadServer.ID]: ctx.serverId },
+			'vote from chat drawn without constraints that cannot be applied:\n%s',
+			describeProblems(res.problems),
+		)
+	}
+	const unfilled = args.choices.filter((_, i) => !res.chosenLayers[i]).map((c) => c.value)
+	if (unfilled.length > 0) return { code: 'err:unfilled-choices', values: unfilled }
+
+	const fieldProp = VOTE_FIELD_DISPLAY_PROP[args.field]
+	const displayProps = Array.from(
+		new Set<DH.LayerDisplayProp>([...(fieldProp ? [fieldProp] : []), ...serverState.settings.vote.voteDisplayProps]),
+	)
+	const layerIds = res.chosenLayers.map((layer) => layer!.id)
+	const choiceTexts = args.choices.flatMap((choice, i) => (choice.text ? [{ layerId: layerIds[i], text: choice.text }] : []))
+	const voteConfig = { displayProps, ...(choiceTexts.length > 0 ? { choiceTexts } : {}) }
+	const added = await addToSaved(ctx, { source: args.source }, [LL.createVoteItem(layerIds, args.source, voteConfig)], 'start')
+	if (added.code !== 'ok') return added
+	return { code: 'ok', labels: layerIds.map((layerId) => V.choiceLabel(layerId, voteConfig, displayProps)) }
 }
 
 export async function removeBackburnerRequestsFromChat(

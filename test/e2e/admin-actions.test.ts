@@ -3,6 +3,7 @@ import { type EmuPlayer, makePlayer } from '@/emulator'
 import { type AppFixture, createAppFixture } from '../harness/app-fixture'
 import { LAYERS, queue } from '../harness/arrange'
 import * as Dash from '../harness/dashboard'
+import { appEventTypes } from '../harness/inspect'
 import { expect, test } from './fixtures'
 
 // Admin actions taken from the teams panel: on one player, on a selection of several, on a whole
@@ -330,6 +331,45 @@ test.describe('admin actions from the teams panel', () => {
 		const notes = window.getByRole('region', { name: 'BM notes' })
 		await expect(notes.getByRole('listitem').filter({ hasText: 'Mic spam in local.' })).toContainText('SLM')
 		await window.getByRole('button', { name: 'Close window' }).click()
+	})
+
+	test('a simple vote started from the chat box, tallied in its box, collapsed and ended early', async ({ page }) => {
+		await page.locator('[data-tour="activity-warn-channel"]').click()
+		await page.getByRole('option', { name: 'Simple Vote' }).click()
+		await page.getByRole('combobox', { name: 'How long the vote runs' }).click()
+		await page.getByRole('option', { name: '1m', exact: true }).click()
+		const input = page.getByPlaceholder(/separated by commas/)
+		await input.fill('Push, Hold the line')
+		await input.press('Enter')
+
+		const started = await app.emu.expectCommand(/^AdminBroadcast /, { timeoutMs: 20_000 })
+		expect(started.body).toMatch(/1\. Push/)
+		expect(started.body).toMatch(/2\. Hold the line/)
+		await expect(input).toHaveValue('')
+
+		const box = page.getByRole('region', { name: 'Vote', exact: true })
+		await expect(box).toBeVisible()
+		// the minute picked, rather than the server's default of several minutes
+		await expect(box.getByText(/^[01]:\d\d$/)).toBeVisible()
+		app.emu.world.chat(loner, 'ChatAll', '2')
+		await expect(box).toContainText('Received: 1 of')
+
+		const collapse = box.getByRole('button', { name: 'Collapse the vote' })
+		await collapse.click()
+		await expect(box.getByText('2. Hold the line')).toBeHidden()
+		await box.getByRole('button', { name: 'Expand the vote' }).click()
+		await expect(box.getByText('2. Hold the line')).toBeVisible()
+
+		app.emu.rcon.commandLog.length = 0
+		await box.getByRole('button', { name: 'End Vote Early' }).click()
+		const ended = await app.emu.expectCommand(/^AdminBroadcast /, { timeoutMs: 20_000 })
+		expect(ended.body).toMatch(/\[WINNER\] Hold the line/)
+		await expect(box).toContainText('Ended')
+
+		// an ended vote stays until the next one, collapsed out of the way
+		await box.getByRole('button', { name: 'Collapse the vote' }).click()
+		await expect(box.getByText('2. Hold the line')).toBeHidden()
+		expect(appEventTypes(app)).toEqual(expect.arrayContaining(['VOTE_STARTED', 'VOTE_ENDED']))
 	})
 
 	test('a required reason holds the kick dialog shut until one is picked', async ({ page }) => {

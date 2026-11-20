@@ -97,6 +97,7 @@ import * as m0142 from './0142_app_event_item_dimension'
 import * as m0143 from './0143_rbac_inference_indexes'
 import * as m0144 from './0144_plugin_setting_comments'
 import * as m0145 from './0145_servers_teamswaps_nullable'
+import * as m0146 from './0146_app_event_vote_dimension'
 
 export const tsMigrations: TsMigration[] = [
 	{ name: '0062_filter_nodes_operator_model', up: m0062.up },
@@ -181,4 +182,5 @@ export const tsMigrations: TsMigration[] = [
 	{ name: '0143_rbac_inference_indexes', up: m0143.up },
 	{ name: '0144_plugin_setting_comments', up: m0144.up },
 	{ name: '0145_servers_teamswaps_nullable', up: m0145.up },
+	{ name: '0146_app_event_vote_dimension', up: m0146.up },
 ]

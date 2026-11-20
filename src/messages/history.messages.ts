@@ -66,6 +66,11 @@ export const fieldFeed = def('Quick filter')
 // qualifies the player field: which end of a kill they have to be on
 export const fieldPlayerRole = def('Involved as')
 export const fieldChannel = def('Chat channel')
+export const fieldVoteKind = def('Vote kind')
+export const fieldVoteOutcome = def('Vote outcome')
+export const fieldVoteVoters = def('Vote voters')
+export const fieldVoteChoice = def('Vote choice contains')
+export const fieldVoteWinner = def('Vote winner contains')
 export const fieldMatchId = def('Match id')
 export const fieldItem = def('Queue item')
 export const copyMatchId = def('Copy match id')
@@ -106,6 +111,7 @@ export const groupEvents = def('Event')
 export const groupMatch = def('Match')
 export const groupLayer = def('Layer')
 export const groupPlayers = def('Player')
+export const groupVote = def('Vote')
 export const clearFilter = def('Clear')
 export const atLeast = def('At least')
 export const atMost = def('At most')
@@ -242,6 +248,11 @@ export const columnNames: Record<HQ.ColumnKey, TString> = {
 	'layer.gamemode': t('Gamemode'),
 	'layer.faction': t('Faction'),
 	'layer.unit': t('Unit'),
+	'vote.kind': t('Vote kind'),
+	'vote.outcome': t('Vote outcome'),
+	'vote.voterType': t('Vote voters'),
+	'vote.choice': t('Vote choice'),
+	'vote.winner': t('Vote winner'),
 }
 
 // a text column reads `eq` as "contains"

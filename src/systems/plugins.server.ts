@@ -23,6 +23,7 @@ import * as SETTINGS from '@/models/settings.models'
 import type * as SQS from '@/models/squad-server.models'
 import type * as SM from '@/models/squad.models'
 import type * as USR from '@/models/users.models'
+import type * as V from '@/models/vote.models'
 import * as RBAC from '@/rbac.models'
 import type * as C from '@/server/context'
 import * as DB from '@/server/db'
@@ -105,9 +106,9 @@ export type Ctx<M extends PLG.Manifest<any> = PLG.Manifest> = CS.Log &
 	}
 
 // The plugin-facing slice of a managed server: the domains the slm/* entries expose functions for.
-// The runtime object is the full C.ManagedServer, so widening this later is additive; vote,
-// teamswaps, switch-requests and the match-events cache are deliberately not in the contract yet.
-export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & SQS.Ctx & MH.Ctx & LQ.Ctx & SETTINGS.Ctx & Msgs.Ctx
+// The runtime object is the full C.ManagedServer, so widening this later is additive; teamswaps,
+// switch-requests and the match-events cache are deliberately not in the contract yet.
+export type ServerCtx<M extends PLG.Manifest<any> = PLG.Manifest> = Ctx<M> & SQS.Ctx & MH.Ctx & LQ.Ctx & V.Ctx & SETTINGS.Ctx & Msgs.Ctx
 
 export type ServerSetupFn = (ctx: ServerCtx<any>) => void
 

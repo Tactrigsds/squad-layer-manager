@@ -67,9 +67,17 @@ const PAYLOADS: Record<string, Record<string, unknown>> = {
 	FOG_OF_WAR_TOGGLED: { enabled: true },
 	RCON_COMMAND_RUN: { command: 'AdminListDisconnectedPlayers' },
 	MATCH_ENDED: {},
-	VOTE_STARTED: { choiceCount: 3 },
-	VOTE_ENDED: { reason: 'vote-timeout', winnerLayerId: 'GD-RAAS-V1:USA-CA:RGF-CA' },
-	VOTE_ABORTED: {},
+	VOTE_STARTED: { vote: { kind: 'simple', voteId: 'v', choices: ['yes', 'no'] }, choiceCount: 2 },
+	VOTE_ENDED: {
+		vote: {
+			kind: 'layer',
+			winnerLayerId: 'GD-RAAS-V1:USA-CA:RGF-CA',
+			tally: [{ layerId: 'GD-RAAS-V1:USA-CA:RGF-CA', votes: 2 }],
+		},
+		reason: 'vote-timeout',
+		totalVotes: 2,
+	},
+	VOTE_ABORTED: { vote: { kind: 'layer' } },
 	// a real net change, so the expandable per-change lines render rather than the bare summary
 	QUEUE_UPDATED: {
 		trigger: 'user-edit',

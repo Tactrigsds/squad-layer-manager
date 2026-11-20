@@ -9,6 +9,9 @@ player who types it. See
 Type `/help` in game to list the commands. Commands are case-insensitive, and player, squad and flag names match on any part
 of the name.
 
+Some commands take options, written anywhere after the command: `/simplevote --internal --duration 2m yes, no`. The
+commands page lists each command's options.
+
 ## The commands page
 
 The _Commands_ page lists every command an install has, with a searchable quick reference of pinned commands at the

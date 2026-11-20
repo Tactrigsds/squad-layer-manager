@@ -92,7 +92,7 @@ async function arrangeAndOpen(
 
 test.describe('placement and pool warnings', () => {
 	// the pool filter warns on a miss, so a spurious miss on the vote turns Save into Save Anyway and blocks it
-	test('adds the vote where placed, and saves it without a pool warning', async ({ page }) => {
+	test('adds the vote where placed, with a choice text typed after drawing, and saves it without a pool warning', async ({ page }) => {
 		const dialog = await arrangeAndOpen(page, {
 			layerQueue: queue(LAYERS.harjuRaas),
 			layerGeneration: DEFAULT_LAYER_GENERATION,
@@ -107,12 +107,17 @@ test.describe('placement and pool warnings', () => {
 
 		await dialog.getByRole('button', { name: 'Generate', exact: true }).click()
 		await expect(dialog.getByRole('listitem')).toHaveCount(3)
+		// typed after the draw, which the submitted vote has to pick up
+		await dialog.getByRole('textbox', { name: /Text for choice 1/ }).fill('Night ops')
+		await expect(dialog.locator('pre')).toContainText('1. Night ops')
 		await dialog.getByRole('button', { name: 'Submit' }).click()
 		await expect(dialog).toBeHidden()
 
 		await page.getByRole('button', { name: 'Save', exact: true }).click()
 		const saved = await app.waitFor(() => (savedQueue(app).length === 2 ? savedQueue(app) : null), { label: 'the vote saved' })
 		expect(saved.map((item) => item.type)).toEqual(['vote-list-item', 'single-list-item'])
+		const [vote] = saved
+		expect(vote.voteConfig?.choiceTexts).toEqual([{ layerId: vote.choices![0].layerId, text: 'Night ops' }])
 	})
 })
 

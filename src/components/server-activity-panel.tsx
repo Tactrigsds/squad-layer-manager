@@ -13,6 +13,7 @@ import { ButtonGroup } from '@/components/ui/button-group'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSubtreeFind } from '@/components/use-subtree-find'
+import VoteBox from '@/components/vote-box'
 import { WrapLinesToggle } from '@/components/wrap-lines-toggle'
 import * as ChatPrt from '@/frame-partials/chat.partial'
 import * as SquadServerFrame from '@/frames/squad-server.frame'
@@ -73,6 +74,7 @@ function ServerChatEvents(props: {
 					onToggle={() => ChatPrt.Actions.setWrapLines({ chat: props.stores.squadServer! }, !wrapLines)}
 					className="h-7 w-7 max-phone:size-(--ctl-sm) shadow-md"
 				/>
+				{selectedMatchOrdinal === null && <VoteBox stores={props.stores} className="max-w-[calc(100cqw-5rem)]" />}
 			</div>
 			{!synced && selectedMatchOrdinal === null && (
 				<div style={{ zIndex: loaderZIndex }} className="absolute inset-0 bg-panel/80 flex items-center justify-center">
