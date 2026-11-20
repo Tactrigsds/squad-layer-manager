@@ -39,8 +39,8 @@ describe('assignArgTokens', () => {
 		const timeoutSquadArgs = CMD.COMMAND_DECLARATIONS.timeoutSquad.args
 		expect(CMD.assignArgTokens(timeoutSquadArgs, ['2:3', '2h', 'stop', 'it'])).toEqual({
 			code: 'ok',
-			windows: { squad: ['2:3'], duration: ['2h'], reason: ['stop', 'it'] },
-			ranges: { squad: { start: 0, len: 1 }, duration: { start: 1, len: 1 }, reason: { start: 2, len: 2 } },
+			windows: { squad: ['2:3'], duration: ['2h'], shorthand: ['stop', 'it'] },
+			ranges: { squad: { start: 0, len: 1 }, duration: { start: 1, len: 1 }, shorthand: { start: 2, len: 2 } },
 		})
 		const swapArgs = CMD.COMMAND_DECLARATIONS.swapSquadNow.args
 		expect(CMD.assignArgTokens(swapArgs, ['1', '2'])).toEqual({
@@ -61,10 +61,10 @@ describe('near misses', () => {
 			if (assigned.code !== 'ok') throw new Error(assigned.code)
 			const spliced = CMD.spliceArgTokens(tokens, [
 				{ range: assigned.ranges.squad!, tokens: ['1:3'] },
-				{ range: assigned.ranges.reason!, tokens: ['tk'] },
+				{ range: assigned.ranges.shorthand!, tokens: ['tk'] },
 			])
 			expect(spliced).toEqual(['1:3', 'tk'])
-			expect(CMD.assignArgTokens(warnSquadArgs, spliced)).toMatchObject({ code: 'ok', windows: { squad: ['1:3'], reason: ['tk'] } })
+			expect(CMD.assignArgTokens(warnSquadArgs, spliced)).toMatchObject({ code: 'ok', windows: { squad: ['1:3'], shorthand: ['tk'] } })
 		})
 
 		it('leaves the words nobody was asked about alone', () => {
@@ -111,12 +111,12 @@ describe('kick and timeout arg windows', () => {
 	it('a kick takes no duration: everything after the player is the reason', () => {
 		expect(CMD.assignArgTokens(kickArgs, ['bob', 'stop', 'that'])).toEqual({
 			code: 'ok',
-			windows: { player: ['bob'], reason: ['stop', 'that'] },
-			ranges: { player: { start: 0, len: 1 }, reason: { start: 1, len: 2 } },
+			windows: { player: ['bob'], shorthand: ['stop', 'that'] },
+			ranges: { player: { start: 0, len: 1 }, shorthand: { start: 1, len: 2 } },
 		})
 		expect(CMD.assignArgTokens(kickArgs, ['bob'])).toEqual({
 			code: 'ok',
-			windows: { player: ['bob'], reason: undefined },
+			windows: { player: ['bob'], shorthand: undefined },
 			ranges: { player: { start: 0, len: 1 } },
 		})
 		expect(CMD.assignArgTokens(kickArgs, [])).toEqual({ code: 'err:missing-arg', argName: 'player' })
@@ -125,20 +125,20 @@ describe('kick and timeout arg windows', () => {
 	it('a timeout splits player, duration and reason tail', () => {
 		expect(CMD.assignArgTokens(timeoutArgs, ['bob', '2h', 'tk'])).toEqual({
 			code: 'ok',
-			windows: { player: ['bob'], duration: ['2h'], reason: ['tk'] },
-			ranges: { player: { start: 0, len: 1 }, duration: { start: 1, len: 1 }, reason: { start: 2, len: 1 } },
+			windows: { player: ['bob'], duration: ['2h'], shorthand: ['tk'] },
+			ranges: { player: { start: 0, len: 1 }, duration: { start: 1, len: 1 }, shorthand: { start: 2, len: 1 } },
 		})
 		expect(CMD.assignArgTokens(timeoutArgs, ['bob', '2h', 'stop', 'that'])).toEqual({
 			code: 'ok',
-			windows: { player: ['bob'], duration: ['2h'], reason: ['stop', 'that'] },
-			ranges: { player: { start: 0, len: 1 }, duration: { start: 1, len: 1 }, reason: { start: 2, len: 2 } },
+			windows: { player: ['bob'], duration: ['2h'], shorthand: ['stop', 'that'] },
+			ranges: { player: { start: 0, len: 1 }, duration: { start: 1, len: 1 }, shorthand: { start: 2, len: 2 } },
 		})
 	})
 
 	it('a timeout reason is optional but its player and duration are required', () => {
 		expect(CMD.assignArgTokens(timeoutArgs, ['bob', '2h'])).toEqual({
 			code: 'ok',
-			windows: { player: ['bob'], duration: ['2h'], reason: undefined },
+			windows: { player: ['bob'], duration: ['2h'], shorthand: undefined },
 			ranges: { player: { start: 0, len: 1 }, duration: { start: 1, len: 1 } },
 		})
 		expect(CMD.assignArgTokens(timeoutArgs, ['bob'])).toEqual({ code: 'err:missing-arg', argName: 'duration' })
@@ -198,17 +198,17 @@ describe('resolveReasonArg', () => {
 
 describe('usage strings', () => {
 	it('formats signatures per kind', () => {
-		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.warn.args)).toBe('<player> <reason|message>')
-		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.kill.args)).toBe('<player> [reason|message]')
-		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.disbandSquad.args)).toBe('<squad> [reason|message]')
-		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.broadcast.args)).toBe('<reason|message>')
+		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.warn.args)).toBe('<player> <shorthand|message>')
+		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.kill.args)).toBe('<player> [shorthand|message]')
+		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.disbandSquad.args)).toBe('<squad> [shorthand|message]')
+		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.broadcast.args)).toBe('<shorthand|message>')
 		// requireReasonFor forces an otherwise-optional reason arg to render as required
-		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.kill.args, ['kill'])).toBe('<player> <reason|message>')
+		expect(CMD.formatArgSignature(CMD.COMMAND_DECLARATIONS.kill.args, ['kill'])).toBe('<player> <shorthand|message>')
 	})
 
 	it('formatUsage uses the primary trigger', () => {
 		const usage = CMD.formatUsage('warn', { triggers: ['!warn'], allowedChats: ['admin'], enabled: true, quickReference: false })
-		expect(usage).toBe('Usage: !warn <player> <reason|message>')
+		expect(usage).toBe('Usage: !warn <player> <shorthand|message>')
 	})
 
 	// a trigger that pins arguments is a shortcut, so the command is named by a plain one
@@ -219,7 +219,7 @@ describe('usage strings', () => {
 			enabled: true,
 			quickReference: false,
 		}
-		expect(CMD.formatUsage('warn', config)).toBe('Usage: !warn <player> <reason|message>')
+		expect(CMD.formatUsage('warn', config)).toBe('Usage: !warn <player> <shorthand|message>')
 		expect(CMD.formatUsage('warn', config, config.triggers[0])).toBe('Usage: !warnsp <player>')
 	})
 })
@@ -288,12 +288,12 @@ describe('argTemplateSignature', () => {
 		expect(CMD.argTemplateSignature('timeout')).toEqual([
 			{ ref: '{{arg1}}', arg: '<player>' },
 			{ ref: '{{arg2}}', arg: '<duration>' },
-			{ ref: '{{rest}}', arg: '[reason|message]' },
+			{ ref: '{{rest}}', arg: '[shorthand|message]' },
 		])
 	})
 
 	it('reflects the configured reason requirement', () => {
-		expect(CMD.argTemplateSignature('timeout', ['timeout']).at(-1)).toEqual({ ref: '{{rest}}', arg: '<reason|message>' })
+		expect(CMD.argTemplateSignature('timeout', ['timeout']).at(-1)).toEqual({ ref: '{{rest}}', arg: '<shorthand|message>' })
 	})
 
 	it('is empty for a command that takes no arguments', () => {
@@ -319,7 +319,7 @@ describe('resolveTriggerArgs', () => {
 		const res = CMD.resolveTriggerArgs('timeout', '{{arg1}} 2h {{rest}}')
 		expect(res.code === 'ok' && res.params.map((p) => [p.ref.name, p.def.name, p.wholeSlot])).toEqual([
 			['arg1', 'player', true],
-			['rest', 'reason', true],
+			['rest', 'shorthand', true],
 		])
 	})
 
@@ -327,7 +327,7 @@ describe('resolveTriggerArgs', () => {
 		const res = CMD.resolveTriggerArgs('timeout', '{{arg1}} 2h')
 		// the reason is in neither: the template passes nothing on to it, so nobody can supply one
 		expect(res.code === 'ok' && res.pinned).toEqual({ duration: '2h' })
-		expect(CMD.resolveTriggerArgs('broadcast', 'Read the rules')).toMatchObject({ pinned: { reason: 'Read the rules' } })
+		expect(CMD.resolveTriggerArgs('broadcast', 'Read the rules')).toMatchObject({ pinned: { shorthand: 'Read the rules' } })
 	})
 
 	it('skips the literal token checks for an arg a placeholder fills', () => {
@@ -342,7 +342,7 @@ describe('resolveTriggerArgs', () => {
 
 	it('marks a placeholder that only part-fills an arg', () => {
 		const res = CMD.resolveTriggerArgs('broadcast', 'Round ends in {{arg1}} minutes')
-		expect(res.code === 'ok' && res.params.map((p) => [p.ref.name, p.def.name, p.wholeSlot])).toEqual([['arg1', 'reason', false]])
+		expect(res.code === 'ok' && res.params.map((p) => [p.ref.name, p.def.name, p.wholeSlot])).toEqual([['arg1', 'shorthand', false]])
 	})
 
 	it('rejects an unknown placeholder', () => {
@@ -422,24 +422,26 @@ describe('expandTriggerArgs', () => {
 
 describe('formatTriggerUsage', () => {
 	it('names the arg a whole-slot placeholder fills, and the placeholder otherwise', () => {
-		expect(CMD.formatTriggerUsage('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest}}' })).toBe('!to2h <player> [reason|message]')
+		expect(CMD.formatTriggerUsage('timeout', { string: '!to2h', args: '{{arg1}} 2h {{rest}}' })).toBe(
+			'!to2h <player> [shorthand|message]',
+		)
 		expect(CMD.formatTriggerUsage('broadcast', { string: '!eta', args: 'Round ends in {{arg1}} minutes' })).toBe('!eta <arg1>')
 	})
 
 	it("gives a plain trigger the command's own signature", () => {
-		expect(CMD.formatTriggerUsage('timeout', '!to')).toBe('!to <player> <duration> [reason|message]')
+		expect(CMD.formatTriggerUsage('timeout', '!to')).toBe('!to <player> <duration> [shorthand|message]')
 	})
 
 	it('follows the configured reason requirement', () => {
-		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest}}' }, ['kick'])).toBe('!k <player> <reason|message>')
-		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest}}' })).toBe('!k <player> [reason|message]')
-		expect(CMD.formatTriggerUsage('kick', '!kick', ['kick'])).toBe('!kick <player> <reason|message>')
+		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest}}' }, ['kick'])).toBe('!k <player> <shorthand|message>')
+		expect(CMD.formatTriggerUsage('kick', { string: '!k', args: '{{arg1}} {{rest}}' })).toBe('!k <player> [shorthand|message]')
+		expect(CMD.formatTriggerUsage('kick', '!kick', ['kick'])).toBe('!kick <player> <shorthand|message>')
 	})
 
 	// a default fills the arg when the word is left out, so the word itself is optional either way
 	it('reads a placeholder with a default as optional', () => {
 		const trigger = { string: '!warnsp', args: '{{arg1}} {{^rest}}spam{{/rest}}{{rest}}' }
-		expect(CMD.formatTriggerUsage('warn', trigger)).toBe('!warnsp <player> [reason|message]')
+		expect(CMD.formatTriggerUsage('warn', trigger)).toBe('!warnsp <player> [shorthand|message]')
 	})
 
 	it('is just the string when the template pins everything', () => {
@@ -451,7 +453,7 @@ describe('triggerPins', () => {
 	it('names the args a trigger fills in, in declaration order', () => {
 		expect(CMD.triggerPins('timeout', { string: '!to45', args: '{{arg1}} 45m' })).toEqual([{ name: 'duration', value: '45m' }])
 		expect(CMD.triggerPins('broadcast', { string: '!rules', args: 'Read the rules' })).toEqual([
-			{ name: 'reason', value: 'Read the rules' },
+			{ name: 'shorthand', value: 'Read the rules' },
 		])
 	})
 

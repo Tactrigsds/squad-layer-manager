@@ -474,7 +474,7 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('squad-server:warn-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'reason', name: 'reason', action: 'warn' },
+			{ kind: 'reason', name: 'shorthand', action: 'warn' },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['warn'], enabled: true, quickReference: true },
 	}),
@@ -491,7 +491,7 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('squad-server:warn-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
-			{ kind: 'reason', name: 'reason', action: 'warn' },
+			{ kind: 'reason', name: 'shorthand', action: 'warn' },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['warnsquad', 'ws'], enabled: true, quickReference: false },
 	}),
@@ -501,7 +501,7 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'reason', name: 'reason', action: 'kill', optional: true },
+			{ kind: 'reason', name: 'shorthand', action: 'kill', optional: true },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['kill'], enabled: true, quickReference: false },
 	}),
@@ -511,7 +511,7 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
-			{ kind: 'reason', name: 'reason', action: 'kill', optional: true },
+			{ kind: 'reason', name: 'shorthand', action: 'kill', optional: true },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['killsquad'], enabled: true, quickReference: false },
 	}),
@@ -521,7 +521,7 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'reason', name: 'reason', action: 'remove-from-squad', optional: true },
+			{ kind: 'reason', name: 'shorthand', action: 'remove-from-squad', optional: true },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['rfs', 'removefromsquad'], enabled: true, quickReference: false },
 	}),
@@ -531,7 +531,7 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
-			{ kind: 'reason', name: 'reason', action: 'disband-squad', optional: true },
+			{ kind: 'reason', name: 'shorthand', action: 'disband-squad', optional: true },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['disband'], enabled: true, quickReference: false },
 	}),
@@ -541,7 +541,7 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('squad-server:manage-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'reason', name: 'reason', action: 'demote-commander', optional: true },
+			{ kind: 'reason', name: 'shorthand', action: 'demote-commander', optional: true },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['demote'], enabled: true, quickReference: false },
 	}),
@@ -549,7 +549,7 @@ export const COMMAND_DECLARATIONS = {
 		label: t('Broadcast', undefined, { context: 'command' }),
 		section: 'messaging',
 		access: onServer('squad-server:broadcast'),
-		args: [{ kind: 'reason', name: 'reason', action: 'broadcast' }],
+		args: [{ kind: 'reason', name: 'shorthand', action: 'broadcast' }],
 		defaults: { allowedChats: ['admin'], triggers: ['broadcast', 'b'], enabled: true, quickReference: true },
 	}),
 	...declareCommand('kick', {
@@ -558,7 +558,7 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('squad-server:kick-players'),
 		args: [
 			{ kind: 'player', name: 'player' },
-			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
+			{ kind: 'reason', name: 'shorthand', action: 'kick', optional: true },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['kick'], enabled: true, quickReference: true },
 	}),
@@ -568,7 +568,7 @@ export const COMMAND_DECLARATIONS = {
 		access: onServer('squad-server:kick-players'),
 		args: [
 			{ kind: 'squad', name: 'squad' },
-			{ kind: 'reason', name: 'reason', action: 'kick', optional: true },
+			{ kind: 'reason', name: 'shorthand', action: 'kick', optional: true },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['kicksquad'], enabled: true, quickReference: false },
 	}),
@@ -579,7 +579,7 @@ export const COMMAND_DECLARATIONS = {
 		args: [
 			{ kind: 'recent-player', name: 'player' },
 			{ kind: 'duration', name: 'duration' },
-			{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
+			{ kind: 'reason', name: 'shorthand', action: 'timeout', optional: true },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['timeout', 'to'], enabled: true, quickReference: true },
 	}),
@@ -590,7 +590,7 @@ export const COMMAND_DECLARATIONS = {
 		args: [
 			{ kind: 'squad', name: 'squad' },
 			{ kind: 'duration', name: 'duration' },
-			{ kind: 'reason', name: 'reason', action: 'timeout', optional: true },
+			{ kind: 'reason', name: 'shorthand', action: 'timeout', optional: true },
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['timeoutsquad', 'tos'], enabled: true, quickReference: false },
 	}),
