@@ -12,6 +12,7 @@ const SCREENS: { value: Screen; icon: React.ComponentType<{ className?: string }
 	{ value: 'matches', icon: Icons.History, label: () => tr.text(APP_Msgs.phoneMatches()) },
 	{ value: 'queue', icon: Icons.List, label: () => tr.text(APP_Msgs.phoneQueue()) },
 	{ value: 'teams', icon: Icons.Users, label: () => tr.text(APP_Msgs.phoneTeams()) },
+	{ value: 'charts', icon: Icons.BarChart2, label: () => tr.text(APP_Msgs.phoneCharts()) },
 	{ value: 'activity', icon: Icons.LayoutList, label: () => tr.text(APP_Msgs.phoneActivity()) },
 ]
 
@@ -26,7 +27,7 @@ export default function PhoneTabBar(props: {
 	return (
 		<nav
 			hidden={hidden}
-			className="grid shrink-0 grid-cols-4 min-h-(--tabbar-h) bg-panel-hi border-t border-line shadow-[inset_0_1px_0_var(--line-soft)] pb-[env(safe-area-inset-bottom)] box-content"
+			className="grid shrink-0 grid-cols-5 min-h-(--tabbar-h) bg-panel-hi border-t border-line shadow-[inset_0_1px_0_var(--line-soft)] pb-[env(safe-area-inset-bottom)] box-content"
 		>
 			{SCREENS.map((s) => (
 				<button

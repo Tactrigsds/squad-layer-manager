@@ -156,8 +156,8 @@ function TeamsCard({
 export default function PrimaryPanel(props: {
 	stores: SquadServerFrame.KeyProp
 	part?: 'all' | 'history-queue' | 'stats-teams'
-	// whether the breakdown sits here; implied by `stats-teams`. The single-column layout keeps it with
-	// Server Activity instead.
+	// whether the breakdown sits here; implied by `stats-teams`. The single-column layout shows it on
+	// a Charts screen of its own instead.
 	withStats?: boolean
 	statsWide?: boolean
 	stacked?: boolean | 'when-it-fits'

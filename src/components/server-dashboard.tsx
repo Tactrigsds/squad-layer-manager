@@ -5,9 +5,9 @@ import { useIsDesktopSize, useIsSmallViewport, useIsUltrawide, useIsWideDesktop 
 import * as SquadServerClient from '@/systems/squad-server.client'
 import * as WarnChat from '@/systems/warn-chat.client'
 
+import ChartsScreen from './charts-screen.tsx'
 import PhoneDashboard from './phone-dashboard.tsx'
 import PrimaryPanel from './primary-panel.tsx'
-import SecondaryPanel from './secondary-panel.tsx'
 import ServerActivityPanel from './server-activity-panel.tsx'
 import { StickyGroup } from './sticky-group.tsx'
 
@@ -15,7 +15,7 @@ import { StickyGroup } from './sticky-group.tsx'
  * Where the panels sit, by viewport width. The panels themselves do not change between tiers.
  *
  *   < 640      phone: one panel at a time behind a bottom tab bar (phone-dashboard.tsx)
- *   640..1099  one column; the nav bar's switch picks between the layers side and Server Activity
+ *   640..1099  one column; the nav bar's switch picks between Layers & Teams, Server Activity and Charts
  *   1100..2099 two columns: history, breakdown and the tabs on the left, Server Activity full height on the right
  *   >= 2100    three columns: history + the queue, breakdown + the teams, Server Activity
  */
@@ -32,7 +32,7 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 	// tab, so bring it forward (harmless in desktop, where both panels are always visible)
 	WarnChat.useWarnFocusRequest(
 		(t) => t.kind === 'server-activity',
-		() => SquadServerClient.DashboardTabActions.setSide('secondary'),
+		() => SquadServerClient.DashboardTabActions.setSide('activity'),
 	)
 
 	if (isPhone) return <PhoneDashboard stores={props.stores} />
@@ -43,14 +43,17 @@ export default function ServerDashboard(props: { stores: SquadServerFrame.KeyPro
 		// scroller the ultrawide middle column measures itself against, where it has no ScrollArea of its own.
 		<div data-dashboard-scroller className="w-full h-full flex flex-col overflow-x-auto [container-type:size]">
 			{!isDesktop && (
-				/* Tablet: single column; the tab switcher lives in the NavBar. The hidden panel is
+				/* Tablet: single column; the tab switcher lives in the NavBar. The hidden screens are
 				   `display: none`, so only the visible one's floor decides whether this scrolls. */
 				<div className="flex flex-col gap-2 h-full min-h-0">
 					<div className="flex-1 min-h-0 min-w-[860px]" style={{ display: activeTab === 'layers' ? 'flex' : 'none' }}>
 						<PrimaryPanel stores={props.stores} />
 					</div>
-					<div className="flex-1 min-h-0" style={{ display: activeTab === 'secondary' ? 'flex' : 'none' }}>
-						<SecondaryPanel stores={props.stores} />
+					<div className="flex-1 min-h-0" style={{ display: activeTab === 'activity' ? 'flex' : 'none' }}>
+						<ServerActivityPanel stores={props.stores} />
+					</div>
+					<div className="flex-1 min-h-0" style={{ display: activeTab === 'charts' ? 'flex' : 'none' }}>
+						<ChartsScreen stores={props.stores} wide />
 					</div>
 				</div>
 			)}

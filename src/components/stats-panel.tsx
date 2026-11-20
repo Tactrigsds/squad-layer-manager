@@ -40,8 +40,9 @@ import { closeChartWindow, useChartPoppedOut, useOpenChartWindow } from './chart
 
 void import('@/components/charts-window')
 
-// The Charts panel: one chart at a time behind folder tabs. `wide` is the two-column dashboard's form, where the two
-// teams of the breakdown face each other as mirrored bars. Narrow stacks them, for a side column or a phone.
+// The Charts panel: one chart at a time behind folder tabs, or every chart at once (`chartsShowAll`). `wide` is the
+// two-column dashboard's form, where the two teams of the breakdown face each other as mirrored bars. Narrow stacks
+// them, for a side column or a phone.
 //
 // A chart holds its space while its data loads, so the panel does not change height when the data arrives.
 const trTooltip = tr.withTags({ label: (chunks) => <span className="font-semibold">{chunks}</span> })
@@ -49,40 +50,118 @@ const trTooltip = tr.withTags({ label: (chunks) => <span className="font-semibol
 // the scoreline chart's height in the panel; in a window it fills the window instead
 const SCORELINE_CHART_HEIGHT = 150
 
+// marks the box a chart sits in, whose size its window opens at
+const CHART_FRAME_ATTR = 'data-chart-frame'
+
 export default function StatsPanel(props: { stores: SquadServerFrame.KeyProp; wide?: boolean; className?: string }) {
 	const tab = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.chartsTab)
+	const showAll = Zus.useStore(ClientOnlySettings.Store, ClientOnlySettings.Sel.chartsShowAll)
 	const idPrefix = React.useId()
 	const tabId = (value: ClientOnlySettings.ChartsTab) => `${idPrefix}-tab-${value}`
 	const panelId = (value: ClientOnlySettings.ChartsTab) => `${idPrefix}-panel-${value}`
+	const showAllLabel = tr.text(showAll ? MH_Msgs.showChartsAsTabs() : MH_Msgs.showAllCharts())
 
 	return (
 		<section data-tour="teams-breakdown" aria-labelledby={`${idPrefix}-title`} className={cn('flex flex-col w-full', props.className)}>
 			<TabBar
-				tabs={ClientOnlySettings.CHARTS_TABS.map((value) => ({ value, label: tr.text(MH_Msgs.chartsTab(value)) }))}
+				tabs={showAll ? [] : ClientOnlySettings.CHARTS_TABS.map((value) => ({ value, label: tr.text(MH_Msgs.chartsTab(value)) }))}
 				value={tab}
 				onChange={ClientOnlySettings.Actions.setChartsTab}
 				tabId={tabId}
 				panelId={panelId}
 				tourId={(value) => `charts-tab-${value}`}
 				leading={
-					<h3 id={`${idPrefix}-title`} className="fd-cond font-bold flex items-center gap-1.5 min-w-0">
-						<Icons.BarChart2 className="h-3.5 w-3.5 shrink-0" />
-						<span className="truncate">{tr.text(MH_Msgs.chartsTitle())}</span>
-					</h3>
+					<>
+						<h3 id={`${idPrefix}-title`} className="fd-cond font-bold flex items-center gap-1.5 min-w-0">
+							<Icons.BarChart2 className="h-3.5 w-3.5 shrink-0" />
+							<span className="truncate">{tr.text(MH_Msgs.chartsTitle())}</span>
+						</h3>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<button
+									type="button"
+									className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm shrink-0"
+									aria-label={tr.text(MH_Msgs.showAllCharts())}
+									aria-pressed={showAll}
+									onClick={ClientOnlySettings.Actions.toggleChartsShowAll}
+								>
+									{showAll ? <Icons.PanelTop /> : <Icons.Rows3 />}
+								</button>
+							</TooltipTrigger>
+							<TooltipContent>{showAllLabel}</TooltipContent>
+						</Tooltip>
+					</>
 				}
 			/>
-			<div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)} className="fd-tabbody flex flex-col min-w-0">
-				<PanelChart stores={props.stores} tab={tab} wide={props.wide} />
-			</div>
+			{showAll ? (
+				<AllCharts stores={props.stores} wide={props.wide} className="fd-tabbody" />
+			) : (
+				<div
+					role="tabpanel"
+					id={panelId(tab)}
+					aria-labelledby={tabId(tab)}
+					className="fd-tabbody flex flex-col min-w-0"
+					{...{ [CHART_FRAME_ATTR]: '' }}
+				>
+					<PanelChart stores={props.stores} tab={tab} wide={props.wide} withBanner />
+				</div>
+			)}
 		</section>
 	)
 }
 
+/**
+ * Every chart at once, each under its own heading, with one historical match banner over them all. The Charts panel
+ * shows this when `chartsShowAll` is set, and the Charts screen of the single-column and phone dashboards always does.
+ */
+export function AllCharts(props: { stores: SquadServerFrame.KeyProp; wide?: boolean; className?: string }) {
+	const historicalEvents = useHistoricalEvents(props.stores)
+	const idPrefix = React.useId()
+	return (
+		<div className={cn('flex flex-col min-w-0', props.className)}>
+			<HistoricalMatchBanner stores={props.stores} returnToLive className="shrink-0" />
+			{ClientOnlySettings.CHARTS_TABS.map((tab) => (
+				<section
+					key={tab}
+					aria-labelledby={`${idPrefix}-${tab}`}
+					className="flex flex-col min-w-0 pt-1.5 not-first-of-type:border-t border-line"
+					{...{ [CHART_FRAME_ATTR]: '' }}
+				>
+					<h4 id={`${idPrefix}-${tab}`} className="fd-cond font-bold px-2.5">
+						{tr.text(MH_Msgs.chartsTab(tab))}
+					</h4>
+					<PanelChart stores={props.stores} tab={tab} wide={props.wide} historicalEvents={historicalEvents} />
+				</section>
+			))}
+		</div>
+	)
+}
+
+function useHistoricalEvents(stores: SquadServerFrame.KeyProp) {
+	const squadServer = stores.squadServer!
+	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
+	const historicalEventsQuery = useQuery(MatchHistoryClient.matchEventsQueryOptions(squadServer.serverId, selectedMatchOrdinal))
+	return historicalEventsQuery.data?.events ?? null
+}
+
 // The chart in the panel, or while it is open in its window, a note saying so with a button that brings it back.
-function PanelChart(props: { stores: SquadServerFrame.KeyProp; tab: ClientOnlySettings.ChartsTab; wide?: boolean }) {
+// Without `withBanner`, the parent shows the historical match banner and passes the match's events in.
+function PanelChart(props: {
+	stores: SquadServerFrame.KeyProp
+	tab: ClientOnlySettings.ChartsTab
+	wide?: boolean
+	withBanner?: boolean
+	historicalEvents?: CHAT.EventEnriched[] | null
+}) {
 	const serverId = props.stores.squadServer!.serverId
 	const poppedOut = useChartPoppedOut(serverId, props.tab)
-	if (!poppedOut) return <ChartBody stores={props.stores} tab={props.tab} wide={props.wide} />
+	if (!poppedOut) {
+		return props.withBanner ? (
+			<ChartBody stores={props.stores} tab={props.tab} wide={props.wide} />
+		) : (
+			<TabChart stores={props.stores} tab={props.tab} wide={props.wide} historicalEvents={props.historicalEvents ?? null} />
+		)
+	}
 	return (
 		<div className="flex flex-col items-center justify-center gap-2 px-2.5 py-6 text-center">
 			<p className="text-sm text-text-3">{tr.text(MH_Msgs.chartPoppedOut())}</p>
@@ -104,31 +183,32 @@ export function ChartBody(props: {
 	wide?: boolean
 	inWindow?: boolean
 }) {
-	const squadServer = props.stores.squadServer!
-	const selectedMatchOrdinal = Zus.useStore(squadServer, ChatPrt.Sel.selectedMatchOrdinal)
-	const historicalEventsQuery = useQuery(MatchHistoryClient.matchEventsQueryOptions(squadServer.serverId, selectedMatchOrdinal))
-	const historicalEvents = historicalEventsQuery.data?.events ?? null
-
-	let chart: React.ReactNode
-	switch (props.tab) {
-		case 'teams':
-			chart = <TeamsChart stores={props.stores} historicalEvents={historicalEvents} wide={props.wide} inWindow={props.inWindow} />
-			break
-		case 'scoreline':
-			chart = <ScorelineChart stores={props.stores} historicalEvents={historicalEvents} inWindow={props.inWindow} />
-			break
-		case 'population':
-			chart = <PopulationChart stores={props.stores} historicalEvents={historicalEvents} inWindow={props.inWindow} />
-			break
-		default:
-			assertNever(props.tab)
-	}
+	const historicalEvents = useHistoricalEvents(props.stores)
 	return (
 		<div className={cn('flex flex-col min-w-0', props.inWindow && 'flex-1 min-h-0')}>
 			<HistoricalMatchBanner stores={props.stores} returnToLive className="shrink-0" />
-			{chart}
+			<TabChart stores={props.stores} tab={props.tab} wide={props.wide} inWindow={props.inWindow} historicalEvents={historicalEvents} />
 		</div>
 	)
+}
+
+function TabChart(props: {
+	stores: SquadServerFrame.KeyProp
+	tab: ClientOnlySettings.ChartsTab
+	wide?: boolean
+	inWindow?: boolean
+	historicalEvents: CHAT.EventEnriched[] | null
+}) {
+	switch (props.tab) {
+		case 'teams':
+			return <TeamsChart stores={props.stores} historicalEvents={props.historicalEvents} wide={props.wide} inWindow={props.inWindow} />
+		case 'scoreline':
+			return <ScorelineChart stores={props.stores} historicalEvents={props.historicalEvents} inWindow={props.inWindow} />
+		case 'population':
+			return <PopulationChart stores={props.stores} historicalEvents={props.historicalEvents} inWindow={props.inWindow} />
+		default:
+			assertNever(props.tab)
+	}
 }
 
 // The row above a chart: its own controls first, then its legend, then help and the pop-out button. Each group
@@ -163,7 +243,7 @@ function ChartToolbar(props: {
 								className="fd-btn fd-btn-ghost fd-btn-ico fd-btn-sm"
 								aria-label={tr.text(MH_Msgs.openChartInWindow())}
 								onClick={(e) => {
-									const panel = e.currentTarget.closest<HTMLElement>('[role="tabpanel"]')
+									const panel = e.currentTarget.closest<HTMLElement>(`[${CHART_FRAME_ATTR}]`)
 									const box = panel?.getBoundingClientRect()
 									const size = box ? { width: box.width, height: box.height } : undefined
 									// anchored below the panel rather than the button, so the window leaves the note that stands in for

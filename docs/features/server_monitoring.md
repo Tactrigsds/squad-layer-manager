@@ -31,7 +31,7 @@ log and how the teams were made up, or drag the match into the queue to play its
 
 ![the match history](../images/features/match_history.png)
 
-The activity feed and the match history each fill a tab of their own on a phone.
+The activity feed, the match history and the charts each fill a tab of their own on a phone.
 
 ![the activity feed on a phone](../images/features/phone_activity.png)
 ![the match history on a phone](../images/features/phone_matches.png)
