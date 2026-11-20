@@ -65,21 +65,50 @@ describe('tally', () => {
 		expect(t.killTimes.map((times) => times.length)).toEqual([3, 1])
 	})
 
-	it('credits vehicle and FOB attacks on an unknown side, but not a crash nobody owned', () => {
+	it('credits vehicle attacks on an unknown side and enemy FOB damage, but not a crash nobody owned', () => {
 		const t = Stats.tally(
 			events(
 				{ type: 'VEHICLE_DAMAGED', variant: null, attacker: a, damage: 400, vehicle: actor('BP_BTR80', 'APC') },
 				{ type: 'VEHICLE_DAMAGED', variant: 'teamkill', attacker: a, damage: 900, vehicle: actor('BP_BTR80', 'APC') },
 				{ type: 'VEHICLE_DESTROYED', variant: null, cause: 'weapon', attacker: a, vehicle: actor('BP_BTR80', 'APC'), crew: [] },
 				{ type: 'VEHICLE_DESTROYED', variant: null, cause: 'collision', attacker: b, vehicle: actor('BP_Loach', 'HELI'), crew: [] },
-				{ type: 'FOB_RADIO_DAMAGED', variant: 'normal', attacker: a, bottomedOut: false, radio: actor('BP_FOBRadio', 'RADIO') },
-				{ type: 'FOB_RADIO_DAMAGED', variant: 'normal', attacker: a, bottomedOut: true, radio: actor('BP_FOBRadio', 'RADIO') },
+				{
+					type: 'FOB_RADIO_DAMAGED',
+					variant: 'normal',
+					attacker: a,
+					damage: 300,
+					bottomedOut: false,
+					radio: actor('BP_FOBRadio', 'RADIO'),
+				},
+				{
+					type: 'FOB_RADIO_DAMAGED',
+					variant: 'normal',
+					attacker: a,
+					damage: 150,
+					bottomedOut: true,
+					radio: actor('BP_FOBRadio', 'RADIO'),
+				},
+				{
+					type: 'FOB_RADIO_DAMAGED',
+					variant: 'teamkill',
+					attacker: a,
+					damage: 500,
+					bottomedOut: false,
+					radio: actor('BP_FOBRadio', 'RADIO'),
+				},
+				{
+					type: 'FOB_RADIO_DAMAGED',
+					variant: 'normal',
+					attacker: a,
+					damage: null,
+					bottomedOut: true,
+					radio: actor('BP_FOBRadio', 'RADIO'),
+				},
 				{ type: 'DEPLOYABLE_DESTROYED', variant: 'normal', attacker: a, deployable: actor('BP_Hab', 'HAB') },
-				{ type: 'DEPLOYABLE_DESTROYED', variant: 'normal', attacker: a, deployable: actor('BP_Ammocrate', 'AMMO') },
 				{ type: 'PLAYER_REVIVED', reviver: c, revived: a },
 			),
 		)
-		expect(t.players.get('a')).toMatchObject({ vehicleDamage: 400, vehicleKills: 1, deployableKills: 2 })
+		expect(t.players.get('a')).toMatchObject({ vehicleDamage: 400, vehicleKills: 1, fobDamage: 450 })
 		expect(t.players.get('b')?.vehicleKills ?? 0).toBe(0)
 		expect(t.players.get('c')!.revives).toBe(1)
 	})

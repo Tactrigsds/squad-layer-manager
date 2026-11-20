@@ -16,7 +16,7 @@ export type PlayerTally = {
 	revives: number
 	vehicleKills: number
 	vehicleDamage: number
-	deployableKills: number
+	fobDamage: number
 	longestStreak: number
 	currentStreak: number
 }
@@ -67,7 +67,7 @@ export function tally(events: readonly MatchHistory.MatchEvent[]): MatchTally {
 				revives: 0,
 				vehicleKills: 0,
 				vehicleDamage: 0,
-				deployableKills: 0,
+				fobDamage: 0,
 				longestStreak: 0,
 				currentStreak: 0,
 			}
@@ -164,14 +164,10 @@ export function tally(events: readonly MatchHistory.MatchEvent[]): MatchTally {
 				if (event.variant === null && event.cause === 'collision') break
 				if (event.attacker && creditsAttacker(event.variant)) playerOf(event.attacker).vehicleKills++
 				break
-			case 'DEPLOYABLE_DESTROYED':
-				if (event.attacker && creditsAttacker(event.variant) && event.deployable.targetType === 'HAB') {
-					playerOf(event.attacker).deployableKills++
-				}
-				break
-			// a radio is never destroyed in the log, only worn down to its minimum health
 			case 'FOB_RADIO_DAMAGED':
-				if (event.attacker && event.bottomedOut && creditsAttacker(event.variant)) playerOf(event.attacker).deployableKills++
+				if (event.attacker && event.damage !== null && creditsAttacker(event.variant)) {
+					playerOf(event.attacker).fobDamage += event.damage
+				}
 				break
 		}
 	}

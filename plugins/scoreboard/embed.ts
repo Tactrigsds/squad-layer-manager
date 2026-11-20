@@ -208,8 +208,9 @@ function leaderboards(opts: {
 	)
 	board(
 		'FOB Destroyer',
-		Stats.top(playerList, (p) => p.deployableKills, size),
+		Stats.top(playerList, (p) => p.fobDamage, size),
 		playerLabel,
+		(r) => `${Math.round(r.value)} dmg`,
 	)
 	board(
 		'Longest Kill Streak',
