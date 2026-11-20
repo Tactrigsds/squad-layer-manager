@@ -24,6 +24,10 @@
 <p>With several open, each back press closes the top one.</p>
 </li>
 <li>
+<p><strong>Added:</strong> <code>/reqlayer</code> and <code>/vote</code> take <code>--filters</code> (<code>-f</code>) to choose the filters a request or vote uses. The filters named replace the server&#x27;s layer request filters for <code>/reqlayer</code>, and the pool filter for <code>/vote</code>. Separate the names with commas, put <code>!</code> before a name to invert that filter, or give <code>none</code> to use no filters: <code>/reqlayer narva -f mainpool,!jensens</code>. The repeat rules still apply to <code>/vote</code>.</p>
+<p>Only admins who can edit the queue can choose the filters of a <code>/reqlayer</code> request.</p>
+</li>
+<li>
 <p><strong>Added:</strong> The new Scheduled Commands plugin runs RCON commands on your servers on a schedule. A task can run on an interval, at set times from a cron pattern, a set time after each match starts, or a set time after each match ends.</p>
 <p>Each task is listed under the plugin on the settings page with its next run and its last result. Click <em>Run now</em> to run a task straight away. Commands can include variables such as <code>{{layer}}</code>, <code>{{nextLayer}}</code>, <code>{{server}}</code> and <code>{{players}}</code>, filled in each time the task runs. Each command appears in the server&#x27;s activity feed.</p>
 </li>
