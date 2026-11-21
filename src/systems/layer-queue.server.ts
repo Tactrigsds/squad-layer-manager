@@ -1710,7 +1710,7 @@ export type AddRequestResult =
 export async function addBackburnerRequestFromChat(
 	ctx: C.Db & C.ManagedServer & CS.AbortSignal & SM.Ctx.Ids,
 	// requestFilters replace the server's layer request filters. The caller checks the sender may replace them.
-	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode; requestFilters?: BB.AppliedFilter[] },
+	args: { source: USR.GuiOrChatUserId; filter: F.FilterNode; requestFilters?: F.AppliedFilter[] },
 ): Promise<AddRequestResult> {
 	const denied = await Rbac.tryDenyPermissionsForPlayer(ctx, RBAC.Req.layerRequest(ctx.serverId))
 	if (denied) return denied
@@ -1771,7 +1771,7 @@ export async function addVoteFromChat(
 		field: BB.VoteChoiceField
 		choices: BB.VoteChoiceToken[]
 		filterIds: string[]
-		poolFilters?: BB.AppliedFilter[]
+		poolFilters?: F.AppliedFilter[]
 		source: LL.Source
 	},
 ): Promise<AddVoteResult> {

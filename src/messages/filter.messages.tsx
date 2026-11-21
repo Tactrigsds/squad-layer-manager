@@ -737,3 +737,21 @@ export const optionsNotLimitedHint = def('These options are not limited by the f
 export const fixRepeatsWithout = def((filters: string) => ({
 	toast: [t('Fix Repeats ran without {filters}', { filters }), { description: t('These filters cannot be applied.') }],
 }))
+
+// -------- filter lists typed in game (--filters) --------
+
+export const unknownInList = def(
+	'{count, plural, =0 {No filter is named like "{token}".} other {No filter is named like "{token}". Did you mean {suggestionList}?}}',
+	(token: string, suggestions: string[]) => ({
+		token,
+		count: suggestions.length,
+		suggestionList: suggestions.map((name) => `"${name}"`).join(', '),
+	}),
+)
+
+export const ambiguousInList = def(
+	'"{token}" matches several filters: {matchList}. Type more of the name.',
+	(token: string, matched: string[]) => ({ token, matchList: matched.map((name) => `"${name}"`).join(', ') }),
+)
+
+export const invertedInList = def('not {name}', (name: string) => ({ name }))
