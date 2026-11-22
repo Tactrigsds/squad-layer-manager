@@ -24,7 +24,11 @@
 <p>With several open, each back press closes the top one.</p>
 </li>
 <li>
-<p><strong>Added:</strong> <code>/reqlayer</code> and <code>/vote</code> take <code>--filters</code> (<code>-f</code>) to choose the filters a request or vote uses. The filters named replace the server&#x27;s layer request filters for <code>/reqlayer</code>, and the pool filter for <code>/vote</code>. Separate the names with commas, put <code>!</code> before a name to invert that filter, or give <code>none</code> to use no filters: <code>/reqlayer narva -f mainpool,!jensens</code>. The repeat rules still apply to <code>/vote</code>.</p>
+<p><strong>Added:</strong> <code>/reqlayer</code> and <code>/vote</code> take <code>--filters</code> (<code>-f</code>) to choose the filters a request or vote uses. The filters named replace the server&#x27;s layer request filters for <code>/reqlayer</code>, and the pool filter for <code>/vote</code>. Separate the filters with commas, put <code>!</code> before one to invert it, or give <code>none</code> to use no filters: <code>/reqlayer narva -f mainpool,!jensens</code>. The repeat rules still apply to <code>/vote</code>.</p>
+<p>A filter can be named by part of its name or by its id, in <code>--filters</code> and among the words of <code>/reqlayer</code> and <code>/vote</code>.
+When a name matches no filter or several, SLM lists the filters it could mean. Reply with a number to pick one. Every
+mistyped word and filter in a <code>/reqlayer</code> or <code>/vote</code> is asked about in the same exchange, one question after another,
+and the answers can be given together: <code>1 1</code>.</p>
 <p>Only admins who can edit the queue can choose the filters of a <code>/reqlayer</code> request.</p>
 </li>
 <li>
