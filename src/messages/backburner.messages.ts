@@ -168,8 +168,6 @@ export const nothingRequested = def('Nothing requested')
 
 export const ambiguousMap = def('"{token}" matches {count} maps', (token: string, count: number) => ({ token, count }))
 
-export const ambiguousFilter = def('"{token}" matches {count} filters', (token: string, count: number) => ({ token, count }))
-
 export const tooManyTeamValues = def(
 	'{column, select, Faction {At most two factions can be requested (a matchup)} Alliance {At most two alliances can be requested (a matchup)} other {At most two units can be requested (a matchup)}}',
 	(column: 'Faction' | 'Alliance' | 'Unit') => ({ column }),

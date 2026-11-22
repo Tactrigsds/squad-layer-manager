@@ -174,7 +174,7 @@ export function SearchSuggestions(props: { frameKey: SelectLayersFrame.Key; setI
 	)
 }
 
-function SearchError(props: { error: BB.TokenError; onPick: (suggestion: string) => void }) {
+function SearchError(props: { error: BB.TokenError; onPick: (token: string) => void }) {
 	return (
 		<div role="alert" className="flex flex-col gap-2 rounded-sm border border-danger/60 bg-danger/15 px-3 py-2.5">
 			<span className="text-sm">{tr.text(props.error.msg)}</span>
@@ -182,8 +182,8 @@ function SearchError(props: { error: BB.TokenError; onPick: (suggestion: string)
 				<div className="flex flex-wrap items-center gap-1.5">
 					<span className="text-xs text-text-2">{tr.text(L_Msgs.didYouMean())}</span>
 					{props.error.suggestions.map((suggestion) => (
-						<Button key={suggestion} size="sm" onClick={() => props.onPick(suggestion)}>
-							{suggestion}
+						<Button key={suggestion.token} size="sm" onClick={() => props.onPick(suggestion.token)}>
+							{suggestion.label}
 						</Button>
 					))}
 				</div>

@@ -1151,43 +1151,121 @@ export type AppliedFilter = { filterId: FilterEntityId; applyAs: 'regular' | 'in
 // the filter list that applies no filters at all
 export const NO_FILTERS = 'none'
 
+export type FilterEntityMatch<E extends { id: FilterEntityId; name: string }> =
+	| { code: 'ok'; entity: E }
+	| { code: 'err:multiple-matches'; matched: E[] }
+	| { code: 'err:not-found' }
+
+// The filter a typed word names: the filter with exactly that id, or else the one whose name contains the word (see
+// Str.uniqueSubstringMatch).
+export function matchFilterEntity<E extends { id: FilterEntityId; name: string }>(
+	entities: readonly E[],
+	token: string,
+): FilterEntityMatch<E> {
+	const byId = filterEntityById(entities, token)
+	if (byId) return { code: 'ok', entity: byId }
+	const match = Str.uniqueSubstringMatch(
+		entities.map((e) => e.name),
+		token,
+	)
+	if (match.code === 'ok') return { code: 'ok', entity: entities.find((e) => e.name === match.value)! }
+	if (match.code === 'err:multiple-matches') {
+		return { code: 'err:multiple-matches', matched: entities.filter((e) => match.matched.includes(e.name)) }
+	}
+	return { code: 'err:not-found' }
+}
+
+export function filterEntityById<E extends { id: FilterEntityId }>(entities: readonly E[], token: string): E | undefined {
+	const id = token.trim().toLowerCase()
+	return entities.find((e) => e.id === id)
+}
+
 // as many alternatives as a chat warn can put in front of someone without becoming a wall
-const MAX_LIST_SUGGESTIONS = 3
+const MAX_LIST_CHOICES = 3
 
-export type ParseFilterListResult =
-	// names are the filters as players see them back, an inverted one as "not <name>"
-	| { code: 'ok'; filters: AppliedFilter[]; names: string[] }
-	| { code: 'err:unknown-filter' | 'err:ambiguous-filter'; token: string; msg: Msgs.Variants.Textable }
+export type ResolvedFilterList = {
+	filters: AppliedFilter[]
+	// the filters as players see them back, an inverted one as "not <name>"
+	names: string[]
+}
 
-// Reads a typed filter list: filter names separated by commas, each matched loosely, with `!` before a name to apply
-// that filter inverted. NO_FILTERS reads as no filters.
+// One filter a missed entry might have meant. `entry` is typed back in its place: the filter's id, which resolves to it
+// whatever the other filters are named, with the `!` the caller typed.
+export type FilterListChoice = { label: string; entry: string }
+
+// An entry that named no filter, or several, by its position among the list's comma-separated entries. `choices` are
+// the closest filters when it matched none, and the filters it matched when it matched several.
+export type FilterListMiss = {
+	code: 'err:unknown-filter' | 'err:ambiguous-filter'
+	entry: number
+	token: string
+	msg: Msgs.Variants.Textable
+	choices: FilterListChoice[]
+}
+
+export type ParseFilterListResult = ({ code: 'ok' } & ResolvedFilterList) | { code: 'err:unresolved'; misses: FilterListMiss[] }
+
+// Reads a typed filter list: filters separated by commas, each named as matchFilterEntity reads it, with `!` before a
+// filter to apply it inverted. NO_FILTERS reads as no filters. Every entry that misses is reported.
 export function parseFilterList(
 	tr: Msgs.Translator,
 	value: string,
-	filterEntities: { id: FilterEntityId; name: string }[],
+	filterEntities: readonly { id: FilterEntityId; name: string }[],
 ): ParseFilterListResult {
 	if (Str.normalizeForMatch(value) === NO_FILTERS) return { code: 'ok', filters: [], names: [] }
 	const filters: AppliedFilter[] = []
 	const names: string[] = []
-	const entityNames = filterEntities.map((f) => f.name)
-	for (const raw of value.split(',')) {
-		const token = raw.trim()
-		if (token.length === 0) continue
-		const inverted = token.startsWith('!')
-		const nameToken = inverted ? token.slice(1) : token
-		const match = Str.uniqueSubstringMatch(entityNames, nameToken)
+	const misses: FilterListMiss[] = []
+	for (const [index, raw] of value.split(',').entries()) {
+		const entry = raw.trim()
+		if (entry.length === 0) continue
+		const inverted = entry.startsWith('!')
+		const token = inverted ? entry.slice(1) : entry
+		const choiceFor = (entity: { id: FilterEntityId; name: string }): FilterListChoice => ({
+			label: inverted ? tr.text(F_Msgs.invertedInList(entity.name)) : entity.name,
+			entry: (inverted ? '!' : '') + entity.id,
+		})
+		const match = matchFilterEntity(filterEntities, token)
 		if (match.code === 'err:multiple-matches') {
-			const msg = F_Msgs.ambiguousInList(nameToken, match.matched.slice(0, MAX_LIST_SUGGESTIONS))
-			return { code: 'err:ambiguous-filter', token: nameToken, msg }
+			misses.push({
+				code: 'err:ambiguous-filter',
+				entry: index,
+				token,
+				msg: F_Msgs.ambiguousTypedFilter(token, match.matched.length),
+				choices: match.matched.slice(0, MAX_LIST_CHOICES).map(choiceFor),
+			})
+			continue
 		}
 		if (match.code === 'err:not-found') {
-			const msg = F_Msgs.unknownInList(nameToken, Str.nearest(nameToken, entityNames, MAX_LIST_SUGGESTIONS))
-			return { code: 'err:unknown-filter', token: nameToken, msg }
+			misses.push({
+				code: 'err:unknown-filter',
+				entry: index,
+				token,
+				msg: F_Msgs.unknownTypedFilter(token),
+				choices: nearestFilterEntities(filterEntities, token).map(choiceFor),
+			})
+			continue
 		}
-		const entity = filterEntities.find((f) => f.name === match.value)!
+		const entity = match.entity
 		if (filters.some((f) => f.filterId === entity.id)) continue
 		filters.push({ filterId: entity.id, applyAs: inverted ? 'inverted' : 'regular' })
-		names.push(inverted ? tr.text(F_Msgs.invertedInList(entity.name)) : entity.name)
+		names.push(choiceFor(entity).label)
 	}
+	if (misses.length > 0) return { code: 'err:unresolved', misses }
 	return { code: 'ok', filters, names }
+}
+
+// the filters closest to a typed word, ranked by name and by id alike, each filter once
+function nearestFilterEntities<E extends { id: FilterEntityId; name: string }>(entities: readonly E[], token: string): E[] {
+	const candidates = entities.flatMap((entity) => [
+		{ member: entity.name, entity },
+		{ member: entity.id, entity },
+	])
+	const out: E[] = []
+	for (const { entity } of Str.nearestBy(token, candidates, (c) => c.member, MAX_LIST_CHOICES * 2)) {
+		if (out.includes(entity)) continue
+		out.push(entity)
+		if (out.length === MAX_LIST_CHOICES) break
+	}
+	return out
 }

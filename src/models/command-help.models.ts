@@ -11,54 +11,74 @@ import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import * as AMS from '@/models/admin-message-shorthands.models'
 import * as CMD from '@/models/command.models'
+import * as F from '@/models/filter.models'
 import * as LP from '@/models/labeled-presets.models'
 import { join, t, type TString } from '@/models/messages.models'
 
 // what an arg kind accepts, explained once for every arg that uses it. `syntax` is the shape of the token(s), which is
 // typed rather than read; `description` is the prose shown beside it.
-export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'], { syntax: string; description: TString }> = {
-	string: { syntax: 'word', description: t('A single word. Matching is case-insensitive.') },
-	int: { syntax: 'number', description: t('A whole number.') },
-	duration: {
-		syntax: '30m | 2h | 1d',
-		description: t('A length of time: a number followed by s, m, h, d or w.'),
-	},
-	player: {
-		syntax: 'name | id',
-		description: t(
-			'An online player, by ID (Steam, EOS or Epic) or by a piece of their username. The username has to match exactly one player, so use enough of it to be unambiguous.',
-		),
-	},
-	'recent-player': {
-		syntax: 'name | id',
-		description: t(
-			'A player who is online or has played on the server this match, by ID (Steam, EOS or Epic) or by a piece of their username. Online players are matched first. The username has to match exactly one player, so use enough of it to be unambiguous.',
-		),
-	},
-	team: {
-		syntax: '1 | 2 | A | B | faction',
-		description: t(
-			"A team: 1 or 2 for the in-game slot, A or B for the side that stays the same across map changes, or the name of that team's faction in the current layer.",
-		),
-	},
-	squad: {
-		syntax: 'squad | team:squad',
-		description: t(
-			'A squad by its in-game number, a piece of its name, or "cmd" for the command squad. Your own team is used unless you prefix it with a team and a colon (1, 2, A, B, or the team\'s faction), as in 2:3 or B:cmd.',
-		),
-	},
-	text: { syntax: 'free text', description: t('Everything you type after this point, as-is.') },
-	reason: {
-		syntax: 'shorthand | free text',
-		description: t(
-			'A single word picks a message shorthand by one of its keywords. Two or more words are sent verbatim as a custom message.',
-		),
-	},
-	'preset-reason': {
-		syntax: 'shorthand',
-		description: t('A message shorthand, by one of its keywords. Custom text is not accepted here.'),
-	},
-}
+export const ARG_KIND_HELP: Record<CMD.ArgDef['kind'] | Exclude<CMD.OptionDef['kind'], 'flag'>, { syntax: string; description: TString }> =
+	{
+		string: { syntax: 'word', description: t('A single word. Matching is case-insensitive.') },
+		int: { syntax: 'number', description: t('A whole number.') },
+		duration: {
+			syntax: '30m | 2h | 1d',
+			description: t('A length of time: a number followed by s, m, h, d or w.'),
+		},
+		player: {
+			syntax: 'name | id',
+			description: t(
+				'An online player, by ID (Steam, EOS or Epic) or by a piece of their username. The username has to match exactly one player, so use enough of it to be unambiguous.',
+			),
+		},
+		'recent-player': {
+			syntax: 'name | id',
+			description: t(
+				'A player who is online or has played on the server this match, by ID (Steam, EOS or Epic) or by a piece of their username. Online players are matched first. The username has to match exactly one player, so use enough of it to be unambiguous.',
+			),
+		},
+		team: {
+			syntax: '1 | 2 | A | B | faction',
+			description: t(
+				"A team: 1 or 2 for the in-game slot, A or B for the side that stays the same across map changes, or the name of that team's faction in the current layer.",
+			),
+		},
+		squad: {
+			syntax: 'squad | team:squad',
+			description: t(
+				'A squad by its in-game number, a piece of its name, or "cmd" for the command squad. Your own team is used unless you prefix it with a team and a colon (1, 2, A, B, or the team\'s faction), as in 2:3 or B:cmd.',
+			),
+		},
+		text: { syntax: 'free text', description: t('Everything you type after this point, as-is.') },
+		'layer-request': {
+			syntax: 'map | gamemode | size | faction | unit | filter ...',
+			description: t(
+				'Any mix of map, layer, gamemode, size, faction, alliance, unit or filter names. Map and filter names match on a piece of the name, and a filter also by its id. Everything else must match exactly. Two factions (or alliances or units) mean a matchup.',
+			),
+		},
+		'vote-choices': {
+			syntax: 'choice[:Text] ... filter',
+			description: t(
+				'One choice per word, all of them maps, all layers, all gamemodes or all sizes. Text after a colon is what players see for that choice, with underscores for spaces. Filter names apply to every choice. Map and filter names match on a piece of the name, and a filter also by its id. Everything else must match exactly.',
+			),
+		},
+		filters: {
+			syntax: 'filter,!filter | none',
+			description: t(
+				'Filters separated by commas, each by a piece of its name or by its id. A ! before a filter inverts it, and none means no filters.',
+			),
+		},
+		reason: {
+			syntax: 'shorthand | free text',
+			description: t(
+				'A single word picks a message shorthand by one of its keywords. Two or more words are sent verbatim as a custom message.',
+			),
+		},
+		'preset-reason': {
+			syntax: 'shorthand',
+			description: t('A message shorthand, by one of its keywords. Custom text is not accepted here.'),
+		},
+	}
 
 // the live values examples are filled from, so an example uses reasons this installation actually has
 // configured rather than invented ones an admin would get an "unknown reason" error for
@@ -155,7 +175,7 @@ export function describeArgs(
 				[
 					...(def.describe ? [def.describe] : []),
 					kindHelp.description,
-					...(def.kind === 'text' && CMD.commandOptions(id).length > 0 ? [t('Options are taken out of it.')] : []),
+					...(CMD.isRestKind(def.kind) && CMD.commandOptions(id).length > 0 ? [t('Options are taken out of it.')] : []),
 				],
 				' ',
 			),
@@ -241,6 +261,9 @@ function sampleTokens(def: CMD.ArgDef, seeds: ExampleSeeds): Sample {
 			return { token: '3', alt: { token: '2:3', note: t("Targeting the other team's squad") } }
 		case 'text':
 			return { token: 'some text' }
+		case 'layer-request':
+		case 'vote-choices':
+			return { token: def.name }
 		case 'reason':
 		case 'preset-reason': {
 			// the first preset that can actually be picked by a single token, not just the first configured one
@@ -375,6 +398,8 @@ function optionSample(def: Exclude<CMD.OptionDef, { kind: 'flag' }>): string {
 			return '5'
 		case 'string':
 			return def.name
+		case 'filters':
+			return F.NO_FILTERS
 		default:
 			assertNever(def)
 	}

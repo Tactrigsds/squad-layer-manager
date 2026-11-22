@@ -286,29 +286,37 @@ async function runCommand(
 	}
 
 	// Options come out first, and the rest is assigned to the positional arguments. From here on the command is held as
-	// its canonical tokens, which put a prompt's picks back over the positional words they replace.
+	// its canonical tokens, which put a prompt's picks back over the options and positional words they replace.
 	const optionDefs = CMD.commandOptions(cmd as CMD.CommandId)
 	let positional = tokens
 	let canonical = tokens
-	let optionValues: Record<string, unknown> = {}
+	let optionRanges: CMD.ArgTokenRanges = {}
+	let options: OptionsResolution = { code: 'ok', values: {}, nearMisses: [] }
 	if (optionDefs.length > 0) {
 		const parsed = CMD.parseOptions(optionDefs, tokens)
 		if (parsed.code !== 'ok') return await chat.error('invalid-option', ctx.tr.text(CMD_Msgs.optionError(parsed)))
-		const values = CMD.resolveOptionValues(optionDefs, parsed.options)
-		if (values.code !== 'ok') return await chat.error('invalid-option', values.msg)
+		for (const def of optionDefs) {
+			if (!def.access || parsed.options[def.name] === undefined) continue
+			const optionRequired = RBAC.Access.resolve(def.access, { serverId: ctx.serverId })
+			const denyRes = optionRequired && (await Rbac.tryDenyPermissionsForPlayer(ctx, optionRequired))
+			if (denyRes) return await chat.error('permission-denied', ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
+		}
+		options = resolveOptions(ctx, optionDefs, parsed.options)
+		if (options.code !== 'ok') return await chat.error('invalid-option', options.msg)
 		positional = parsed.positional
 		canonical = parsed.canonical
-		optionValues = values.values
+		optionRanges = parsed.ranges
 	}
 
+	// a failure that cannot be fixed by picking wins over every near miss, the options' included (see resolveArgDefs)
 	const resolved = await resolveArgs(ctx, cmd as CMD.CommandId, cmdConfig, positional, sender, trigger)
-	const ranges = resolved.code === 'err' ? {} : CMD.shiftArgTokenRanges(resolved.ranges, canonical.length - positional.length)
-	if (resolved.code === 'err:near-miss') {
-		return await raisePrompt(chat, { cmd: cmd as CMD.CommandId, trigger, tokens: canonical, typed, ranges }, resolved.nearMisses)
+	if (resolved.code === 'err') return await chat.error('invalid-args', resolved.msg)
+	const ranges = { ...optionRanges, ...CMD.shiftArgTokenRanges(resolved.ranges, canonical.length - positional.length) }
+	const nearMisses = [...options.nearMisses, ...(resolved.code === 'err:near-miss' ? resolved.nearMisses : [])]
+	if (nearMisses.length > 0) {
+		return await raisePrompt(chat, { cmd: cmd as CMD.CommandId, trigger, tokens: canonical, typed, ranges }, nearMisses)
 	}
-	if (resolved.code !== 'ok') {
-		return await chat.error('invalid-args', resolved.msg)
-	}
+	if (resolved.code !== 'ok') return
 
 	const invocation: Invocation = { cmd: cmd as CMD.CommandId, trigger, tokens: canonical, typed, ranges }
 	const h: HandlerCtx = {
@@ -319,7 +327,69 @@ async function runCommand(
 
 	// TS cannot correlate handlers[cmd] with CommandArgs<typeof cmd> across the union, so the args
 	// are cast at this single dispatch point; each handler's signature is still fully typed
-	return await handlers[cmd as CMD.CommandId](h, { ...resolved.args, ...optionValues } as never)
+	return await handlers[cmd as CMD.CommandId](h, { ...resolved.args, ...options.values } as never)
+}
+
+type OptionsResolution = { code: 'ok'; values: Record<string, unknown>; nearMisses: CMD.NearMiss[] } | { code: 'err'; msg: string }
+
+// The typed options as the handler receives them: an absent flag is false, and an absent valued option undefined. Each
+// filter entry that named nothing is collected as a near miss beside the arguments' own (see resolveArgDefs).
+function resolveOptions(ctx: Msgs.Ctx, defs: readonly CMD.OptionDef[], typed: CMD.OptionTokens): OptionsResolution {
+	const values: Record<string, unknown> = {}
+	const nearMisses: CMD.NearMiss[] = []
+	for (const def of defs) {
+		const token = typed[def.name]
+		if (def.kind === 'flag') {
+			values[def.name] = token === true
+			continue
+		}
+		// parseOptions refuses a valued option typed without its value, so `true` never reaches here
+		if (token === undefined || token === true) continue
+		switch (def.kind) {
+			case 'string':
+				values[def.name] = token
+				break
+			case 'int': {
+				const res = CMD.coerceIntArg(`--${def.name}`, token)
+				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				values[def.name] = res.value
+				break
+			}
+			case 'duration': {
+				const res = CMD.resolveDurationArg(`--${def.name}`, token)
+				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
+				values[def.name] = res.value
+				break
+			}
+			case 'filters': {
+				const res = F.parseFilterList(ctx.tr, token, filterEntityNames())
+				if (res.code === 'ok') {
+					values[def.name] = { filters: res.filters, names: res.names }
+					break
+				}
+				for (const miss of res.misses) {
+					// nothing close enough to offer: the caller has to retype, as for an argument
+					if (miss.choices.length === 0) return { code: 'err', msg: ctx.tr.text(miss.msg) }
+					nearMisses.push({
+						argName: def.name,
+						typed: miss.token,
+						cause: miss.code === 'err:unknown-filter' ? 'no-match' : 'ambiguous',
+						msg: ctx.tr.text(miss.msg),
+						choices: miss.choices.map((choice) => ({ tokens: [choice.entry], label: choice.label })),
+						at: { entry: miss.entry },
+					})
+				}
+				break
+			}
+			default:
+				assertNever(def)
+		}
+	}
+	return { code: 'ok', values, nearMisses }
+}
+
+function filterEntityNames(): { id: string; name: string }[] {
+	return Array.from(FilterEntity.state.filters.values()).map((f) => ({ id: f.id, name: f.name }))
 }
 
 // Asks the caller to pick, and holds what to run once they have. The command itself does not run: every near miss
@@ -330,7 +400,8 @@ async function raisePrompt(chat: ChatCtx, invocation: Invocation, nearMisses: CM
 		// nothing to offer, or an argument that never came from the caller's words and so has nothing to splice a
 		// pick over: either way they have to retype, and the resolver's message already says why
 		if (near.choices.length === 0 || !range) return []
-		return [{ argName: near.argName, typed: near.typed, range, msg: near.msg, choices: near.choices }]
+		const at = CMD.nearMissRange(range, near.at)
+		return [{ argName: near.argName, typed: near.typed, range: at, msg: near.msg, choices: near.choices }]
 	})
 	if (steps.length === 0) return await chat.error('invalid-args', nearMisses[0].msg)
 
@@ -588,9 +659,26 @@ async function resolveArgDefs(
 	const nearMisses: CMD.NearMiss[] = []
 	// a near miss with nothing close enough to offer is not one: the caller has to retype either way, so it takes
 	// the hard-error path and its message stands on its own
-	const collect = (def: CMD.ArgDef, res: NearMissResult): { code: 'err'; msg: string } | undefined => {
+	const collect = (def: CMD.ArgDef, res: NearMissResult, at?: CMD.NearMissPart): { code: 'err'; msg: string } | undefined => {
 		if (res.choices.length === 0) return { code: 'err', msg: res.msg }
-		nearMisses.push({ argName: def.name, typed: res.typed, cause: res.cause, msg: res.msg, choices: res.choices })
+		nearMisses.push({ argName: def.name, typed: res.typed, cause: res.cause, msg: res.msg, choices: res.choices, at })
+		return undefined
+	}
+	// one near miss per word that missed, whose pick replaces only that word. `retype` writes a picked suggestion back
+	// as the word it replaces.
+	const collectWords = (def: CMD.ArgDef, misses: BB.TokenMiss[], retype: (miss: BB.TokenMiss, token: string) => string) => {
+		for (const miss of misses) {
+			const res = nearMiss({
+				msg: ctx.tr.text(miss.msg),
+				typed: miss.token,
+				cause: miss.code === 'err:unknown-token' ? 'no-match' : 'ambiguous',
+				choices: miss.suggestions
+					.slice(0, CMD.MAX_CHOICES)
+					.map((suggestion) => ({ tokens: [retype(miss, suggestion.token)], label: suggestion.label })),
+			})
+			const hard = collect(def, res, { word: miss.index })
+			if (hard) return hard
+		}
 		return undefined
 	}
 	for (const def of defs) {
@@ -618,6 +706,46 @@ async function resolveArgDefs(
 			case 'text':
 				out[def.name] = window.join(' ')
 				break
+			case 'layer-request': {
+				const res = BB.resolveRequestTokens({
+					tokens: window,
+					components: L.StaticLayerComponents,
+					filterEntities: filterEntityNames(),
+				})
+				if (res.code === 'err:unresolved') {
+					const hard = collectWords(def, res.misses, (_miss, token) => token)
+					if (hard) return hard
+					break
+				}
+				if (res.code !== 'ok') return { code: 'err', msg: ctx.tr.text(res.msg) }
+				out[def.name] = res.value
+				break
+			}
+			case 'vote-choices': {
+				const res = BB.resolveVoteTokens({ tokens: window, components: L.StaticLayerComponents, filterEntities: filterEntityNames() })
+				switch (res.code) {
+					case 'err:unresolved': {
+						// the corrected word keeps whatever text was typed after its colon
+						const hard = collectWords(def, res.misses, (miss, token) => token + window[miss.index].slice(miss.token.length))
+						if (hard) return hard
+						break
+					}
+					case 'err:text-on-filter':
+						return { code: 'err', msg: ctx.tr.text(V_Msgs.fromChat.textOnFilter(res.token)) }
+					case 'err:empty':
+						return { code: 'err', msg: ctx.tr.text(V_Msgs.simple.tooFewChoices(V.SimpleVote.MIN_CHOICES)) }
+					case 'err:unsupported-field':
+						return { code: 'err', msg: ctx.tr.text(V_Msgs.fromChat.unsupportedField(res.token, res.value)) }
+					case 'err:mixed-fields':
+						return { code: 'err', msg: ctx.tr.text(V_Msgs.fromChat.mixedFields()) }
+					case 'ok':
+						out[def.name] = { field: res.field, choices: res.choices, filterIds: res.filterIds }
+						break
+					default:
+						assertNever(res)
+				}
+				break
+			}
 			case 'player':
 			case 'recent-player': {
 				let pool: SM.RecentPlayer[] = teamsState!.players
@@ -838,41 +966,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	vote: async (h, args) => {
-		const tokens = args.choices.split(/\s+/).filter((t) => t.length > 0)
-		const filterEntities = Array.from(FilterEntity.state.filters.values()).map((f) => ({ id: f.id, name: f.name }))
-		const resolveRes = BB.resolveVoteTokens({ tokens, components: L.StaticLayerComponents, filterEntities })
-		switch (resolveRes.code) {
-			case 'err:unknown-token':
-			case 'err:ambiguous-token': {
-				const offending = resolveRes.token
-				return await h.nearMiss('choices', {
-					msg: h.ctx.tr.text(resolveRes.msg),
-					typed: offending,
-					cause: resolveRes.code === 'err:unknown-token' ? 'no-match' : 'ambiguous',
-					// the corrected word keeps whatever text was typed after its colon
-					choices: resolveRes.suggestions.slice(0, CMD.MAX_CHOICES).map((suggestion) => ({
-						tokens: tokens.map((t) => {
-							const { word } = BB.splitVoteToken(t)
-							return word === offending ? suggestion.replace(/\s+/g, '') + t.slice(word.length) : t
-						}),
-						label: suggestion,
-					})),
-				})
-			}
-			case 'err:text-on-filter':
-				return await h.error('text-on-filter', h.ctx.tr.text(V_Msgs.fromChat.textOnFilter(resolveRes.token)))
-			case 'err:empty':
-				return await h.error('too-few-choices', h.ctx.tr.text(V_Msgs.simple.tooFewChoices(V.SimpleVote.MIN_CHOICES)))
-			case 'err:unsupported-field':
-				return await h.error('unsupported-field', h.ctx.tr.text(V_Msgs.fromChat.unsupportedField(resolveRes.token, resolveRes.value)))
-			case 'err:mixed-fields':
-				return await h.error('mixed-fields', h.ctx.tr.text(V_Msgs.fromChat.mixedFields()))
-			case 'ok':
-				break
-			default:
-				assertNever(resolveRes)
-		}
-		const { field, choices, filterIds } = resolveRes
+		const { field, choices, filterIds } = args.choices
 		const longText = choices.find((c) => c.text && c.text.length > V.MAX_CHOICE_TEXT_LENGTH)?.text
 		if (longText) {
 			return await h.error('text-too-long', h.ctx.tr.text(V_Msgs.simple.choiceTooLong(longText, V.MAX_CHOICE_TEXT_LENGTH)))
@@ -885,14 +979,7 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 		}
 		const owner = await resolveChatOwner(h)
 		const source: LL.Source = owner.discordId ? { type: 'manual', userId: owner.discordId } : { type: 'unknown' }
-		let poolFilters: F.AppliedFilter[] | undefined
-		if (args.filters !== undefined) {
-			const filterEntities = Array.from(FilterEntity.state.filters.values()).map((f) => ({ id: f.id, name: f.name }))
-			const resolved = F.parseFilterList(h.ctx.tr, args.filters, filterEntities)
-			if (resolved.code !== 'ok') return await h.error('invalid-filters', h.ctx.tr.text(resolved.msg))
-			poolFilters = resolved.filters
-		}
-		const res = await LayerQueue.addVoteFromChat(h.ctx, { field, choices, filterIds, poolFilters, source })
+		const res = await LayerQueue.addVoteFromChat(h.ctx, { field, choices, filterIds, poolFilters: args.filters?.filters, source })
 		switch (res.code) {
 			case 'ok':
 				await h.reply(V_Msgs.fromChat.added(res.labels))
@@ -1539,51 +1626,24 @@ const handlers: { [Id in CMD.CommandId]: (h: HandlerCtx, args: CMD.CommandArgs<I
 	},
 
 	requestLayer: async (h, args) => {
-		const tokens = args.request.split(/\s+/).filter((t) => t.length > 0)
-		const filterEntities = Array.from(FilterEntity.state.filters.values()).map((f) => ({ id: f.id, name: f.name }))
-		const resolveRes = BB.resolveRequestTokens({ tokens, components: L.StaticLayerComponents, filterEntities })
-		if (resolveRes.code === 'err:unknown-token' || resolveRes.code === 'err:ambiguous-token') {
-			// only one word of the request is wrong, so each choice is the whole request with that word corrected:
-			// the argument's window is the request, and a pick replaces all of it
-			const offending = resolveRes.token
-			return await h.nearMiss('request', {
-				msg: h.ctx.tr.text(resolveRes.msg),
-				typed: offending,
-				cause: resolveRes.code === 'err:unknown-token' ? 'no-match' : 'ambiguous',
-				choices: resolveRes.suggestions.slice(0, CMD.MAX_CHOICES).map((suggestion) => ({
-					// a suggestion with spaces is still one request word: matching folds whitespace away
-					tokens: tokens.map((t) => (t === offending ? suggestion.replace(/\s+/g, '') : t)),
-					label: suggestion,
-				})),
-			})
-		}
-		if (resolveRes.code !== 'ok') return await h.error('invalid-request', h.ctx.tr.text(resolveRes.msg))
-		let requestFilters: Extract<F.ParseFilterListResult, { code: 'ok' }> | undefined
-		if (args.filters !== undefined) {
-			const denyRes = await Rbac.tryDenyPermissionsForPlayer(h.ctx, RBAC.perm('queue:write', { serverId: h.ctx.serverId }))
-			if (denyRes) return await h.error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(denyRes)))
-			const resolved = F.parseFilterList(h.ctx.tr, args.filters, filterEntities)
-			if (resolved.code !== 'ok') return await h.error('invalid-filters', h.ctx.tr.text(resolved.msg))
-			requestFilters = resolved
-		}
 		const source = await resolveChatOwner(h)
 		const res = await LayerQueue.addBackburnerRequestFromChat(h.ctx, {
 			source,
-			filter: resolveRes.value.filter,
-			requestFilters: requestFilters?.filters,
+			filter: args.request.filter,
+			requestFilters: args.filters?.filters,
 		})
 		switch (res.code) {
 			case 'err:permission-denied':
 				return await h.error('permission-denied', h.ctx.tr.text(RBAC_Msgs.permissionDenied(res)))
 			case 'err:no-solutions':
-				return await h.error('no-solutions', h.ctx.tr.text(BB_Msgs.noSolutions(args.request.trim())))
+				return await h.error('no-solutions', h.ctx.tr.text(BB_Msgs.noSolutions(args.request.parts.join(' '))))
 			case 'err:invalid-filter':
 				return await h.error('invalid-filter', res.msg)
 			case 'err:backburner-full':
 				return await h.error('backburner-full', h.ctx.tr.text(BB_Msgs.backburnerFull(res.max)))
 			case 'ok': {
 				const ownCount = BB.ownedItems(LayerQueue.getSavedBackburner(h.ctx), source).length
-				await h.reply(BB_Msgs.added([...resolveRes.value.parts, ...(requestFilters?.names ?? [])], ownCount, res.evicted.length))
+				await h.reply(BB_Msgs.added([...args.request.parts, ...(args.filters?.names ?? [])], ownCount, res.evicted.length))
 				if (res.skippedRequestFilters.length > 0) await h.reply(BB_Msgs.requestFiltersSkipped(res.skippedRequestFilters))
 				return { code: 'ok' }
 			}

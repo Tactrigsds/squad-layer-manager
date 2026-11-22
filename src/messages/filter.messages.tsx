@@ -738,20 +738,10 @@ export const fixRepeatsWithout = def((filters: string) => ({
 	toast: [t('Fix Repeats ran without {filters}', { filters }), { description: t('These filters cannot be applied.') }],
 }))
 
-// -------- filter lists typed in game (--filters) --------
+// -------- filters typed in game --------
 
-export const unknownInList = def(
-	'{count, plural, =0 {No filter is named like "{token}".} other {No filter is named like "{token}". Did you mean {suggestionList}?}}',
-	(token: string, suggestions: string[]) => ({
-		token,
-		count: suggestions.length,
-		suggestionList: suggestions.map((name) => `"${name}"`).join(', '),
-	}),
-)
+export const unknownTypedFilter = def('Unknown filter "{token}"', (token: string) => ({ token }))
 
-export const ambiguousInList = def(
-	'"{token}" matches several filters: {matchList}. Type more of the name.',
-	(token: string, matched: string[]) => ({ token, matchList: matched.map((name) => `"${name}"`).join(', ') }),
-)
+export const ambiguousTypedFilter = def('"{token}" matches {count} filters', (token: string, count: number) => ({ token, count }))
 
 export const invertedInList = def('not {name}', (name: string) => ({ name }))

@@ -72,17 +72,30 @@ describe('resolveRequestTokens', () => {
 	it('rejects ambiguous map fragments with a count', () => {
 		// 'al' is a substring of several maps (AlBasrah, Fallujah, ...)
 		const res = resolve(['al'])
-		expect(res.code).toBe('err:ambiguous-token')
+		expect(onlyMiss(res).code).toBe('err:ambiguous-token')
 	})
 
 	it('rejects unknown tokens with suggestions to pick from', () => {
-		const res = resolve(['gorodokk'])
-		expect(res.code).toBe('err:unknown-token')
-		if (res.code !== 'err:unknown-token') throw new Error('unreachable')
-		expect(tr.text(res.msg)).toContain('Unknown request "gorodokk"')
-		expect(res.suggestions[0]).toBe('Gorodok')
+		const miss = onlyMiss(resolve(['gorodokk']))
+		expect(miss.code).toBe('err:unknown-token')
+		expect(tr.text(miss.msg)).toContain('Unknown request "gorodokk"')
+		expect(miss.suggestions[0]).toEqual({ token: 'Gorodok', label: 'Gorodok' })
 		// a map is both its own exact key and a fuzzy candidate, so it can rank twice
-		expect(new Set(res.suggestions).size).toBe(res.suggestions.length)
+		expect(new Set(miss.suggestions.map((s) => s.token)).size).toBe(miss.suggestions.length)
+	})
+
+	it('reports every word that misses, by its position', () => {
+		const res = resolve(['gorodokk', 'raas', 'adff'])
+		expect(res.code).toBe('err:unresolved')
+		if (res.code !== 'err:unresolved') throw new Error('unreachable')
+		expect(res.misses.map((m) => [m.index, m.token])).toEqual([
+			[0, 'gorodokk'],
+			[2, 'adff'],
+		])
+	})
+
+	it('reports a word past its column ahead of the words that miss', () => {
+		expect(resolve(['gorodok', 'fallu', 'adff']).code).toBe('err:too-many')
 	})
 
 	it('fuzzy-matches filter entity names', () => {
@@ -91,6 +104,24 @@ describe('resolveRequestTokens', () => {
 		expect(nodes).toEqual([FB.includedIn('f1')])
 		if (res.code !== 'ok') throw new Error('unreachable')
 		expect(res.value.parts).toEqual(['Helicopter Layers'])
+	})
+
+	it('matches a filter by its id', () => {
+		const res = resolve(['no-heli'], [{ id: 'no-heli', name: 'Ground Only' }])
+		expect(conjuncts(res)).toEqual([FB.includedIn('no-heli')])
+	})
+
+	it('offers the filters an ambiguous name matched, typed back as their ids', () => {
+		const filters = [
+			{ id: 'heli-day', name: 'Heli Day' },
+			{ id: 'heli-night', name: 'Heli Night' },
+		]
+		const miss = onlyMiss(resolve(['heli'], filters))
+		expect(miss.code).toBe('err:ambiguous-token')
+		expect(miss.suggestions).toEqual([
+			{ token: 'heli-day', label: 'Heli Day' },
+			{ token: 'heli-night', label: 'Heli Night' },
+		])
 	})
 
 	it('rejects more than one value per single-valued category', () => {
@@ -313,3 +344,9 @@ describe('ownership helpers', () => {
 		expect(BB.sameOwner({}, {})).toBe(false)
 	})
 })
+
+function onlyMiss(res: BB.ResolveTokensResult): BB.TokenMiss {
+	if (res.code !== 'err:unresolved') throw new Error(`expected misses, got ${res.code}`)
+	expect(res.misses).toHaveLength(1)
+	return res.misses[0]
+}

@@ -5,6 +5,8 @@ import { z } from '@/lib/zod'
 import * as ZodUtils from '@/lib/zod-utils'
 import * as AMS_Msgs from '@/messages/admin-message-shorthands.messages'
 import * as AMS from '@/models/admin-message-shorthands.models'
+import type * as BB from '@/models/backburner.models'
+import type * as F from '@/models/filter.models'
 import * as LP from '@/models/labeled-presets.models'
 import { t, type TString } from '@/models/messages.models'
 import * as SDoc from '@/models/schema-docs.models'
@@ -133,22 +135,34 @@ export type ArgDef =
 	| (ArgCommon & { kind: 'squad'; optional?: true })
 	// rest: raw remainder joined with spaces
 	| (ArgCommon & { kind: 'text'; optional?: true })
+	// rest: one word per part of a layer request (map, gamemode, faction, filter, ...), resolved to the request
+	| (ArgCommon & { kind: 'layer-request'; optional?: true })
+	// rest: one word per vote choice, plus filter words that apply to every choice
+	| (ArgCommon & { kind: 'vote-choices'; optional?: true })
 	// rest: a single token must match one of a configured reason's keywords; 2+ tokens are a custom message
 	| (ArgCommon & { kind: 'reason'; action: AMS.AdminActionType; optional?: true })
 	// single token, configured reason only
 	| (ArgCommon & { kind: 'preset-reason'; action: AMS.AdminActionType; optional?: true })
 
-const REST_KINDS: ArgDef['kind'][] = ['text', 'reason']
+const REST_KINDS: ArgDef['kind'][] = ['text', 'reason', 'layer-request', 'vote-choices']
+
+// whether an arg takes every remaining word
+export function isRestKind(kind: ArgDef['kind']): boolean {
+	return REST_KINDS.includes(kind)
+}
 
 // A named option, typed anywhere after the trigger as `--name`, or as `-n` when it has a `short` letter. A flag takes
 // no value. Every other kind takes one, written `--name value`, `--name=value`, `-n value` or `-n=value`. A lone `--`
 // ends the options, so the words after it are positional arguments even when they start with a dash.
-type OptionCommon = { name: string; short?: string; describe?: TString; sample?: string }
+// `access` is checked when the option is typed, on top of the command's own, and before the option is resolved.
+type OptionCommon = { name: string; short?: string; describe?: TString; sample?: string; access?: CommandAccess }
 export type OptionDef =
 	| (OptionCommon & { kind: 'flag' })
 	| (OptionCommon & { kind: 'string' })
 	| (OptionCommon & { kind: 'int' })
 	| (OptionCommon & { kind: 'duration' })
+	// filters separated by commas (see F.parseFilterList)
+	| (OptionCommon & { kind: 'filters' })
 
 const OPTION_NAME = /^[a-z][a-z0-9-]*$/
 const OPTION_SHORT = /^[a-z]$/
@@ -331,25 +345,14 @@ export const COMMAND_DECLARATIONS = {
 		label: t('Vote', undefined, { context: 'command' }),
 		section: 'votes',
 		access: onServer('queue:write'),
-		args: [
-			{
-				kind: 'text',
-				name: 'choices',
-				sample: 'goro:Night_ops yeho narva',
-				describe: t(
-					'One choice per word, all of them maps, all layers, all gamemodes or all sizes. Text after a colon is what players see for that choice, with underscores for spaces. Filter names apply to every choice. Map and filter names match loosely; everything else must match exactly.',
-				),
-			},
-		],
+		args: [{ kind: 'vote-choices', name: 'choices', sample: 'goro:Night_ops yeho narva' }],
 		options: [
 			{
-				kind: 'string',
+				kind: 'filters',
 				name: 'filters',
 				short: 'f',
 				sample: 'mainpool,!jensens',
-				describe: t(
-					'Filters to draw the choices with in place of the pool filter, separated by commas. A ! before a name inverts that filter, and none draws without any. The repeat rules still apply.',
-				),
+				describe: t('The filters the choices are drawn with, in place of the pool filter. The repeat rules still apply.'),
 			},
 		],
 		defaults: { allowedChats: ['admin'], triggers: ['vote'], enabled: true, quickReference: false },
@@ -417,28 +420,16 @@ export const COMMAND_DECLARATIONS = {
 	...declareCommand('requestLayer', {
 		label: t('Request Layer', undefined, { context: 'command' }),
 		section: 'layerRequests',
-		access: Access.inHandler(
-			'how many requests a caller may hold is capped per grant, and counted against the queue. --filters needs queue:write',
-		),
-		args: [
-			{
-				kind: 'text',
-				name: 'request',
-				sample: 'goro adf pla',
-				describe: t(
-					'Any mix of map, gamemode, size, faction, alliance, unit or filter names. Map and filter names match loosely; everything else must match exactly. Two factions (or alliances/units) mean a matchup.',
-				),
-			},
-		],
+		access: Access.inHandler('how many requests a caller may hold is capped per grant, and counted against the queue'),
+		args: [{ kind: 'layer-request', name: 'request', sample: 'goro adf pla' }],
 		options: [
 			{
-				kind: 'string',
+				kind: 'filters',
 				name: 'filters',
 				short: 'f',
 				sample: 'mainpool,!jensens',
-				describe: t(
-					"Filters for the request in place of the server's layer request filters, separated by commas. A ! before a name inverts that filter, and none leaves them all out. Needs permission to edit the queue.",
-				),
+				access: onServer('queue:write'),
+				describe: t("The request's filters, in place of the server's layer request filters. Needs permission to edit the queue."),
 			},
 		],
 		defaults: {
@@ -1071,11 +1062,15 @@ type ArgValue<D extends ArgDef> = D extends { kind: 'string' }
 							? ResolvedSquadArg
 							: D extends { kind: 'text' }
 								? string
-								: D extends { kind: 'reason' }
-									? ResolvedReasonArg
-									: D extends { kind: 'preset-reason' }
-										? AMS.AdminMessageShorthand
-										: never
+								: D extends { kind: 'layer-request' }
+									? BB.ResolvedRequest
+									: D extends { kind: 'vote-choices' }
+										? BB.ResolvedVoteChoices
+										: D extends { kind: 'reason' }
+											? ResolvedReasonArg
+											: D extends { kind: 'preset-reason' }
+												? AMS.AdminMessageShorthand
+												: never
 
 export type ResolvedArgs<Args extends readonly ArgDef[]> = {
 	[D in Args[number] as D['name']]: D extends { optional: true } ? ArgValue<D> | undefined : ArgValue<D>
@@ -1084,7 +1079,9 @@ type OptionValue<D extends OptionDef> = D extends { kind: 'flag' }
 	? boolean
 	: D extends { kind: 'int' | 'duration' }
 		? number | undefined
-		: string | undefined
+		: D extends { kind: 'filters' }
+			? F.ResolvedFilterList | undefined
+			: string | undefined
 export type ResolvedOptions<Options extends readonly OptionDef[]> = { [D in Options[number] as D['name']]: OptionValue<D> }
 
 // a handler's positional arguments and its options, on one object
@@ -1142,7 +1139,8 @@ export type ParseOptionsResult =
 	// `positional` are the words left for the positional arguments, in order. `canonical` is the whole input rewritten
 	// with every option first and a `--` before the positionals, so parsing it again gives the same result whatever the
 	// positionals look like (see canonicalTokens).
-	| { code: 'ok'; options: OptionTokens; positional: string[]; canonical: string[] }
+	// `ranges` say where each option sits in `canonical`, so a prompt can put a pick back over it.
+	| { code: 'ok'; options: OptionTokens; positional: string[]; canonical: string[]; ranges: ArgTokenRanges }
 	| { code: 'err:unknown-option'; option: string; suggestion?: string }
 	| { code: 'err:missing-value'; option: string }
 	| { code: 'err:unexpected-value'; option: string }
@@ -1193,49 +1191,26 @@ export function parseOptions(defs: readonly OptionDef[], tokens: readonly string
 		if (inline === undefined) i++
 		options[def.name] = value
 	}
-	return { code: 'ok', options, positional, canonical: canonicalTokens(defs, options, positional) }
+	return { code: 'ok', options, positional, ...canonicalTokens(defs, options, positional) }
 }
 
-function canonicalTokens(defs: readonly OptionDef[], options: OptionTokens, positional: string[]): string[] {
-	if (defs.length === 0) return positional
-	const optionTokens = Object.entries(options).map(([name, value]) => (value === true ? `--${name}` : `--${name}=${value}`))
-	return [...optionTokens, '--', ...positional]
-}
-
-// The typed options as a handler receives them: an absent flag is false, and an absent valued option undefined.
-export function resolveOptionValues(
+// one token per option, `--name` or `--name=value`, so an option's range is always one token long
+function canonicalTokens(
 	defs: readonly OptionDef[],
-	typed: OptionTokens,
-): { code: 'ok'; values: Record<string, unknown> } | { code: 'err'; msg: string } {
-	const values: Record<string, unknown> = {}
-	for (const def of defs) {
-		const token = typed[def.name]
-		switch (def.kind) {
-			case 'flag':
-				values[def.name] = token === true
-				break
-			case 'string':
-				values[def.name] = token === true ? undefined : token
-				break
-			case 'int': {
-				if (token === undefined || token === true) break
-				const res = coerceIntArg(`--${def.name}`, token)
-				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
-				values[def.name] = res.value
-				break
-			}
-			case 'duration': {
-				if (token === undefined || token === true) break
-				const res = resolveDurationArg(`--${def.name}`, token)
-				if (res.code !== 'ok') return { code: 'err', msg: res.msg }
-				values[def.name] = res.value
-				break
-			}
-			default:
-				def satisfies never
-		}
-	}
-	return { code: 'ok', values }
+	options: OptionTokens,
+	positional: string[],
+): { canonical: string[]; ranges: ArgTokenRanges } {
+	if (defs.length === 0) return { canonical: positional, ranges: {} }
+	const entries = Object.entries(options)
+	const ranges: ArgTokenRanges = {}
+	entries.forEach(([name], start) => (ranges[name] = { start, len: 1 }))
+	const optionTokens = entries.map(([name, value]) => formatOptionToken(name, value))
+	return { canonical: [...optionTokens, '--', ...positional], ranges }
+}
+
+// an option as one canonical token, which is also how a prompt's pick for it is typed back
+export function formatOptionToken(name: string, value: string | true): string {
+	return value === true ? `--${name}` : `--${name}=${value}`
 }
 
 export function shiftArgTokenRanges(ranges: ArgTokenRanges, by: number): ArgTokenRanges {
@@ -1251,8 +1226,9 @@ export function formatOption(def: OptionDef): string {
 export type ArgTokenWindows = Record<string, string[] | undefined>
 
 // where an argument's window sits in the token list, so a picked choice can be spliced back over exactly the
-// words that failed to resolve (see spliceArgTokens)
-export type ArgTokenRange = { start: number; len: number }
+// words that failed to resolve (see spliceArgTokens). `entry` narrows a one-token range to one entry of a
+// comma-separated option value, `--name=a,b,c`.
+export type ArgTokenRange = { start: number; len: number; entry?: number }
 export type ArgTokenRanges = Record<string, ArgTokenRange | undefined>
 
 // splits the raw arg tokens into per-arg windows, enforcing required args. Every kind but the rest kinds takes exactly
@@ -1286,7 +1262,9 @@ export function assignArgTokens(
 				break
 			}
 			case 'text':
-			case 'reason': {
+			case 'reason':
+			case 'layer-request':
+			case 'vote-choices': {
 				if (rem.length === 0) {
 					if (!def.optional) return { code: 'err:missing-arg', argName: def.name }
 					windows[def.name] = undefined
@@ -1313,20 +1291,50 @@ export type ArgChoice = { tokens: string[]; label: string }
 
 // A failure the caller can fix by picking rather than by retyping. `msg` is the resolver's own account of what went
 // wrong, which heads the prompt: only the resolver knows whether "1" failed as a team or as a squad.
-export type NearMiss = { argName: string; typed: string; cause: 'no-match' | 'ambiguous'; msg: string; choices: ArgChoice[] }
+//
+// `at` narrows the miss to part of the argument, so several misses in one argument are asked and picked apart: `word`
+// is one word of a rest argument's window, and `entry` one entry of a comma-separated option value.
+export type NearMiss = {
+	argName: string
+	typed: string
+	cause: 'no-match' | 'ambiguous'
+	msg: string
+	choices: ArgChoice[]
+	at?: NearMissPart
+}
+export type NearMissPart = { word: number } | { entry: number }
+
+// the tokens a near miss's pick replaces, inside the range of the argument or option it belongs to
+export function nearMissRange(range: ArgTokenRange, at: NearMissPart | undefined): ArgTokenRange {
+	if (!at) return range
+	if ('word' in at) return { start: range.start + at.word, len: 1 }
+	return { start: range.start, len: 1, entry: at.entry }
+}
 
 // A Squad warn holds only a few lines, and a caller who has to read past three options is better served by the
 // usage line.
 export const MAX_CHOICES = 3
 
-// Applies picked choices back over the tokens the caller typed. Right to left, since a choice's token count need
-// not match the window it replaces: a corrected layer request comes back whole.
+// Applies picked choices back over the tokens the caller typed. Entries are replaced first, in place, which moves
+// no token. The rest go right to left, since a choice's token count need not match the window it replaces.
 export function spliceArgTokens(tokens: readonly string[], picks: { range: ArgTokenRange; tokens: string[] }[]): string[] {
 	const out = [...tokens]
-	for (const pick of picks.toSorted((a, b) => b.range.start - a.range.start)) {
+	for (const pick of picks) {
+		if (pick.range.entry === undefined) continue
+		out[pick.range.start] = replaceListEntry(out[pick.range.start], pick.range.entry, pick.tokens.join(''))
+	}
+	const whole = picks.filter((pick) => pick.range.entry === undefined)
+	for (const pick of whole.toSorted((a, b) => b.range.start - a.range.start)) {
 		out.splice(pick.range.start, pick.range.len, ...pick.tokens)
 	}
 	return out
+}
+
+// an option token, `--name=a,b,c`, with the entry at `index` of its value replaced
+function replaceListEntry(token: string, index: number, entry: string): string {
+	const valueStart = token.indexOf('=') + 1
+	const entries = token.slice(valueStart).split(',')
+	return token.slice(0, valueStart) + entries.with(index, entry).join(',')
 }
 
 export function coerceIntArg(name: string, token: string): { code: 'ok'; value: number } | { code: 'err:invalid-int'; msg: string } {
