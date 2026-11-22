@@ -5,6 +5,7 @@ import * as Str from '@/lib/string-utils'
 import { assertNever } from '@/lib/type-guards'
 import { z } from '@/lib/zod'
 import * as BB_Msgs from '@/messages/backburner.messages'
+import * as F_Msgs from '@/messages/filter.messages'
 import * as FB from '@/models/filter-builders.models'
 import * as F from '@/models/filter.models'
 import type * as LC from '@/models/layer-columns.models'
@@ -442,13 +443,26 @@ export type ResolvedRequest = {
 	parts: string[]
 }
 
-// `suggestions` are what the offending token might have meant, named as they would be typed back: the closest
-// known values when nothing matched, the values it matched when too many did.
+// What an offending token might have meant: `token` is typed back in its place and resolves to it alone, and `label`
+// names it to the caller. A filter is typed back as its id, since its name can hold spaces or be part of another's.
+export type TokenSuggestion = { token: string; label: string }
+
+// A word that named nothing or too many things, by its position among the words. `suggestions` are the closest known
+// values when nothing matched, the values it matched when too many did.
+export type TokenMiss = {
+	code: 'err:unknown-token' | 'err:ambiguous-token'
+	index: number
+	token: string
+	msg: Msgs.Variants.Textable
+	suggestions: TokenSuggestion[]
+}
+
+// Every word that misses is reported, so a caller fixes them all at once. A word past what its column holds cannot be
+// fixed by picking, so it is reported ahead of them.
 export type ResolveTokensResult =
 	| { code: 'ok'; value: ResolvedRequest }
 	| { code: 'err:empty'; msg: Msgs.Variants.Textable }
-	| { code: 'err:unknown-token'; token: string; msg: Msgs.Variants.Textable; suggestions: string[] }
-	| { code: 'err:ambiguous-token'; token: string; msg: Msgs.Variants.Textable; suggestions: string[] }
+	| { code: 'err:unresolved'; misses: TokenMiss[] }
 	| { code: 'err:too-many'; column: string; msg: Msgs.Variants.Textable }
 
 type TokenTarget =
@@ -472,7 +486,7 @@ export type TokenError = {
 	token: string
 	code: 'err:unknown-token' | 'err:ambiguous-token' | 'err:too-many'
 	msg: Msgs.Variants.Textable
-	suggestions: string[]
+	suggestions: TokenSuggestion[]
 	// the column a too-many token overflowed
 	column?: string
 }
@@ -521,12 +535,14 @@ function buildExactLookup(components: LC.LayerComponents) {
 }
 
 // Maps and filter names match fuzzily (unique substring); everything else must match exactly
-// (case/whitespace-insensitive). Exact matches are tried across every category first so a token that is
-// exactly a faction code can never be stolen by a fuzzy map match.
+// (case/whitespace-insensitive), and so does a filter's id. Exact matches are tried across every category first so a
+// token that is exactly a faction code can never be stolen by a fuzzy map match.
 function resolveToken(token: string, exact: Map<string, TokenTarget>, input: ResolveInput): TokenResolution {
 	const { components, filterEntities } = input
 	const exactTarget = exact.get(Str.normalizeForMatch(token))
 	if (exactTarget) return { code: 'ok', target: exactTarget }
+	const filterById = F.filterEntityById(filterEntities, token)
+	if (filterById) return { code: 'ok', target: { kind: 'filter', filterId: filterById.id, name: filterById.name } }
 
 	const mapMatches = Str.uniqueSubstringMatch(components.maps, token)
 	if (mapMatches.code === 'ok') return { code: 'ok', target: { kind: 'map', value: mapMatches.value } }
@@ -535,24 +551,20 @@ function resolveToken(token: string, exact: Map<string, TokenTarget>, input: Res
 			code: 'err:ambiguous-token',
 			token,
 			msg: BB_Msgs.ambiguousMap(token, mapMatches.count),
-			suggestions: mapMatches.matched.slice(0, MAX_SUGGESTIONS),
+			suggestions: mapMatches.matched.slice(0, MAX_SUGGESTIONS).map(valueSuggestion),
 		}
 	}
 
-	const filterMatches = Str.uniqueSubstringMatch(
-		filterEntities.map((f) => f.name),
-		token,
-	)
-	if (filterMatches.code === 'ok') {
-		const entity = filterEntities.find((f) => f.name === filterMatches.value)!
-		return { code: 'ok', target: { kind: 'filter', filterId: entity.id, name: entity.name } }
+	const filterMatch = F.matchFilterEntity(filterEntities, token)
+	if (filterMatch.code === 'ok') {
+		return { code: 'ok', target: { kind: 'filter', filterId: filterMatch.entity.id, name: filterMatch.entity.name } }
 	}
-	if (filterMatches.code === 'err:multiple-matches') {
+	if (filterMatch.code === 'err:multiple-matches') {
 		return {
 			code: 'err:ambiguous-token',
 			token,
-			msg: BB_Msgs.ambiguousFilter(token, filterMatches.count),
-			suggestions: filterMatches.matched.slice(0, MAX_SUGGESTIONS),
+			msg: F_Msgs.ambiguousTypedFilter(token, filterMatch.matched.length),
+			suggestions: filterMatch.matched.slice(0, MAX_SUGGESTIONS).map(filterSuggestion),
 		}
 	}
 
@@ -624,17 +636,23 @@ export function resolveRequestTokens(input: { tokens: string[] } & ResolveInput)
 
 	const exact = buildExactLookup(input.components)
 	const resolved: { token: string; target: TokenTarget }[] = []
-	for (const token of tokens) {
+	const misses: TokenMiss[] = []
+	for (const [index, token] of tokens.entries()) {
 		const res = resolveToken(token, exact, input)
-		if (res.code !== 'ok') return { code: res.code, token: res.token, msg: res.msg, suggestions: res.suggestions }
-		resolved.push({ token, target: res.target })
+		if (res.code === 'ok') resolved.push({ token, target: res.target })
+		else misses.push(tokenMiss(res, index))
 	}
 
 	const { parts, displayParts, errors } = collectTargets(resolved)
 	const tooMany = errors.at(0)
 	if (tooMany) return { code: 'err:too-many', column: tooMany.column!, msg: tooMany.msg }
+	if (misses.length > 0) return { code: 'err:unresolved', misses }
 
 	return { code: 'ok', value: { filter: buildTemplateFilter(parts), parts: displayParts } }
+}
+
+function tokenMiss(res: Exclude<TokenResolution, { code: 'ok' }>, index: number): TokenMiss {
+	return { code: res.code, index, token: res.token, msg: res.msg, suggestions: res.suggestions }
 }
 
 // -------- vote token resolution (/vote) --------
@@ -653,10 +671,14 @@ export type VoteChoiceField = (typeof VOTE_CHOICE_FIELDS)[keyof typeof VOTE_CHOI
 // One vote choice: the value it is drawn from, and the text players see for it in place of the layer's name.
 export type VoteChoiceToken = { value: string; text?: string }
 
+export type ResolvedVoteChoices = { field: VoteChoiceField; choices: VoteChoiceToken[]; filterIds: string[] }
+
+// Every word that misses is reported, as resolveRequestTokens does. A word that resolved to something a vote cannot
+// use is reported ahead of them.
 export type ResolveVoteTokensResult =
-	| { code: 'ok'; field: VoteChoiceField; choices: VoteChoiceToken[]; filterIds: string[] }
+	| ({ code: 'ok' } & ResolvedVoteChoices)
 	| { code: 'err:empty' }
-	| { code: 'err:unknown-token' | 'err:ambiguous-token'; token: string; msg: Msgs.Variants.Textable; suggestions: string[] }
+	| { code: 'err:unresolved'; misses: TokenMiss[] }
 	// the token names something a vote choice cannot be drawn from, such as a faction
 	| { code: 'err:unsupported-field'; token: string; value: string }
 	| { code: 'err:mixed-fields'; fields: VoteChoiceField[] }
@@ -685,10 +707,14 @@ export function resolveVoteTokens(input: { tokens: string[] } & ResolveInput): R
 	const choices: VoteChoiceToken[] = []
 	const filterIds: string[] = []
 	const fields: VoteChoiceField[] = []
-	for (const token of tokens) {
+	const misses: TokenMiss[] = []
+	for (const [index, token] of tokens.entries()) {
 		const { word, text } = splitVoteToken(token)
 		const res = resolveToken(word, exact, input)
-		if (res.code !== 'ok') return { code: res.code, token: res.token, msg: res.msg, suggestions: res.suggestions }
+		if (res.code !== 'ok') {
+			misses.push(tokenMiss(res, index))
+			continue
+		}
 		const target = res.target
 		if (target.kind === 'filter') {
 			if (text !== undefined) return { code: 'err:text-on-filter', token }
@@ -701,6 +727,7 @@ export function resolveVoteTokens(input: { tokens: string[] } & ResolveInput): R
 		if (!choices.some((c) => c.value === target.value)) choices.push({ value: target.value, text })
 	}
 	if (fields.length > 1) return { code: 'err:mixed-fields', fields }
+	if (misses.length > 0) return { code: 'err:unresolved', misses }
 	return { code: 'ok', field: fields[0] ?? 'Map', choices, filterIds }
 }
 
@@ -723,24 +750,39 @@ export function resolveSearchTokens(input: { tokens: string[] } & ResolveInput):
 // as many alternatives as a chat warn can put in front of someone without becoming a wall
 const MAX_SUGGESTIONS = 3
 
+// a value with spaces is still one word: matching folds whitespace away
+function valueSuggestion(value: string): TokenSuggestion {
+	return { token: value.replace(/\s+/g, ''), label: value }
+}
+
+function filterSuggestion(entity: { id: string; name: string }): TokenSuggestion {
+	return { token: entity.id, label: entity.name }
+}
+
 function unknownToken(
 	token: string,
 	exact: Map<string, TokenTarget>,
 	components: LC.LayerComponents,
 	filterEntities: { id: string; name: string }[],
-): { msg: Msgs.Variants.Textable; suggestions: string[] } {
+): { msg: Msgs.Variants.Textable; suggestions: TokenSuggestion[] } {
 	// every way a token can be written, paired with how it is named back: the exact vocabulary (values and their
-	// abbreviations) plus the two things that also match loosely
+	// abbreviations) plus the two things that also match loosely, and a filter's id
 	const candidates = [
-		...[...exact].map(([member, target]) => ({ member, suggestion: 'value' in target ? target.value : target.name })),
-		...components.maps.map((map) => ({ member: map, suggestion: map })),
-		...filterEntities.map((f) => ({ member: f.name, suggestion: f.name })),
+		...[...exact].map(([member, target]) => ({
+			member,
+			suggestion: 'value' in target ? valueSuggestion(target.value) : filterSuggestion({ id: target.filterId, name: target.name }),
+		})),
+		...components.maps.map((map) => ({ member: map, suggestion: valueSuggestion(map) })),
+		...filterEntities.flatMap((f) => [
+			{ member: f.name, suggestion: filterSuggestion(f) },
+			{ member: f.id, suggestion: filterSuggestion(f) },
+		]),
 	]
 	// several candidates name the same thing (a map is both its own exact key and a fuzzy candidate), and the same
 	// option offered twice is one of three lines wasted, so ranking runs over more of them than are kept
-	const suggestions: string[] = []
-	for (const candidate of Str.nearestBy(token, candidates, (c) => c.member, MAX_SUGGESTIONS * 2)) {
-		if (suggestions.includes(candidate.suggestion)) continue
+	const suggestions: TokenSuggestion[] = []
+	for (const candidate of Str.nearestBy(token, candidates, (c) => c.member, MAX_SUGGESTIONS * 4)) {
+		if (suggestions.some((s) => s.token === candidate.suggestion.token)) continue
 		suggestions.push(candidate.suggestion)
 		if (suggestions.length === MAX_SUGGESTIONS) break
 	}

@@ -338,17 +338,41 @@ describe('filters chosen with --filters', () => {
 		expect(savedBackburner(app)).toHaveLength(0)
 	})
 
-	it('names a filter --filters cannot find', async () => {
+	// the mistyped word and both mistyped filter entries are asked about in one prompt, and each pick replaces only
+	// what it answers for
+	it('asks about every mistyped word and --filters entry in one prompt, and requests with the picks', async () => {
 		app.emu.rcon.commandLog.length = 0
-		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer skorpo -f gen,brokn'))
-		await app.waitFor(
-			() => warnsTo(app, admin).some((w) => w.includes('No filter is named like "brokn". Did you mean "Broken"')) || null,
-			{
-				label: 'the unknown-filter refusal',
+		const step = async (n: number) =>
+			await app.waitFor(() => warnsTo(app, admin).findLast((w) => w.includes(`(${n}/3)`)) ?? null, {
+				label: `question ${n} of 3`,
 				timeoutMs: 20_000,
-			},
-		)
+			})
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('reqlayer skorpoo -f genpool,!imposible'))
+
+		const first = await step(1)
+		expect(first).toContain('Unknown filter "genpool"')
+		expect(first).toContain('1) Generation Pool')
 		expect(savedBackburner(app)).toHaveLength(0)
+		app.emu.world.chat(admin, 'ChatAdmin', '1')
+
+		const second = await step(2)
+		expect(second).toContain('Unknown filter "imposible"')
+		expect(second).toContain('1) not Impossible')
+		app.emu.world.chat(admin, 'ChatAdmin', '1')
+
+		const third = await step(3)
+		expect(third).toContain('Unknown request "skorpoo"')
+		expect(third).toContain('1) Skorpo')
+		app.emu.world.chat(admin, 'ChatAdmin', '1')
+
+		await app.waitFor(() => savedBackburner(app).length === 1 || null, { label: 'the request persisting', timeoutMs: 20_000 })
+		const parts = BB.parseTemplateParts(savedBackburner(app)[0].filter)
+		expect(parts.maps).toEqual(['Skorpo'])
+		expect(parts.filterIds).toEqual(['gen-pool'])
+		expect(parts.excludedFilterIds).toEqual(['impossible'])
+
+		app.emu.world.chat(admin, 'ChatAdmin', cmd('unreqlayer'))
+		await app.waitFor(() => savedBackburner(app).length === 0 || null, { label: 'cleanup', timeoutMs: 20_000 })
 	})
 
 	it('draws a vote with the filters typed after --filters in place of the pool filter', async () => {

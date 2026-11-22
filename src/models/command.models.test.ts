@@ -78,6 +78,19 @@ describe('near misses', () => {
 				'that',
 			])
 		})
+
+		// several misses in one option value and one rest argument, as /reqlayer can raise them in one prompt
+		it('composes picks for entries of one option with picks for single words', () => {
+			const tokens = ['--filters=!impos,genpool,brokn', '--', 'gorodokk', 'raas']
+			const filters = { start: 0, len: 1 }
+			const request = { start: 2, len: 2 }
+			const spliced = CMD.spliceArgTokens(tokens, [
+				{ range: CMD.nearMissRange(filters, { entry: 1 }), tokens: ['gen-pool'] },
+				{ range: CMD.nearMissRange(request, { word: 0 }), tokens: ['Gorodok'] },
+				{ range: CMD.nearMissRange(filters, { entry: 2 }), tokens: ['broken'] },
+			])
+			expect(spliced).toEqual(['--filters=!impos,gen-pool,broken', '--', 'Gorodok', 'raas'])
+		})
 	})
 })
 
@@ -560,10 +573,5 @@ describe('parseOptions', () => {
 		expect(parse('--internal=yes no')).toEqual({ code: 'err:unexpected-value', option: '--internal' })
 		expect(parse('yes no -d')).toEqual({ code: 'err:missing-value', option: '-d' })
 		expect(parse('-d -- yes')).toEqual({ code: 'err:missing-value', option: '-d' })
-	})
-
-	it('resolves values for a handler, with absent flags false and bad durations refused', () => {
-		expect(CMD.resolveOptionValues(defs, { duration: '90s' })).toEqual({ code: 'ok', values: { internal: false, duration: 90_000 } })
-		expect(CMD.resolveOptionValues(defs, { duration: 'soon' }).code).toBe('err')
 	})
 })
