@@ -909,14 +909,14 @@ const endSimpleVote = Instr.spanOp(
 		let tally: V.Tally | null = null
 		let ended: V.SimpleVote.Ended
 		if (state.votes.length === 0) {
-			ended = { ...state, code: 'ended:insufficient-votes', endedEarly }
+			ended = { ...state, code: 'ended:insufficient-votes', endedEarly, endedAt: Date.now() }
 		} else {
 			const serverInfoRes = await ctx.squadRcon.serverInfo.get(ctx, { ttl: 0 })
 			if (serverInfoRes.code !== 'ok') return serverInfoRes
 			tally = V.SimpleVote.tally(state, serverInfoRes.data.playerCount)
 			Instr.setSpanOpAttrs({ tally })
 			const winner = tally.leaders[Math.floor(Math.random() * tally.leaders.length)]
-			ended = { ...state, code: 'ended:winner', winner, endedEarly }
+			ended = { ...state, code: 'ended:winner', winner, endedEarly, endedAt: Date.now() }
 		}
 		ctx.vote.simple.endTask?.unsubscribe()
 		ctx.vote.simple.endTask = null
@@ -953,7 +953,7 @@ const endSimpleVote = Instr.spanOp(
 const abortSimpleVote = Instr.spanOp('abortSimpleVote', { module }, async (ctx: SimpleVoteCtx, opts: { aborter: USR.GuiOrChatUserId }) => {
 	const state = ctx.vote.simple.state
 	if (state?.code !== 'in-progress') return { code: 'err:no-vote-in-progress' as const, msg: ctx.tr.text(V_Msgs.noVoteInProgress()) }
-	const aborted: V.SimpleVote.Ended = { ...state, code: 'ended:aborted', aborter: opts.aborter }
+	const aborted: V.SimpleVote.Ended = { ...state, code: 'ended:aborted', aborter: opts.aborter, endedAt: Date.now() }
 	ctx.vote.simple.endTask?.unsubscribe()
 	ctx.vote.simple.endTask = null
 	setSimpleVoteState(ctx.vote, aborted)

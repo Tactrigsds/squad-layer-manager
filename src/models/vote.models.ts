@@ -411,11 +411,15 @@ export namespace SimpleVote {
 		initiator: VoteInitiator
 	}
 	export type InProgress = Base & { code: 'in-progress' }
+	type EndedBase = Base & { endedAt: number }
 	export type Ended =
-		| (Base & { code: 'ended:winner'; winner: string; endedEarly?: USR.GuiOrChatUserId })
-		| (Base & { code: 'ended:insufficient-votes'; endedEarly?: USR.GuiOrChatUserId })
-		| (Base & { code: 'ended:aborted'; aborter: USR.GuiOrChatUserId })
+		| (EndedBase & { code: 'ended:winner'; winner: string; endedEarly?: USR.GuiOrChatUserId })
+		| (EndedBase & { code: 'ended:insufficient-votes'; endedEarly?: USR.GuiOrChatUserId })
+		| (EndedBase & { code: 'ended:aborted'; aborter: USR.GuiOrChatUserId })
 	export type State = InProgress | Ended
+
+	// how long the dashboard keeps showing a simple vote after it ends
+	export const RESULT_SHOWN_MS = 15 * 60 * 1000
 
 	export type Update = { code: 'state'; state: State | null } | { code: 'cast'; voteId: string; cast: VoteCast }
 
@@ -499,8 +503,13 @@ export type VoteView = {
 	winnerId?: string
 }
 
-// The layer vote running on the queue, or else the queue head's vote once it has ended.
-export function layerVoteView(list: LL.List, state: VoteState | null, defaultDisplayProps: DH.LayerDisplayProp[]): VoteView | null {
+// The layer vote running on the queue, or else the queue head's vote once it has ended, until a match starts after it.
+export function layerVoteView(
+	list: LL.List,
+	state: VoteState | null,
+	defaultDisplayProps: DH.LayerDisplayProp[],
+	currentMatchStart: Date | undefined,
+): VoteView | null {
 	let item: LL.Item | undefined
 	let voteData: VoteStateWithVoteData | undefined
 	if (state?.code === 'in-progress') {
@@ -511,6 +520,7 @@ export function layerVoteView(list: LL.List, state: VoteState | null, defaultDis
 		voteData = item && LL.isVoteItem(item) ? item.endingVoteState : undefined
 	}
 	if (!item || !LL.isVoteItem(item) || !voteData) return null
+	if (voteData.code !== 'in-progress' && currentMatchStart && voteData.deadline < currentMatchStart.getTime()) return null
 	return {
 		kind: 'layer',
 		key: `layer:${item.itemId}:${voteData.deadline}`,
