@@ -19,4 +19,5 @@ sets how long the vote runs. `/startvote` takes the same two options for the vot
 vote can also be started from the activity panel's chat box, which sets the same two options.
 
 Every vote, layer or simple, shows its tally and countdown in a box at the top of the activity feed, with the
-controls to end or abort it. The queue no longer shows a running vote's tally.
+controls to end or abort it. A layer vote's result stays in the box until the next match starts, and a simple
+vote's result stays for 15 minutes. The queue no longer shows a running vote's tally.

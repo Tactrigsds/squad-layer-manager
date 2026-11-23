@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import * as Zus from '@/lib/zustand'
 import * as V_Msgs from '@/messages/vote.messages'
 import * as V from '@/models/vote.models'
+import * as MatchHistoryClient from '@/systems/match-history.client'
 import { tr } from '@/systems/messages.client'
 import * as RbacClient from '@/systems/rbac.client'
 import * as SquadServerClient from '@/systems/squad-server.client'
@@ -42,12 +43,13 @@ function statusLabel(code: V.VoteView['code']) {
 	}
 }
 
-// The server's running vote, layer or simple, or the one that ended last, floated over the activity feed. Collapsing
-// applies to one vote, so the next vote opens expanded.
+// The server's running vote, layer or simple, or the one that ended last while its result is still shown, floated over
+// the activity feed. Collapsing applies to one vote, so the next vote opens expanded.
 export default function VoteBox(props: { stores: SquadServerFrame.KeyProp; className?: string }) {
 	const serverId = props.stores.squadServer.serverId
 	const layerVoteState = VoteClient.useVoteState(serverId)
-	const simpleVoteState = VoteClient.useSimpleVoteState(serverId)
+	const simpleVoteState = VoteClient.useShownSimpleVoteState(serverId)
+	const currentMatch = MatchHistoryClient.useCurrentMatch(serverId)
 	const savedQueue = Zus.useStore(props.stores.squadServer, Sel.savedQueue)
 	const defaultDisplayProps = Zus.useStore(props.stores.squadServer, Sel.defaultDisplayProps)
 	const [collapsedKey, setCollapsedKey] = React.useState<string | null>(null)
@@ -55,7 +57,7 @@ export default function VoteBox(props: { stores: SquadServerFrame.KeyProp; class
 	const serverInfoRes = SquadServerClient.useServerInfoRes(serverId)
 
 	const view = V.shownVote([
-		V.layerVoteView(savedQueue, layerVoteState, defaultDisplayProps),
+		V.layerVoteView(savedQueue, layerVoteState, defaultDisplayProps, currentMatch?.startTime),
 		simpleVoteState && V.simpleVoteView(simpleVoteState),
 	])
 	if (!view) return null

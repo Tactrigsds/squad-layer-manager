@@ -366,7 +366,7 @@ test.describe('admin actions from the teams panel', () => {
 		expect(ended.body).toMatch(/\[WINNER\] Hold the line/)
 		await expect(box).toContainText('Ended')
 
-		// an ended vote stays until the next one, collapsed out of the way
+		// an ended vote stays for a while, collapsed out of the way
 		await box.getByRole('button', { name: 'Collapse the vote' }).click()
 		await expect(box.getByText('2. Hold the line')).toBeHidden()
 		expect(appEventTypes(app)).toEqual(expect.arrayContaining(['VOTE_STARTED', 'VOTE_ENDED']))

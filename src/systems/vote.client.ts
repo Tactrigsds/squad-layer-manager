@@ -43,7 +43,7 @@ export const [useVoteState, voteState$] = ReactRx.bindWithDefault(
 )
 
 // casts arrive as deltas, folded in order as voteStateCold$ folds them
-export const [useSimpleVoteState, simpleVoteState$] = ReactRx.bindWithDefault(
+const [, simpleVoteState$] = ReactRx.bindWithDefault(
 	(serverId: string) =>
 		RPC.observe('vote.watchSimpleVote', () => RPC.orpc.vote.watchSimpleVote.call({ serverId })).pipe(
 			RPC.dropUnavailable(),
@@ -52,10 +52,25 @@ export const [useSimpleVoteState, simpleVoteState$] = ReactRx.bindWithDefault(
 	null,
 )
 
+// the simple vote, until its result has been shown for V.SimpleVote.RESULT_SHOWN_MS
+export const [useShownSimpleVoteState, shownSimpleVoteState$] = ReactRx.bindWithDefault(
+	(serverId: string) =>
+		simpleVoteState$(serverId).pipe(
+			Rx.switchMap((state) => {
+				if (state === null || state.code === 'in-progress') return Rx.of(state)
+				const hideIn = state.endedAt + V.SimpleVote.RESULT_SHOWN_MS - Date.now()
+				if (hideIn <= 0) return Rx.of(null)
+				return Rx.concat(Rx.of(state), Rx.timer(hideIn).pipe(Rx.map(() => null)))
+			}),
+		),
+	null,
+)
+
 export function watchServer(serverId: string, cleanup: Cleanup.Tasks) {
 	cleanup.push(voteStateUpdate$(serverId).subscribe())
 	cleanup.push(voteState$(serverId).subscribe())
 	cleanup.push(simpleVoteState$(serverId).subscribe())
+	cleanup.push(shownSimpleVoteState$(serverId).subscribe())
 }
 
 export namespace Actions {
