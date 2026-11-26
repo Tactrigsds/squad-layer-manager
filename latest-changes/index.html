@@ -24,6 +24,9 @@
 <p>With several open, each back press closes the top one.</p>
 </li>
 <li>
+<p><strong>Added:</strong> The audit log records changes to a plugin&#x27;s settings, including turning the plugin on or off. Each entry names the plugin, the admin who saved, and every setting that changed, with its old and new value.</p>
+</li>
+<li>
 <p><strong>Added:</strong> <code>/reqlayer</code> and <code>/vote</code> take <code>--filters</code> (<code>-f</code>) to choose the filters a request or vote uses. The filters named replace the server&#x27;s layer request filters for <code>/reqlayer</code>, and the pool filter for <code>/vote</code>. Separate the filters with commas, put <code>!</code> before one to invert it, or give <code>none</code> to use no filters: <code>/reqlayer narva -f mainpool,!jensens</code>. The repeat rules still apply to <code>/vote</code>.</p>
 <p>A filter can be named by part of its name or by its id, in <code>--filters</code> and among the words of <code>/reqlayer</code> and <code>/vote</code>.
 When a name matches no filter or several, SLM lists the filters it could mean. Reply with a number to pick one. Every
