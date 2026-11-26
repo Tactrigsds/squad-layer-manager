@@ -496,6 +496,17 @@ const QUEUE_UPDATE_VERBS: Record<AppEvents.QueueUpdateKind, TString> = {
 	save: t('updated the queue'),
 }
 
+// the paths are the point of the entry; the values are in the expanded payload
+function describeSettingChanges(scope: string, changes: AppEvents.SettingsUpdated['changes']): string {
+	if (!changes || changes.length === 0) return `updated ${scope}`
+	const shown = changes
+		.slice(0, 3)
+		.map((c) => c.path)
+		.join(', ')
+	const rest = changes.length > 3 ? ` and ${changes.length - 3} more` : ''
+	return `updated ${scope}: ${shown}${rest}`
+}
+
 // a short human-readable description of the action, WITHOUT the actor (the caller prepends the actor's name).
 // used by the audit log; the activity feed has its own richer per-type renderers.
 // `playerName` resolves an eos id for the types that name a player the caller can't otherwise identify.
@@ -622,17 +633,10 @@ export function describeAppEvent(e: AppEvents.AppEvent, playerName?: (id: SM.Pla
 			}
 			return `set next layer to ${layer}`
 		}
-		case 'SETTINGS_UPDATED': {
-			const scope = e.serverId ? 'server settings' : 'global settings'
-			if (!e.changes || e.changes.length === 0) return `updated ${scope}`
-			// the paths are the point of the entry; the values are in the expanded payload
-			const shown = e.changes
-				.slice(0, 3)
-				.map((c) => c.path)
-				.join(', ')
-			const rest = e.changes.length > 3 ? ` and ${e.changes.length - 3} more` : ''
-			return `updated ${scope}: ${shown}${rest}`
-		}
+		case 'SETTINGS_UPDATED':
+			return describeSettingChanges(e.serverId ? 'server settings' : 'global settings', e.changes)
+		case 'PLUGIN_SETTINGS_UPDATED':
+			return describeSettingChanges(`${e.pluginId}'s plugin settings`, e.changes)
 		case 'SERVER_REGISTRY_CHANGED': {
 			const verb = e.action === 'set-default' ? 'set default' : e.action
 			return `${verb} server "${e.targetServerName ?? e.targetServerId}"`

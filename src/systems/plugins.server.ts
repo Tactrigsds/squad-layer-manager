@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 
 import * as Schema from '$root/drizzle/schema'
 import * as Cleanup from '@/lib/cleanup'
+import * as Obj from '@/lib/object-utils'
 import type { OtelModule } from '@/lib/otel'
 import * as Prom from '@/lib/promise-utils'
 import * as Rx from '@/lib/rxjs'
@@ -910,6 +911,28 @@ function otherCommandConfigs(pluginId: string): Record<string, CMD.PluginCommand
 
 // ---- persistence ----
 
+// the config with the manifest's defaults filled in, so an audited change shows the value the plugin was running with
+function settingsSnapshot(rt: Runtime) {
+	const parsed = rt.entry.manifest.configSchema.safeParse(rt.configInput)
+	return { config: parsed.success ? parsed.data : rt.configInput, commands: rt.commandConfigs, comments: rt.comments }
+}
+
+function recordSettingsChanges(ctx: C.Db & USR.Ctx, rt: Runtime, changes: Obj.LeafChange[]) {
+	if (changes.length === 0) return
+	AppEventsSys.persistAppEvent(
+		ctx,
+		AppEvents.create<AppEvents.PluginSettingsUpdated>({
+			type: 'PLUGIN_SETTINGS_UPDATED',
+			actor: { type: 'slm-user', userId: ctx.user.discordId },
+			serverId: null,
+			matchId: null,
+			causeId: null,
+			pluginId: rt.ref.id,
+			changes,
+		}),
+	)
+}
+
 function persistRow(ctx: C.Db, rt: Runtime) {
 	DB.run(
 		ctx,
@@ -1077,8 +1100,10 @@ export const router = {
 			const rt = plugins.get(input.pluginId)
 			if (!rt) return { code: 'err:unknown-plugin' as const }
 			return await lifecycleMtx.runExclusive(async () => {
+				const before = rt.enabled
 				rt.enabled = input.enabled
 				persistRow(ctx, rt)
+				recordSettingsChanges(ctx, rt, Obj.diffLeaves({ enabled: before }, { enabled: rt.enabled }))
 				if (input.enabled) {
 					if (rt.status === 'errored') await deactivateLocked(rt)
 					await activateLocked(rt)
@@ -1105,6 +1130,7 @@ export const router = {
 		.handler(async ({ context: ctx, input }) => {
 			const rt = plugins.get(input.pluginId)
 			if (!rt) return { code: 'err:unknown-plugin' as const }
+			const before = settingsSnapshot(rt)
 			const parsed = input.config && rt.entry.manifest.configSchema.safeParse(input.config)
 			if (parsed && !parsed.success) return { code: 'err:invalid-config' as const, message: z.prettifyError(parsed.error) }
 			if (input.commands) {
@@ -1129,6 +1155,7 @@ export const router = {
 			}
 			if (input.comments) rt.comments = input.comments
 			persistRow(ctx, rt)
+			recordSettingsChanges(ctx, rt, Obj.diffLeaves(before, settingsSnapshot(rt)))
 			update$.next(rt.ref.id)
 			return { code: 'ok' as const }
 		}),

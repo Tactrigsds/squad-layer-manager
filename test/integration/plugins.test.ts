@@ -91,6 +91,17 @@ describe('plugin host', () => {
 		await app.waitFor(() => warnsTo(app, victim).find((w) => w.includes('BRAVO')), {
 			label: 'the teamkill warn rendered from the edited template',
 		})
+
+		const audited = readRows<{ actorUserId: string | null; changes: string }>(
+			`SELECT actorUserId, json_extract(data, '$.json.changes') AS changes FROM appEvents
+			 WHERE type = 'PLUGIN_SETTINGS_UPDATED' AND json_extract(data, '$.json.pluginId') = 'teamkill-warns' ORDER BY rowid`,
+		).map((r) => ({ actorUserId: r.actorUserId, changes: JSON.parse(r.changes) }))
+		expect(audited).toHaveLength(3)
+		expect(audited.every((r) => r.actorUserId !== null)).toBe(true)
+		expect(audited[0].changes).toEqual([{ path: 'enabled', from: false, to: true }])
+		expect(audited[1].changes).toContainEqual({ path: 'config.enabledServers', from: [], to: [app.serverId] })
+		// the second save leaves enabledServers alone, so only the template is recorded
+		expect(audited[2].changes).toEqual([{ path: 'config.template', from: 'ALPHA {{attacker}} / {{weapon}}', to: 'BRAVO {{attacker}}' }])
 	})
 
 	it('afk-kicker warns and then kicks the squadless player a full server needs gone, and leaves an unkickable one', async () => {
