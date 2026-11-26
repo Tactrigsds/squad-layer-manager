@@ -900,6 +900,7 @@ export function AppEventRow(props: { ctx: RC.RenderCtx; event: AppEventEntry }):
 		appEvent.type === 'PERMISSION_DENIED' ||
 		appEvent.type === 'BACKUP_CREATED' ||
 		appEvent.type === 'PLUGIN_DATA_PURGED' ||
+		appEvent.type === 'PLUGIN_SETTINGS_UPDATED' ||
 		appEvent.type === 'MATCH_LAYERS_RECONCILED'
 	) {
 		// global/audit-only types -- they never reach a server activity feed (matchId null), but the union needs a

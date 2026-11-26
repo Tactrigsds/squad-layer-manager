@@ -102,6 +102,7 @@ const PAYLOADS: Record<string, Record<string, unknown>> = {
 	MAP_SET: { layerId: 'GD-RAAS-V1:USA-CA:RGF-CA', reason: 'override', overrode: { type: 'rcon' } },
 	PLUGIN_EVENT: { pluginId: 'p', name: 'thing', message: 'a thing happened', payload: {} },
 	PLUGIN_DATA_PURGED: { pluginId: 'p', tables: [] },
+	PLUGIN_SETTINGS_UPDATED: { pluginId: 'p', changes: [{ path: 'config.enabledServers', from: [], to: ['s'] }] },
 	SCHEDULED_JOB_SUCCESS: { pluginId: 'p', jobId: 'j', key: '@0', scheduledFor: 0, manual: true, attempt: 1 },
 	SCHEDULED_JOB_FAILED: { pluginId: 'p', jobId: 'j', key: '@0', scheduledFor: 0, manual: false, attempt: 3, error: 'boom' },
 	SCHEDULED_JOB_CANCELLED: { pluginId: 'p', jobId: 'j', key: '@0', scheduledFor: 0, manual: false, attempt: 1 },

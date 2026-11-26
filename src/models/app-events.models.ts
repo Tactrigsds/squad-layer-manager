@@ -588,6 +588,14 @@ export const PluginDataPurgedSchema = event('PLUGIN_DATA_PURGED', {
 })
 export type PluginDataPurged = z.infer<typeof PluginDataPurgedSchema>
 
+// a save of a plugin's settings from the settings page. Paths are rooted at `enabled`, `config`, `commands` or
+// `comments`.
+export const PluginSettingsUpdatedSchema = event('PLUGIN_SETTINGS_UPDATED', {
+	pluginId: z.string(),
+	changes: z.array(SettingChangeSchema),
+})
+export type PluginSettingsUpdated = z.infer<typeof PluginSettingsUpdatedSchema>
+
 // a run of a job a plugin scheduled (see SJOB). Recorded by SLM rather than the plugin, attributed to whoever pressed
 // Run now or else the plugin. serverId is null for a job not tied to a server.
 const scheduledJobRunShape = {
@@ -654,6 +662,7 @@ export const AppEventSchema = z.discriminatedUnion('type', [
 	MapSetSchema,
 	PluginEventSchema,
 	PluginDataPurgedSchema,
+	PluginSettingsUpdatedSchema,
 	ScheduledJobSuccessSchema,
 	ScheduledJobFailedSchema,
 	ScheduledJobCancelledSchema,
@@ -769,6 +778,7 @@ export const APP_EVENT_META = {
 	BACKUP_CREATED: EM.meta<BackupCreated>(),
 	PLUGIN_EVENT: EM.meta<PluginEvent>(),
 	PLUGIN_DATA_PURGED: EM.meta<PluginDataPurged>(),
+	PLUGIN_SETTINGS_UPDATED: EM.meta<PluginSettingsUpdated>(),
 	SCHEDULED_JOB_SUCCESS: EM.meta<ScheduledJobSuccess>(),
 	SCHEDULED_JOB_FAILED: EM.meta<ScheduledJobFailed>(),
 	SCHEDULED_JOB_CANCELLED: EM.meta<ScheduledJobCancelled>(),
